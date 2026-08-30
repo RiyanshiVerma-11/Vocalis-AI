@@ -246,24 +246,6 @@ export default function App() {
     [agoraMode]
   );
 
-  // Handle Candidate Resume updates from Resume Drawer
-  const handleUpdateResume = (updatedResume: CandidateResume) => {
-    setCandidateResume(updatedResume);
-    if (updatedResume.fullName && updatedResume.fullName !== 'Candidate' && updatedResume.fullName !== 'SUMMARY') {
-      setCandidateName(updatedResume.fullName);
-    }
-    try {
-      localStorage.setItem('vocalis_candidate_resume', JSON.stringify(updatedResume));
-      if (currentUser && currentUser.role === 'candidate') {
-        const updatedUser = { ...currentUser, name: updatedResume.fullName || currentUser.name };
-        setCurrentUser(updatedUser);
-        localStorage.setItem('vocalis_user_session', JSON.stringify(updatedUser));
-      }
-    } catch {
-      // Ignore storage error
-    }
-  };
-
   // Start an interview session (Instant Opening Speech <200ms)
   const handleStartInterview = async (config: {
     scenario: InterviewScenario;
@@ -588,6 +570,18 @@ export default function App() {
       targetRole: updated.headline || prev.targetRole,
       candidateResume: updated,
     }));
+
+    try {
+      localStorage.setItem('vocalis_candidate_resume', JSON.stringify(updated));
+      if (currentUser && currentUser.role === 'candidate') {
+        const updatedUser = { ...currentUser, name: updated.fullName || currentUser.name };
+        setCurrentUser(updatedUser);
+        localStorage.setItem('vocalis_user_session', JSON.stringify(updatedUser));
+      }
+    } catch {
+      // Ignore storage errors
+    }
+
     setErrorToast('✓ Candidate profile & interview panel dynamically recalibrated');
     setTimeout(() => setErrorToast(null), 2500);
   };
