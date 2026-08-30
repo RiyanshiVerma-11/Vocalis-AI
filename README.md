@@ -200,7 +200,7 @@ graph LR
         Alex["Alex Vance<br/><b>Technical Architect</b><br/><i>Systems, Idempotency & Scale</i>"]
         Maya["Maya Lin<br/><b>Principal PM</b><br/><i>UX, ROI & Conversion Impact</i>"]
         Marcus["Marcus Reed<br/><b>VP of Engineering</b><br/><i>Delivery, Velocity & Debt</i>"]
-        Sarah["Sarah Mitchell<br/><b>Enterprise Director</b><br/><i>SLAs, Zero-Downtime & Security</i>"]
+        Sarah["Sarah Chen<br/><b>Enterprise Director</b><br/><i>SLAs, Zero-Downtime & Security</i>"]
         Elena["Dr. Elena Rostova<br/><b>Org Psychologist</b><br/><i>STAR EQ, Leadership & Culture</i>"]
     end
 ```
@@ -210,7 +210,7 @@ graph LR
 | **Alex Vance** | Technical Architect | Distributed Systems, Concurrency, Storage | Demands exact failure mechanics, idempotency keys, and partition recovery. |
 | **Maya Lin** | Principal PM | User Workflows, Product Impact, ROI, Metrics | Challenges pure backend plumbing; asks how tech decisions impact conversion. |
 | **Marcus Reed** | VP of Engineering | Team Velocity, Tech Debt, Leadership, Delivery | Evaluates pragmatic trade-offs, engineering deadlines, and team health. |
-| **Sarah Mitchell** | Enterprise Customer | SLAs, Zero-Downtime, Compliance, Security | Protects enterprise trust; challenges breaking API changes and downtime. |
+| **Sarah Chen** | Enterprise Customer | SLAs, Zero-Downtime, Compliance, Security | Protects enterprise trust; challenges breaking API changes and downtime. |
 | **Dr. Elena Rostova** | Org Psychologist | STAR Framework, EQ, Conflict Resolution | Evaluates personal accountability vs team "we" claims and growth mindset. |
 
 ---

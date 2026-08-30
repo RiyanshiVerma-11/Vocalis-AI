@@ -281,7 +281,8 @@ export default function App() {
     const openingPrompt = generatePersonalizedOpening(
       initialSpeaker,
       config.activePanel,
-      config.candidateResume
+      config.candidateResume,
+      config.scenario
     );
 
     const initialContext: SharedCandidateContext = {

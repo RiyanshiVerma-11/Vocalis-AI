@@ -241,7 +241,8 @@ export function parseResumeText(rawText: string, fallbackName?: string): Candida
 export function generatePersonalizedOpening(
   initialSpeaker: { id: string; name: string; title: string },
   activePanel: Array<{ id: string; name: string; title: string }>,
-  candidateResume: CandidateResume
+  candidateResume: CandidateResume,
+  scenario?: { id: string; title: string; starterPrompt?: string; context?: string }
 ): string {
   const otherMembers = activePanel
     .filter((p) => p.id !== initialSpeaker.id)
@@ -252,9 +253,26 @@ export function generatePersonalizedOpening(
       ? `I am ${initialSpeaker.name} (${initialSpeaker.title}), joined by ${otherMembers.join(' and ')}.`
       : `I am ${initialSpeaker.name} (${initialSpeaker.title}).`;
 
-  const greeting = candidateResume.fullName && candidateResume.fullName !== 'Candidate'
-    ? `Welcome ${candidateResume.fullName}!`
-    : 'Welcome!';
+  const validName =
+    candidateResume.fullName && candidateResume.fullName !== 'Candidate' && candidateResume.fullName !== 'SUMMARY'
+      ? candidateResume.fullName
+      : '';
+
+  const greeting = validName ? `Welcome ${validName}!` : 'Welcome!';
+
+  // If scenario has a starter prompt and is not generic custom-freeform, personalize the scenario prompt
+  if (scenario && scenario.id !== 'custom-freeform' && scenario.starterPrompt) {
+    const projRef =
+      candidateResume.notableProjects && candidateResume.notableProjects.length > 0
+        ? ` We reviewed your background and notable work on ${candidateResume.notableProjects[0].name.split('(')[0].trim()}.`
+        : '';
+
+    const cleanScenarioPrompt = scenario.starterPrompt
+      .replace(/^Welcome![^:]*:\s*/i, '')
+      .replace(/^Hello,[^:]*:\s*/i, '');
+
+    return `${greeting} ${panelIntro}${projRef} ${cleanScenarioPrompt}`;
+  }
 
   if (candidateResume.notableProjects && candidateResume.notableProjects.length > 0) {
     const mainProj = candidateResume.notableProjects[0];
