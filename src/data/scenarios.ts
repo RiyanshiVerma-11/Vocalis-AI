@@ -4,7 +4,7 @@ export const INTERVIEW_SCENARIOS: InterviewScenario[] = [
   {
     id: 'candidate-personalized-interview',
     title: '🎯 Tailored Candidate Resume & AI Project Interview',
-    category: 'Personalized Candidate Evaluation',
+    category: 'Custom Roleplay',
     targetRole: 'Custom Role (100% Tailored to Resume)',
     recommendedPanel: ['technical', 'product', 'customer'],
     initialSpeakerRole: 'technical',
