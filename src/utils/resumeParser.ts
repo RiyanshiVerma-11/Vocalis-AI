@@ -9,14 +9,14 @@ export function parseResumeText(rawText: string, fallbackName?: string): Candida
       id: `custom-resume-${Date.now()}`,
       fullName: defaultCandidateName,
       headline: 'Software Engineer',
-      yearsOfExperience: 3,
+      yearsOfExperience: 2,
       location: 'Remote',
       summary: 'No resume provided.',
       skills: {
-        coreArchitecture: ['System Design', 'Microservices'],
-        languagesAndFrameworks: ['TypeScript', 'Python'],
-        cloudAndInfrastructure: ['Cloud Native', 'Docker'],
-        practicesAndMethodologies: ['Agile', 'CI/CD'],
+        coreArchitecture: ['System Architecture', 'REST APIs'],
+        languagesAndFrameworks: ['Python', 'JavaScript'],
+        cloudAndInfrastructure: ['Git', 'Cloud Services'],
+        practicesAndMethodologies: ['Agile', 'Code Review'],
       },
       workExperience: [],
       education: [],
@@ -27,22 +27,34 @@ export function parseResumeText(rawText: string, fallbackName?: string): Candida
 
   const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
 
-  // 1. Extract Full Name (skip section titles like SUMMARY, PROFILE, RESUME, CV, etc.)
+  // 1. Dynamic Full Name Extraction
   const invalidNameHeaders = /^(summary|professional summary|resume|cv|curriculum vitae|profile|objective|personal information|contact|work experience|experience|education|skills|projects|achievements)$/i;
 
   let fullName = defaultCandidateName;
   for (const line of lines) {
-    const cleaned = line.replace(/[\d|\-+()]{7,}/g, '').replace(/[\w.-]+@[\w.-]+/g, '').trim();
+    let cleaned = line
+      .replace(/[\w.-]+@[\w.-]+/g, '')
+      .replace(/[\d|\-+()\s]{10,}/g, '')
+      .replace(/(linkedin|github|leetcode|hackerrank|portfolio|website|certificate|summary|professional summary|resume|cv)/gi, '')
+      .replace(/(meerut|delhi|mumbai|bangalore|noida|gurgaon|hyderabad|uttar pradesh|india|remote)[^]*$/gi, '')
+      .replace(/[—|•\-,]/g, ' ')
+      .trim();
+
+    cleaned = cleaned.replace(/([a-z])([A-Z])/g, '$1 $2').trim();
+
     if (
       cleaned &&
       !invalidNameHeaders.test(cleaned) &&
       cleaned.length >= 2 &&
-      cleaned.length <= 50 &&
-      !cleaned.toLowerCase().includes('github.com') &&
-      !cleaned.toLowerCase().includes('linkedin.com')
+      cleaned.length <= 40 &&
+      !cleaned.toLowerCase().includes('http') &&
+      !cleaned.toLowerCase().includes('gmail')
     ) {
-      fullName = cleaned;
-      break;
+      const nameWords = cleaned.split(/\s+/).slice(0, 3).join(' ');
+      if (nameWords.length >= 2) {
+        fullName = nameWords;
+        break;
+      }
     }
   }
 
@@ -50,50 +62,53 @@ export function parseResumeText(rawText: string, fallbackName?: string): Candida
     fullName = defaultCandidateName;
   }
 
-  // 2. Extract Email & Phone / Links
-  let email = '';
-  const emailMatch = text.match(/[\w.-]+@[\w.-]+/);
-  if (emailMatch) email = emailMatch[0];
+  // 2. Extract Location
+  let location = 'Remote / Open to Relocation';
+  const locMatch = text.match(/(Meerut|Delhi|Mumbai|Bangalore|Noida|Gurgaon|Hyderabad|San Francisco|New York|Seattle|London|Remote)(?:,\s*[A-Za-z\s]+)?/i);
+  if (locMatch) {
+    location = locMatch[0].trim();
+  }
 
-  // 3. Extract Education
+  // 3. Extract Headline / Role
+  let headline = 'Software Engineer';
+  if (text.match(/Data Science|Machine Learning|AI\/ML/i)) {
+    headline = 'Data Science & AI/ML Engineer';
+  } else if (text.match(/Full Stack|MERN|Next\.js|Django/i)) {
+    headline = 'Full Stack Software Engineer';
+  } else if (text.match(/Backend|Distributed Systems|Microservices/i)) {
+    headline = 'Backend & Distributed Systems Engineer';
+  } else if (text.match(/Frontend|React|UI/i)) {
+    headline = 'Frontend UI Engineer';
+  }
+
+  // 4. Extract Summary
+  let summary = '';
+  const summaryIdx = text.search(/summary|profile|objective/i);
+  if (summaryIdx !== -1) {
+    const afterSummary = text.slice(summaryIdx).replace(/^(summary|professional summary|profile|objective)\s*/i, '').trim();
+    const nextSecIdx = afterSummary.search(/education|skills|experience|internship|projects|achievements/i);
+    summary = (nextSecIdx !== -1 ? afterSummary.slice(0, nextSecIdx) : afterSummary.slice(0, 350)).trim();
+  }
+  if (!summary) {
+    summary = lines.slice(1, 5).join(' ').slice(0, 300);
+  }
+
+  // 5. Extract Education
   const education: Array<{ institution: string; degree: string; year: string }> = [];
-  const eduMatch = text.match(/(B\.Tech|Bachelor|Master|M\.Tech|B\.E\.|B\.S\.|M\.S\.)[^\n]*/i);
-  const instMatch = text.match(/(Institute|University|College|School|MIET)[^\n]*/i);
-  if (eduMatch || instMatch) {
+  const eduSectionMatch = text.match(/(?:EDUCATION)([\s\S]*?)(?=(?:INTERNSHIP|EXPERIENCE|PROJECTS|SKILLS|ACHIEVEMENTS|$))/i);
+  const eduTextToSearch = eduSectionMatch ? eduSectionMatch[1] : text;
+  
+  const degMatch = eduTextToSearch.match(/(B\.Tech|Bachelor|Master|M\.Tech|B\.E\.|B\.S\.|M\.S\.|Class XII|Class X)[^\n]*/gi);
+  const instMatch = eduTextToSearch.match(/(Institute|University|College|School|MIET|Academy|Vardhman|Presidency)[^\n]*/gi);
+  if (degMatch || instMatch) {
     education.push({
-      degree: eduMatch ? eduMatch[0].trim() : 'Degree in Computer Science',
+      degree: degMatch ? degMatch[0].trim() : 'B.Tech in Computer Science',
       institution: instMatch ? instMatch[0].trim() : 'Engineering Institute',
-      year: text.match(/\d{4}\s*–\s*\d{4}|\d{4}\s*-\s*\d{4}/)?.[0] || 'Present',
+      year: eduTextToSearch.match(/\d{4}\s*[–\-]\s*\d{4}|\d{4}/)?.[0] || '2026',
     });
   }
 
-  // 4. Extract Headline / Role
-  let headline = 'Full-Stack & AI Systems Engineer';
-  if (text.match(/Data Science/i)) {
-    headline = 'B.Tech CS (Data Science) | Full-Stack & AI Engineer';
-  } else if (text.match(/Distributed Systems|Backend/i)) {
-    headline = 'Backend & Distributed Systems Engineer';
-  } else if (text.match(/AI|Machine Learning|Prompt/i)) {
-    headline = 'AI Applications & Full-Stack Engineer';
-  }
-
-  // 5. Extract Summary
-  let summary = '';
-  const summaryIdx = text.toLowerCase().indexOf('summary');
-  if (summaryIdx !== -1) {
-    const afterSummary = text.slice(summaryIdx + 7).trim();
-    const nextSectionIdx = afterSummary.search(/EDUCATION|TECHNICAL SKILLS|PROJECTS|EXPERIENCE|ACHIEVEMENTS/i);
-    if (nextSectionIdx !== -1) {
-      summary = afterSummary.slice(0, nextSectionIdx).trim();
-    } else {
-      summary = afterSummary.slice(0, 400).trim();
-    }
-  } else {
-    // Take first 3-4 sentences of text
-    summary = lines.slice(1, 6).join(' ');
-  }
-
-  // 6. Extract Skills
+  // 6. Dynamic Skills Extraction
   const coreArchitecture: string[] = [];
   const languagesAndFrameworks: string[] = [];
   const cloudAndInfrastructure: string[] = [];
@@ -107,27 +122,27 @@ export function parseResumeText(rawText: string, fallbackName?: string): Candida
     { word: 'Streamlit', category: 'lang' },
     { word: 'TypeScript', category: 'lang' },
     { word: 'JavaScript', category: 'lang' },
-    { word: 'Llama-3', category: 'lang' },
-    { word: 'Gemini', category: 'lang' },
-    { word: 'Groq', category: 'lang' },
-    { word: 'Multi-agent systems', category: 'arch' },
-    { word: 'Agent Orchestration', category: 'arch' },
-    { word: 'RAG', category: 'arch' },
-    { word: 'Microservices', category: 'arch' },
-    { word: 'Distributed systems', category: 'arch' },
-    { word: 'Connection Pooling', category: 'arch' },
-    { word: 'Docker', category: 'cloud' },
-    { word: 'Google Cloud', category: 'cloud' },
-    { word: 'Render', category: 'cloud' },
-    { word: 'Vercel', category: 'cloud' },
-    { word: 'GitHub Actions', category: 'cloud' },
+    { word: 'Django', category: 'lang' },
+    { word: 'HTML', category: 'lang' },
+    { word: 'CSS', category: 'lang' },
+    { word: 'NumPy', category: 'lang' },
+    { word: 'Pandas', category: 'lang' },
+    { word: 'Scikit-learn', category: 'lang' },
+    { word: 'MongoDB', category: 'cloud' },
+    { word: 'PostgreSQL', category: 'cloud' },
     { word: 'Git', category: 'cloud' },
-    { word: 'Neon PostgreSQL', category: 'cloud' },
-    { word: 'SQLite', category: 'cloud' },
-    { word: 'Prompt Engineering', category: 'prac' },
-    { word: 'RBAC', category: 'prac' },
-    { word: 'Failover Pipelines', category: 'prac' },
-    { word: 'NLP Compliance', category: 'prac' },
+    { word: 'GitHub', category: 'cloud' },
+    { word: 'Docker', category: 'cloud' },
+    { word: 'VS Code', category: 'cloud' },
+    { word: 'Machine Learning', category: 'arch' },
+    { word: 'Exploratory Data Analysis', category: 'arch' },
+    { word: 'Data Cleaning', category: 'arch' },
+    { word: 'REST API', category: 'arch' },
+    { word: 'Microservices', category: 'arch' },
+    { word: 'Supervised Learning', category: 'prac' },
+    { word: 'Classification', category: 'prac' },
+    { word: 'Regression', category: 'prac' },
+    { word: 'Model Evaluation', category: 'prac' },
   ];
 
   skillKeywords.forEach((k) => {
@@ -139,82 +154,98 @@ export function parseResumeText(rawText: string, fallbackName?: string): Candida
     }
   });
 
-  // Fallbacks if empty
-  if (coreArchitecture.length === 0) coreArchitecture.push('AI Multi-Agent Systems', 'Distributed Microservices', 'RAG Architectures');
-  if (languagesAndFrameworks.length === 0) languagesAndFrameworks.push('Python', 'SQL', 'FastAPI', 'Llama-3', 'Gemini');
-  if (cloudAndInfrastructure.length === 0) cloudAndInfrastructure.push('Docker', 'Google Cloud', 'Render', 'Vercel', 'PostgreSQL');
-  if (practicesAndMethodologies.length === 0) practicesAndMethodologies.push('Prompt Engineering', 'Failover Resiliency', 'RBAC Security');
+  if (coreArchitecture.length === 0) coreArchitecture.push('Machine Learning', 'Data Analysis', 'REST APIs');
+  if (languagesAndFrameworks.length === 0) languagesAndFrameworks.push('Python', 'SQL', 'JavaScript');
+  if (cloudAndInfrastructure.length === 0) cloudAndInfrastructure.push('Git', 'GitHub', 'PostgreSQL');
+  if (practicesAndMethodologies.length === 0) practicesAndMethodologies.push('Data Preprocessing', 'Model Evaluation');
 
-  // 7. Extract Work Experience
+  // 7. Dynamic Work Experience Parser
   const workExperience: Array<{ company: string; role: string; duration: string; highlights: string[] }> = [];
-  const expMatch = text.match(/EXPERIENCE([\s\S]*?)(=?:CERTIFICATIONS|ACHIEVEMENTS|PROJECTS|$)/i);
-  if (expMatch && expMatch[1].trim()) {
-    const expText = expMatch[1].trim();
-    const expLines = expText.split('\n').map((l) => l.trim()).filter(Boolean);
-    let currentRole = 'AI Intern / Software Developer';
-    let currentCompany = 'Infosys Springboard 7.0';
-    let currentDuration = 'July 2026 – Present';
+  const expSectionMatch = text.match(/(?:INTERNSHIP|WORK EXPERIENCE|EXPERIENCE|EMPLOYMENT)([\s\S]*?)(?=(?:PROJECTS|ACHIEVEMENTS|CERTIFICATIONS|EDUCATION|$))/i);
+  
+  if (expSectionMatch && expSectionMatch[1].trim()) {
+    const expBlock = expSectionMatch[1].trim();
+    const blockLines = expBlock.split('\n').map((l) => l.trim()).filter(Boolean);
+    
+    let currentRole = 'Data Science Intern';
+    let currentCompany = 'CodSoft';
+    let currentDuration = 'Mar 2026 – Apr 2026';
     const highlights: string[] = [];
 
-    expLines.forEach((l) => {
-      if (l.includes('–') || l.includes('-') || l.includes('Intern') || l.includes('Developer') || l.includes('Engineer')) {
-        if (l.toLowerCase().includes('intern') || l.toLowerCase().includes('infosys')) {
-          currentCompany = 'Infosys Springboard 7.0';
-          currentRole = 'AI Intern';
-          if (l.match(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[^\n]*/i)) {
-            currentDuration = l.match(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[^\n]*/i)?.[0] || 'July 2026 – Present';
+    blockLines.forEach((line) => {
+      if (line.match(/intern|developer|engineer|analyst|manager|lead/i) || line.match(/[–\-]/) && line.match(/20\d\d/)) {
+        if (line.includes('–') || line.includes('-')) {
+          const parts = line.split(/[–\-]/);
+          if (parts[0] && parts[0].length < 50) {
+            if (line.toLowerCase().includes('intern')) currentRole = line.replace(/^•\s*/, '').trim();
+            currentCompany = line.split(/[–\-]/)[0].trim().replace(/^•\s*/, '');
           }
+          const dateMatch = line.match(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s*\d{4}[^\n]*/i);
+          if (dateMatch) currentDuration = dateMatch[0];
+        } else {
+          currentRole = line.replace(/^•\s*/, '').slice(0, 45);
         }
-      } else if (l.startsWith('•') || l.startsWith('-') || l.length > 20) {
-        highlights.push(l.replace(/^[•\-]\s*/, ''));
+      } else if (line.startsWith('•') || line.startsWith('-') || line.length > 15) {
+        if (!line.match(/EXPERIENCE|PROJECTS|EDUCATION/i)) {
+          highlights.push(line.replace(/^[•\-]\s*/, ''));
+        }
       }
     });
 
     workExperience.push({
-      company: currentCompany,
-      role: currentRole,
-      duration: currentDuration,
+      company: currentCompany || 'Tech Organization',
+      role: currentRole || 'Software Developer',
+      duration: currentDuration || 'Recent',
       highlights: highlights.length > 0 ? highlights.slice(0, 4) : [
-        'Engineered Generative AI content engine with multi-model failover pipeline (70B → 8B → Google Translate API).',
-        'Architected offline NLP compliance auditor and governance system for safe omnichannel broadcasts.',
-      ],
-    });
-  } else {
-    workExperience.push({
-      company: 'Infosys Springboard 7.0',
-      role: 'AI Intern',
-      duration: 'July 2026 – Present',
-      highlights: [
-        'Engineered Generative AI content engine (Groq Llama 3.3/3.1) with translation failover pipeline.',
-        'Architected offline NLP compliance auditor and governance system for safe omnichannel broadcasts.',
+        'Developed data pipelines and machine learning models using Python.',
+        'Performed exploratory data analysis and model evaluation.',
       ],
     });
   }
 
-  // 8. Extract Notable Projects
+  // 8. Dynamic Projects Parser
   const notableProjects: Array<{ name: string; description: string; metrics: string }> = [];
-  
-  if (text.includes('HospiSynAI')) {
-    notableProjects.push({
-      name: 'HospiSynAI (Rank 4 / 4,200+)',
-      description: 'Multi-agent AI ecosystem PWA using FastAPI, Groq Llama 3.3 70B & Neon PostgreSQL. Converts clinical notes into structured prescriptions & billing audits in <1.5s.',
-      metrics: 'Rank 4 / 4200+ in HackDevengers 1.0; 75% reduction in invoice verification time',
-    });
-  }
+  const projSectionMatch = text.match(/(?:PROJECTS|NOTABLE PROJECTS|KEY PROJECTS)([\s\S]*?)(?=(?:ACHIEVEMENTS|CERTIFICATIONS|SKILLS|EDUCATION|$))/i);
 
-  if (text.includes('VoteWise AI')) {
-    notableProjects.push({
-      name: 'VoteWise AI (Rank 30 / 26,090+)',
-      description: 'Multilingual civic election PWA built with Gemini 2.0 Flash, Google Embeddings & SQLite in-memory cache. Integrates Google Maps API & OAuth.',
-      metrics: 'Rank 1 Women Developer & Overall Rank 30 / 26,090+ in Google PromptWars 2026 (96.98% score)',
+  if (projSectionMatch && projSectionMatch[1].trim()) {
+    const projBlock = projSectionMatch[1].trim();
+    const projLines = projBlock.split('\n').map((l) => l.trim()).filter(Boolean);
+
+    let currentProjName = '';
+    let currentProjDesc = '';
+
+    projLines.forEach((l) => {
+      if (!l.startsWith('•') && !l.startsWith('-') && l.length < 50 && !l.match(/http|github|linkedin|projects/i)) {
+        if (currentProjName && currentProjDesc) {
+          notableProjects.push({
+            name: currentProjName,
+            description: currentProjDesc,
+            metrics: 'Interactive web & database implementation',
+          });
+          currentProjDesc = '';
+        }
+        currentProjName = l.replace(/^[•\-]\s*/, '').trim();
+      } else {
+        if (currentProjName) {
+          currentProjDesc += (currentProjDesc ? ' ' : '') + l.replace(/^[•\-]\s*/, '').trim();
+        }
+      }
     });
+
+    if (currentProjName && currentProjDesc) {
+      notableProjects.push({
+        name: currentProjName,
+        description: currentProjDesc,
+        metrics: 'Interactive web & database implementation',
+      });
+    }
   }
 
   if (notableProjects.length === 0) {
     notableProjects.push({
-      name: 'Generative AI & Microservices Platform',
-      description: text.slice(0, 250),
-      metrics: 'Proven low latency (<1.5s) & failover resilience',
+      name: 'Full-Stack & Data Applications',
+      description: text.slice(0, 200),
+      metrics: 'End-to-end user features & analytical models',
     });
   }
 
@@ -223,7 +254,7 @@ export function parseResumeText(rawText: string, fallbackName?: string): Candida
     fullName,
     headline,
     yearsOfExperience: 2,
-    location: 'Meerut / Remote, India',
+    location,
     summary,
     skills: {
       coreArchitecture: Array.from(new Set(coreArchitecture)),
