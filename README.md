@@ -163,7 +163,7 @@ stateDiagram-v2
     state Foundational {
         [*] --> F_Evaluating
         F_Evaluating --> Intermediate: Surface Answer + High Confidence
-        F_Evaluating --> Foundational: Vague / Needs Probing
+        F_Evaluating --> F_Evaluating: Vague / Needs Probing
     }
 
     state Intermediate {
@@ -180,7 +180,7 @@ stateDiagram-v2
 
     state Staff_Principal {
         [*] --> P_Evaluating
-        P_Evaluating --> Staff_Principal: Consistently Deep Insights
+        P_Evaluating --> P_Evaluating: Consistently Deep Insights
         P_Evaluating --> Senior: Incomplete Edge-Case Handling
     }
 
