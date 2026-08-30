@@ -1,7 +1,13 @@
 import { CandidateResume } from '../types';
 
 export function parseResumeText(rawText: string, fallbackName?: string): CandidateResume {
-  const text = rawText.trim();
+  // Normalize unformatted single-line raw text pasted from PDF or browser textareas
+  const normalizedText = rawText
+    .replace(/\r\n/g, '\n')
+    .replace(/([^\n])\s*([•*\-])\s*/g, '$1\n$2 ')
+    .replace(/([^\n])\s*(Professional Summary|Skills Summary|Internship Experience|Work Experience|Education|Projects|Notable Projects|Achievements|Certifications)\b/gi, '$1\n\n$2\n');
+
+  const text = normalizedText.trim();
   const defaultCandidateName = fallbackName?.trim() || 'Candidate';
 
   if (!text) {
@@ -273,9 +279,11 @@ export function parseResumeText(rawText: string, fallbackName?: string): Candida
   }
 
   if (notableProjects.length === 0) {
+    const primaryTech = languagesAndFrameworks[0] || 'AI & Data';
+    const primaryDomain = workExperience[0]?.company ? `${workExperience[0].company} Engineering` : headline;
     notableProjects.push({
-      name: 'Software Engineering Project',
-      description: text.slice(0, 200),
+      name: `${primaryTech} ${primaryDomain} Platform`,
+      description: summary || text.slice(0, 200),
       metrics: 'End-to-end features & technical design',
     });
   }
