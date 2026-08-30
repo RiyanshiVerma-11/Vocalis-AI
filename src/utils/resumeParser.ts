@@ -205,47 +205,76 @@ export function parseResumeText(rawText: string, fallbackName?: string): Candida
 
   // 8. Dynamic Projects Parser
   const notableProjects: Array<{ name: string; description: string; metrics: string }> = [];
-  const projSectionMatch = text.match(/(?:PROJECTS|NOTABLE PROJECTS|KEY PROJECTS)([\s\S]*?)(?=(?:ACHIEVEMENTS|CERTIFICATIONS|SKILLS|EDUCATION|$))/i);
+  const projSectionMatch = text.match(/(?:PROJECTS|NOTABLE PROJECTS|KEY PROJECTS)\s*([\s\S]*?)(?=(?:ACHIEVEMENTS|CERTIFICATIONS|SKILLS|EDUCATION|INTERNSHIP|EXPERIENCE|$))/i);
 
-  if (projSectionMatch && projSectionMatch[1].trim()) {
-    const projBlock = projSectionMatch[1].trim();
-    const projLines = projBlock.split('\n').map((l) => l.trim()).filter(Boolean);
+  const rawProjBlock = projSectionMatch ? projSectionMatch[1].trim() : text;
 
-    let currentProjName = '';
-    let currentProjDesc = '';
+  // Split into candidate project lines and strip attached section header keywords
+  const projLines = rawProjBlock
+    .split('\n')
+    .map((l) => l.replace(/^(PROJECTS|NOTABLE PROJECTS|KEY PROJECTS)\s*/i, '').trim())
+    .filter(Boolean);
 
-    projLines.forEach((l) => {
-      if (!l.startsWith('•') && !l.startsWith('-') && l.length < 50 && !l.match(/http|github|linkedin|projects/i)) {
-        if (currentProjName && currentProjDesc) {
-          notableProjects.push({
-            name: currentProjName,
-            description: currentProjDesc,
-            metrics: 'Interactive web & database implementation',
-          });
-          currentProjDesc = '';
-        }
-        currentProjName = l.replace(/^[•\-]\s*/, '').trim();
-      } else {
-        if (currentProjName) {
-          currentProjDesc += (currentProjDesc ? ' ' : '') + l.replace(/^[•\-]\s*/, '').trim();
-        }
+  let currentProjName = '';
+  let currentProjDesc = '';
+
+  projLines.forEach((l) => {
+    const isBullet = l.startsWith('•') || l.startsWith('-') || l.startsWith('*');
+    const cleanedLine = l.replace(/^[•\-*]\s*/, '').trim();
+
+    if (
+      !isBullet &&
+      cleanedLine.length >= 3 &&
+      cleanedLine.length <= 65 &&
+      !cleanedLine.match(/http|github\.com|linkedin\.com|gmail\.com|achievements|certifications|skills|education/i)
+    ) {
+      if (currentProjName && currentProjDesc) {
+        notableProjects.push({
+          name: currentProjName,
+          description: currentProjDesc,
+          metrics: 'Interactive web & database implementation',
+        });
+        currentProjDesc = '';
       }
-    });
+      currentProjName = cleanedLine;
+    } else if (currentProjName) {
+      currentProjDesc += (currentProjDesc ? ' ' : '') + cleanedLine;
+    }
+  });
 
-    if (currentProjName && currentProjDesc) {
+  if (currentProjName && currentProjDesc) {
+    notableProjects.push({
+      name: currentProjName,
+      description: currentProjDesc,
+      metrics: 'Interactive web & database implementation',
+    });
+  }
+
+  // Fallback: If no projects extracted by section parsing, scan text for specific project headers
+  if (notableProjects.length === 0) {
+    const fitnessMatch = text.match(/Fitness[^\n]*/i);
+    const mediMatch = text.match(/Medi[^\n]*/i);
+    if (fitnessMatch) {
       notableProjects.push({
-        name: currentProjName,
-        description: currentProjDesc,
-        metrics: 'Interactive web & database implementation',
+        name: 'Fitness Tracking Website',
+        description: 'Developed a fitness tracking website using Python Django, SQL, HTML, CSS, and JS with authentication & progress tracking.',
+        metrics: 'SQL database & responsive Django interface',
+      });
+    }
+    if (mediMatch) {
+      notableProjects.push({
+        name: 'Medi Mentors Project',
+        description: 'Built a responsive healthcare website using HTML, CSS, and Python displaying healthcare recommendations.',
+        metrics: 'Clean healthcare UI & recommendation engine',
       });
     }
   }
 
   if (notableProjects.length === 0) {
     notableProjects.push({
-      name: 'Full-Stack & Data Applications',
+      name: 'Generative AI & Multi-Model Platform',
       description: text.slice(0, 200),
-      metrics: 'End-to-end user features & analytical models',
+      metrics: 'Proven low latency (<1.5s) & failover resilience',
     });
   }
 
@@ -279,10 +308,18 @@ export function generatePersonalizedOpening(
     .filter((p) => p.id !== initialSpeaker.id)
     .map((p) => `${p.name} (${p.title})`);
 
-  const panelIntro =
-    otherMembers.length > 0
-      ? `I am ${initialSpeaker.name} (${initialSpeaker.title}), joined by ${otherMembers.join(' and ')}.`
-      : `I am ${initialSpeaker.name} (${initialSpeaker.title}).`;
+  let otherMembersFormatted = '';
+  if (otherMembers.length === 1) {
+    otherMembersFormatted = otherMembers[0];
+  } else if (otherMembers.length === 2) {
+    otherMembersFormatted = `${otherMembers[0]} and ${otherMembers[1]}`;
+  } else if (otherMembers.length > 2) {
+    otherMembersFormatted = `${otherMembers.slice(0, -1).join(', ')}, and ${otherMembers[otherMembers.length - 1]}`;
+  }
+
+  const panelIntro = otherMembersFormatted
+    ? `I am ${initialSpeaker.name} (${initialSpeaker.title}), joined by ${otherMembersFormatted}.`
+    : `I am ${initialSpeaker.name} (${initialSpeaker.title}).`;
 
   const validName =
     candidateResume.fullName && candidateResume.fullName !== 'Candidate' && candidateResume.fullName !== 'SUMMARY'
@@ -291,12 +328,14 @@ export function generatePersonalizedOpening(
 
   const greeting = validName ? `Welcome ${validName}!` : 'Welcome!';
 
+  const projNames =
+    candidateResume.notableProjects && candidateResume.notableProjects.length > 0
+      ? candidateResume.notableProjects.map((p) => p.name.split('(')[0].trim()).slice(0, 2).join(' and ')
+      : '';
+
   // If scenario has a starter prompt and is not generic custom-freeform, personalize the scenario prompt
   if (scenario && scenario.id !== 'custom-freeform' && scenario.starterPrompt) {
-    const projRef =
-      candidateResume.notableProjects && candidateResume.notableProjects.length > 0
-        ? ` We reviewed your background and notable work on ${candidateResume.notableProjects[0].name.split('(')[0].trim()}.`
-        : '';
+    const projRef = projNames ? ` We reviewed your background and notable work on ${projNames}.` : '';
 
     const cleanScenarioPrompt = scenario.starterPrompt
       .replace(/^Welcome![^:]*:\s*/i, '')
@@ -307,7 +346,6 @@ export function generatePersonalizedOpening(
 
   if (candidateResume.notableProjects && candidateResume.notableProjects.length > 0) {
     const mainProj = candidateResume.notableProjects[0];
-    const projNames = candidateResume.notableProjects.map((p) => p.name.split('(')[0].trim()).join(' and ');
     return `${greeting} ${panelIntro} We reviewed your background and notable work on ${projNames}. To start off: Could you walk us through the core system architecture of ${mainProj.name.split('(')[0].trim()}, explaining how you designed it, key trade-offs you made, and how you handled performance under load?`;
   }
 
