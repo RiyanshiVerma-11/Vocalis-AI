@@ -1,0 +1,6 @@
+{
+  "name": "Adaptive Voice Interview Platform",
+  "description": "Adaptive multi-role AI interview panel featuring real-time interruptible voice, dynamic turn-taking, candidate answer probing, difficulty adjustment, and evidence-based assessments.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

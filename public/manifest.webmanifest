@@ -1,0 +1,48 @@
+{
+  "name": "VoiceIntro AI - Adaptive Voice Interview Platform",
+  "short_name": "VoiceIntro AI",
+  "description": "Adaptive multi-role AI voice interview platform with real-time interruptible voice, dynamic turn-taking, and evidence-based assessments.",
+  "start_url": "/",
+  "id": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#4f46e5",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "categories": ["education", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Start Candidate Session",
+      "short_name": "Candidate",
+      "description": "Launch adaptive AI interview studio",
+      "url": "/?view=studio"
+    },
+    {
+      "name": "Recruiter Dashboard",
+      "short_name": "Recruiter",
+      "description": "Open candidate analytics & assessment logs",
+      "url": "/?view=recruiter"
+    }
+  ]
+}

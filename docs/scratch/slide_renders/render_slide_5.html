@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vocalis AI — Autonomous Multi-Role Voice Interview Panel (Agora Pitch Deck)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            agora: {
+              blue: '#099DFD',
+              dark: '#001E3C',
+              teal: '#00D1B2',
+              cyan: '#00F0FF',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @media print {
+      body { background: white !important; color: black !important; }
+      .no-print { display: none !important; }
+      .slide { page-break-after: always; min-height: 100vh; display: flex !important; opacity: 1 !important; transform: none !important; margin-bottom: 2rem; border-bottom: 2px solid #e2e8f0; }
+    }
+    .slide-active { display: flex; opacity: 1; transform: scale(1); }
+    .slide-hidden { display: none; opacity: 0; transform: scale(0.98); }
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .glow-border {
+      box-shadow: 0 0 30px -5px rgba(9, 157, 253, 0.3);
+    }
+    .gradient-text-agora {
+      background: linear-gradient(135deg, #099DFD 0%, #00F0FF 50%, #A855F7 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .gradient-text-gold {
+      background: linear-gradient(135deg, #F59E0B 0%, #FBBF24 50%, #FCD34D 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+  </style>
+
+    <style>
+      header, footer, #notesDrawer { display: none !important; }
+      body {
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 1920px !important;
+        height: 1080px !important;
+        overflow: hidden !important;
+        background-color: #020617 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+      }
+      #slideDeck {
+        width: 1920px !important;
+        height: 1080px !important;
+        max-width: 1920px !important;
+        padding: 40px 80px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+      }
+      .slide {
+        width: 100% !important;
+        max-width: 1760px !important;
+      }
+    </style>
+    </head>
+    
+<body class="bg-slate-950 text-slate-100 font-sans antialiased min-h-screen flex flex-col justify-between select-none overflow-hidden">
+
+  <!-- Top Global Header / Presentation Controls -->
+  <header class="no-print h-14 bg-slate-900/90 backdrop-blur-md border-b border-slate-800/80 px-4 sm:px-8 flex items-center justify-between z-50 shrink-0">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center font-black text-white text-xs shadow-md">
+        AI
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="font-extrabold text-sm sm:text-base tracking-tight text-white">Vocalis AI</span>
+        <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 uppercase font-bold">
+          Agora Project Proposal
+        </span>
+      </div>
+    </div>
+
+    <!-- Center Slide Counter -->
+    <div class="flex items-center gap-3">
+      <div class="text-xs font-mono text-slate-400 bg-slate-800/80 px-3 py-1 rounded-lg border border-slate-700">
+        Slide <span id="currentSlideNum" class="text-white font-bold">1</span> / <span id="totalSlidesNum" class="text-slate-400">9</span>
+      </div>
+      <!-- Progress Bar -->
+      <div class="w-24 sm:w-40 h-1.5 bg-slate-800 rounded-full overflow-hidden hidden sm:block">
+        <div id="slideProgressBar" class="h-full bg-gradient-to-r from-blue-500 to-cyan-400 transition-all duration-300" style="width: 11%;"></div>
+      </div>
+    </div>
+
+    <!-- Right Controls -->
+    <div class="flex items-center gap-2">
+      <button id="btnNotes" onclick="toggleNotes()" class="text-xs font-semibold text-slate-400 hover:text-white px-2.5 py-1.5 rounded-lg border border-slate-800 hover:bg-slate-800 transition cursor-pointer hidden md:flex items-center gap-1.5" title="Toggle Presenter Speaker Notes">
+        <span>📝 Speaker Notes</span>
+      </button>
+      <button onclick="window.print()" class="text-xs font-semibold text-slate-400 hover:text-white px-2.5 py-1.5 rounded-lg border border-slate-800 hover:bg-slate-800 transition cursor-pointer hidden sm:flex items-center gap-1.5" title="Print or Export Slide Deck to PDF">
+        <span>📄 Export PDF</span>
+      </button>
+      <button id="btnFullscreen" onclick="toggleFullscreen()" class="text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg shadow-sm transition cursor-pointer flex items-center gap-1.5">
+        <span>⛶ Present</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Slide Deck Container -->
+  <main id="slideDeck" class="flex-1 relative flex items-center justify-center p-4 sm:p-8 overflow-y-auto max-w-7xl w-full mx-auto">
+
+    <!-- ========================================== -->
+    <!-- SLIDE 1: Title & Executive Summary -->
+    <!-- ========================================== -->
+    <div class="slide slide-active w-full flex-col justify-center max-w-6xl mx-auto space-y-8 py-6 transition-all duration-300" data-notes="Welcome judges and evaluation panel. Today we are presenting Vocalis AI: The autonomous multi-role voice interview platform engineered on Agora's Real-Time Conversational AI & SD-RTN infrastructure. We solve the high-stakes senior engineering hiring bottleneck with ultra-low latency, multi-agent committee dynamics, and 100% auditable evidence scorecards.">
+      
+      <div class="space-y-4 text-center max-w-4xl mx-auto">
+        <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-300 text-xs font-bold font-mono uppercase tracking-wider">
+          <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+          <span>Agora Conversational AI Hackathon & Pitch Deck</span>
+        </div>
+        <h1 class="text-3xl sm:text-5xl lg:text-6xl font-black tracking-tight text-white leading-tight">
+          Vocalis AI: The Autonomous <br/>
+          <span class="gradient-text-agora">Multi-Role Voice Interview Panel</span>
+        </h1>
+        <p class="text-base sm:text-xl text-slate-300 font-normal leading-relaxed max-w-3xl mx-auto">
+          Ultra-realistic, adaptive engineering and leadership interview committee powered by <strong class="text-white">Agora Real-Time Voice SD-RTN™</strong> and <strong class="text-cyan-300">Multi-Agent Deliberation</strong>.
+        </p>
+      </div>
+
+      <!-- Core 4 Pillar Highlights -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-4">
+        <div class="glass-panel p-5 rounded-2xl border border-slate-800 space-y-2 hover:border-blue-500/50 transition">
+          <div class="text-blue-400 font-mono text-xs font-bold uppercase tracking-wider">01 • Problem</div>
+          <h3 class="text-base font-bold text-white">40+ Eng Hours Wasted</h3>
+          <p class="text-xs text-slate-400 leading-relaxed">Senior engineers lose entire sprint days conducting repetitive, non-standardized screening interviews.</p>
+        </div>
+        <div class="glass-panel p-5 rounded-2xl border border-slate-800 space-y-2 hover:border-cyan-500/50 transition">
+          <div class="text-cyan-400 font-mono text-xs font-bold uppercase tracking-wider">02 • Solution</div>
+          <h3 class="text-base font-bold text-white">Autonomous Committee</h3>
+          <p class="text-xs text-slate-400 leading-relaxed">4 specialized AI interviewers (System Architect, VP, EM, Security) deliberate and take turns in real time.</p>
+        </div>
+        <div class="glass-panel p-5 rounded-2xl border border-slate-800 space-y-2 hover:border-indigo-500/50 transition">
+          <div class="text-indigo-400 font-mono text-xs font-bold uppercase tracking-wider">03 • Agora Integration</div>
+          <h3 class="text-base font-bold text-white">&lt;100ms SD-RTN Voice</h3>
+          <p class="text-xs text-slate-400 leading-relaxed">Sub-100ms bidirectional speech streaming, natural barge-in interruptibility, and multi-track spatial audio.</p>
+        </div>
+        <div class="glass-panel p-5 rounded-2xl border border-slate-800 space-y-2 hover:border-emerald-500/50 transition">
+          <div class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">04 • Business ROI</div>
+          <h3 class="text-base font-bold text-white">80% Cost Reduction</h3>
+          <p class="text-xs text-slate-400 leading-relaxed">$1.2M saved per 100 hires with 100% timestamped quote evidence and zero demographic bias.</p>
+        </div>
+      </div>
+
+      <!-- Presenter Metadata Footer -->
+      <div class="pt-4 flex flex-wrap items-center justify-between text-xs text-slate-400 border-t border-slate-800/80">
+        <div>Team: <strong class="text-white">Vocalis Core Engineering</strong></div>
+        <div>Target Category: <strong class="text-cyan-300">Best Conversational AI & Real-Time Voice Innovation</strong></div>
+        <div>Stack: <strong class="text-slate-200">Agora Voice SDK • Agora SD-RTN • Gemini 2.5 Multi-Agent</strong></div>
+      </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- SLIDE 2: Problem Statement & Industry Bottlenecks -->
+    <!-- ========================================== -->
+    <div class="slide slide-hidden w-full flex-col justify-center max-w-6xl mx-auto space-y-6 py-6 transition-all duration-300" data-notes="Slide 2 covers the Problem Statement. Today, senior technical interviewing is fundamentally broken. High salaries make human interviewer time exorbitant ($150-$250/hr). Single-prompt AI chatbots fail because they are superficial, mono-perspective, have 2-second awkward latency lags, and cannot interrupt or follow up like a real hiring committee.">
+      
+      <div class="space-y-2">
+        <div class="text-xs font-mono font-bold uppercase tracking-wider text-rose-400">1. Problem Statement & Industry Need</div>
+        <h2 class="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">The Multi-Billion Dollar Technical Hiring Bottleneck</h2>
+        <p class="text-sm text-slate-300 max-w-3xl">Why traditional human interview panels don't scale and why first-generation single-prompt AI bots fail miserably.</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
+        <!-- Problem Card 1 -->
+        <div class="glass-panel p-6 rounded-2xl border-l-4 border-l-rose-500 space-y-3">
+          <div class="w-10 h-10 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center font-bold text-lg">
+            💸
+          </div>
+          <h3 class="text-base font-bold text-white">Massive Engineering Drain</h3>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            Staff and Principal engineers spend <strong>15–20% of their working hours</strong> conducting repetitive rounds, costing top tech enterprises over <strong>$1.2M annually</strong> in lost developer velocity per 100 hires.
+          </p>
+          <div class="bg-slate-900/80 p-2.5 rounded-lg border border-slate-800 text-[11px] text-rose-300 font-mono">
+            Metric: 42.5 hrs average engineering time per offer.
+          </div>
+        </div>
+
+        <!-- Problem Card 2 -->
+        <div class="glass-panel p-6 rounded-2xl border-l-4 border-l-amber-500 space-y-3">
+          <div class="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-lg">
+            🤖
+          </div>
+          <h3 class="text-base font-bold text-white">Superficial Single-Agent Bots</h3>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            Existing AI mock tools act as flat, single-prompt conversationalists. They lack <strong>perspective specialization</strong> (e.g. System Arch vs Product SLA vs Leadership) and fail to probe hand-wavy claims with real depth.
+          </p>
+          <div class="bg-slate-900/80 p-2.5 rounded-lg border border-slate-800 text-[11px] text-amber-300 font-mono">
+            Flaw: Easily gamed by buzzwords without deep verification.
+          </div>
+        </div>
+
+        <!-- Problem Card 3 -->
+        <div class="glass-panel p-6 rounded-2xl border-l-4 border-l-indigo-500 space-y-3">
+          <div class="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold text-lg">
+            ⏱️
+          </div>
+          <h3 class="text-base font-bold text-white">Unnatural Voice Latency & Rigid Turn-Taking</h3>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            Legacy voice interfaces suffer from <strong>1500ms–3000ms latency pauses</strong>, turn-taking collisions, and robotic speech. Candidates cannot naturally interrupt or correct an interviewer mid-sentence.
+          </p>
+          <div class="bg-slate-900/80 p-2.5 rounded-lg border border-slate-800 text-[11px] text-indigo-300 font-mono">
+            Flaw: Lacks real-time barge-in and audio streaming synchronization.
+          </div>
+        </div>
+      </div>
+
+      <!-- Problem Summary Banner -->
+      <div class="p-4 rounded-xl bg-gradient-to-r from-rose-950/40 via-slate-900 to-slate-900 border border-rose-800/40 flex items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+          <span class="text-xl">🎯</span>
+          <p class="text-xs text-slate-200">
+            <strong class="text-white">The Core Need:</strong> An ultra-low latency, multi-agent committee that actively listens, interrupts naturally via Agora, and conducts adaptive, evidence-based evaluations.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- SLIDE 3: Proposed Solution & Core Innovation -->
+    <!-- ========================================== -->
+    <div class="slide slide-hidden w-full flex-col justify-center max-w-6xl mx-auto space-y-6 py-6 transition-all duration-300" data-notes="Slide 3 presents our Solution: Vocalis AI. We build an Autonomous Multi-Role Committee where 4 distinct AI personas share a centralized candidate memory, deliberate backstage in milliseconds, and adapt difficulty dynamically based on candidate depth. Powered by Agora's Real-Time Voice pipeline.">
+      
+      <div class="space-y-2">
+        <div class="text-xs font-mono font-bold uppercase tracking-wider text-cyan-400">2. Proposed Solution & Innovation</div>
+        <h2 class="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">The Autonomous Multi-Role Voice Interview Committee</h2>
+        <p class="text-sm text-slate-300 max-w-3xl">A next-generation platform where multiple AI specialists collaborate in real time with shared memory, dynamic follow-ups, and natural speech.</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2">
+        <!-- Solution Pillar 1 -->
+        <div class="glass-panel p-5 rounded-2xl border border-slate-800 space-y-3">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-blue-600/20 border border-blue-500/40 text-blue-400 flex items-center justify-center font-bold">
+              01
+            </div>
+            <h3 class="text-base font-bold text-white">Autonomous Committee Turn-Taking</h3>
+          </div>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            Rather than one chatbot pretending to be everyone, Vocalis runs distinct specialists (e.g. <em>Marcus Vance</em> for concurrency/kernel bottlenecks, <em>Elena Rostova</em> for business SLAs, <em>David Chen</em> for team execution). They negotiate speaking turns based on who has the sharpest follow-up.
+          </p>
+        </div>
+
+        <!-- Solution Pillar 2 -->
+        <div class="glass-panel p-5 rounded-2xl border border-slate-800 space-y-3">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-cyan-600/20 border border-cyan-500/40 text-cyan-400 flex items-center justify-center font-bold">
+              02
+            </div>
+            <h3 class="text-base font-bold text-white">Real-Time Shared Candidate Memory</h3>
+          </div>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            All agents read and write to a unified context bus containing candidate resume metrics, previous answers, unresolved technical probes, detected contradictions, and competency progression—guaranteeing zero repeated questions.
+          </p>
+        </div>
+
+        <!-- Solution Pillar 3 -->
+        <div class="glass-panel p-5 rounded-2xl border border-slate-800 space-y-3">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-indigo-600/20 border border-indigo-500/40 text-indigo-400 flex items-center justify-center font-bold">
+              03
+            </div>
+            <h3 class="text-base font-bold text-white">Dynamic Depth & Difficulty Calibration</h3>
+          </div>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            Analyzes candidate answers for superficial buzzwords vs. genuine architectural depth. Strong answers trigger distributed edge-case escalations (Staff/Principal tier), while struggling candidates receive structured scaffolding.
+          </p>
+        </div>
+
+        <!-- Solution Pillar 4 -->
+        <div class="glass-panel p-5 rounded-2xl border border-slate-800 space-y-3">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-emerald-600/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center font-bold">
+              04
+            </div>
+            <h3 class="text-base font-bold text-white">100% Evidence-Based Scorecard Generation</h3>
+          </div>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            Generates post-round committee consensus scorecards with timestamped quote citations, rubric ratings, flagged architectural risks, and personalized candidate development roadmaps.
+          </p>
+        </div>
+      </div>
+
+      <!-- Innovation Badge Row -->
+      <div class="flex flex-wrap items-center justify-center gap-3 text-xs font-mono pt-2">
+        <span class="px-3 py-1 rounded-full bg-blue-500/10 text-blue-300 border border-blue-500/30">✓ Multi-Agent Handoffs</span>
+        <span class="px-3 py-1 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">✓ Sub-100ms Interruptibility</span>
+        <span class="px-3 py-1 rounded-full bg-purple-500/10 text-purple-300 border border-purple-500/30">✓ Resume Verification</span>
+        <span class="px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">✓ Zero Demographic Bias</span>
+      </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- SLIDE 4: Technical Architecture Diagram & Pipeline -->
+    <!-- ========================================== -->
+    <div class="slide slide-hidden w-full flex-col justify-center max-w-6xl mx-auto space-y-6 py-6 transition-all duration-300" data-notes="Slide 4 details the Technical Architecture. This diagram illustrates how the candidate's voice flows into Agora SD-RTN, through the Agora Conversational AI audio pipeline with Voice Activity Detection (VAD) and Acoustic Echo Cancellation (AEC), into our Multi-Agent Orchestrator and Shared Candidate Context Bus, and back out via ultra-low latency TTS audio streams.">
+      
+      <div class="space-y-2">
+        <div class="text-xs font-mono font-bold uppercase tracking-wider text-blue-400">3. Technical Architecture & End-to-End Pipeline</div>
+        <h2 class="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">Full-Stack Real-Time Multi-Agent Topology</h2>
+        <p class="text-sm text-slate-300 max-w-3xl">Sub-120ms total roundtrip audio loop with autonomous deliberation, shared state, and instant barge-in.</p>
+      </div>
+
+      <!-- Architectural SVG Diagram Box -->
+      <div class="glass-panel p-5 rounded-2xl border border-slate-800 space-y-4">
+        <div class="w-full overflow-x-auto">
+          <svg viewBox="0 0 960 320" class="w-full h-auto min-w-[700px] text-white select-none">
+            <defs>
+              <linearGradient id="blueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#099DFD" />
+                <stop offset="100%" stop-color="#0052D4" />
+              </linearGradient>
+              <linearGradient id="cyanGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#00F0FF" />
+                <stop offset="100%" stop-color="#0083B0" />
+              </linearGradient>
+              <linearGradient id="purpleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#A855F7" />
+                <stop offset="100%" stop-color="#6B21A8" />
+              </linearGradient>
+              <linearGradient id="emeraldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#10B981" />
+                <stop offset="100%" stop-color="#047857" />
+              </linearGradient>
+            </defs>
+
+            <!-- Box 1: Candidate Voice -->
+            <rect x="20" y="70" width="160" height="180" rx="14" fill="#0F172A" stroke="#38BDF8" stroke-width="2" />
+            <text x="100" y="105" text-anchor="middle" font-size="14" font-weight="bold" fill="#38BDF8">Candidate Client</text>
+            <text x="100" y="128" text-anchor="middle" font-size="11" fill="#94A3B8">Browser / WebRTC</text>
+            <rect x="35" y="145" width="130" height="32" rx="8" fill="#1E293B" />
+            <text x="100" y="165" text-anchor="middle" font-size="10" font-family="monospace" fill="#38BDF8">🎤 Mic Stream In</text>
+            <rect x="35" y="185" width="130" height="32" rx="8" fill="#1E293B" />
+            <text x="100" y="205" text-anchor="middle" font-size="10" font-family="monospace" fill="#4ADE80">🔊 Multi-Voice Out</text>
+            <text x="100" y="235" text-anchor="middle" font-size="9" fill="#64748B">Instant Barge-In VAD</text>
+
+            <!-- Arrow 1 -> 2 -->
+            <path d="M 180 130 L 230 130" stroke="#099DFD" stroke-width="3" stroke-dasharray="4,4" />
+            <polygon points="235,130 225,125 225,135" fill="#099DFD" />
+            <text x="207" y="120" text-anchor="middle" font-size="9" fill="#38BDF8" font-family="monospace">&lt;35ms</text>
+
+            <!-- Box 2: Agora SD-RTN Network & Voice SDK -->
+            <rect x="240" y="40" width="220" height="240" rx="16" fill="#0F172A" stroke="#099DFD" stroke-width="2.5" />
+            <rect x="255" y="55" width="190" height="28" rx="6" fill="url(#blueGrad)" />
+            <text x="350" y="74" text-anchor="middle" font-size="12" font-weight="bold" fill="#FFFFFF">Agora SD-RTN™ & SDK</text>
+            
+            <rect x="255" y="95" width="190" height="40" rx="8" fill="#1E293B" stroke="#334155" />
+            <text x="350" y="113" text-anchor="middle" font-size="11" font-weight="bold" fill="#00F0FF">Agora Conversational AI</text>
+            <text x="350" y="127" text-anchor="middle" font-size="9" fill="#94A3B8">VAD • Echo Cancellation (AEC) • ANS</text>
+
+            <rect x="255" y="145" width="190" height="38" rx="8" fill="#1E293B" stroke="#334155" />
+            <text x="350" y="163" text-anchor="middle" font-size="11" font-weight="bold" fill="#38BDF8">Multi-Track Audio Engine</text>
+            <text x="350" y="176" text-anchor="middle" font-size="9" fill="#94A3B8">Spatial Persona Channels (4 Roles)</text>
+
+            <rect x="255" y="195" width="190" height="38" rx="8" fill="#1E293B" stroke="#334155" />
+            <text x="350" y="213" text-anchor="middle" font-size="11" font-weight="bold" fill="#A78BFA">Agora Analytics & Quality</text>
+            <text x="350" y="226" text-anchor="middle" font-size="9" fill="#94A3B8">Jitter & Packet Loss Guard</text>
+
+            <text x="350" y="265" text-anchor="middle" font-size="9" fill="#00F0FF" font-family="monospace">Global Real-Time Edge Mesh</text>
+
+            <!-- Arrow 2 -> 3 -->
+            <path d="M 460 130 L 510 130" stroke="#00F0FF" stroke-width="3" />
+            <polygon points="515,130 505,125 505,135" fill="#00F0FF" />
+            <text x="487" y="120" text-anchor="middle" font-size="9" fill="#00F0FF" font-family="monospace">Audio Stream</text>
+
+            <!-- Box 3: Multi-Agent Committee Orchestrator -->
+            <rect x="520" y="40" width="220" height="240" rx="16" fill="#0F172A" stroke="#A855F7" stroke-width="2.5" />
+            <rect x="535" y="55" width="190" height="28" rx="6" fill="url(#purpleGrad)" />
+            <text x="630" y="74" text-anchor="middle" font-size="12" font-weight="bold" fill="#FFFFFF">Multi-Agent Deliberation</text>
+
+            <rect x="535" y="95" width="88" height="42" rx="6" fill="#1E293B" stroke="#6366F1" />
+            <text x="579" y="112" text-anchor="middle" font-size="10" font-weight="bold" fill="#A5B4FC">Marcus</text>
+            <text x="579" y="127" text-anchor="middle" font-size="8" fill="#94A3B8">Architect</text>
+
+            <rect x="637" y="95" width="88" height="42" rx="6" fill="#1E293B" stroke="#10B981" />
+            <text x="681" y="112" text-anchor="middle" font-size="10" font-weight="bold" fill="#6EE7B7">Elena</text>
+            <text x="681" y="127" text-anchor="middle" font-size="8" fill="#94A3B8">Product VP</text>
+
+            <rect x="535" y="145" width="88" height="42" rx="6" fill="#1E293B" stroke="#F59E0B" />
+            <text x="579" y="162" text-anchor="middle" font-size="10" font-weight="bold" fill="#FCD34D">David</text>
+            <text x="579" y="177" text-anchor="middle" font-size="8" fill="#94A3B8">Eng Dir</text>
+
+            <rect x="637" y="145" width="88" height="42" rx="6" fill="#1E293B" stroke="#EC4899" />
+            <text x="681" y="162" text-anchor="middle" font-size="10" font-weight="bold" fill="#F472B6">Aria</text>
+            <text x="681" y="177" text-anchor="middle" font-size="8" fill="#94A3B8">Security</text>
+
+            <rect x="535" y="200" width="190" height="32" rx="6" fill="#1E293B" stroke="#A855F7" />
+            <text x="630" y="220" text-anchor="middle" font-size="10" font-weight="bold" fill="#E9D5FF">Arbitration & Turn Engine</text>
+
+            <text x="630" y="265" text-anchor="middle" font-size="9" fill="#D8B4FE" font-family="monospace">Gemini 2.5 Flash Engine</text>
+
+            <!-- Arrow 3 <-> 4 -->
+            <path d="M 740 160 L 780 160" stroke="#10B981" stroke-width="3" />
+            <polygon points="785,160 775,155 775,165" fill="#10B981" />
+            <polygon points="735,160 745,155 745,165" fill="#10B981" />
+
+            <!-- Box 4: Shared Candidate Memory Bus -->
+            <rect x="790" y="70" width="150" height="180" rx="14" fill="#0F172A" stroke="#10B981" stroke-width="2" />
+            <text x="865" y="105" text-anchor="middle" font-size="13" font-weight="bold" fill="#34D399">Shared Context</text>
+            <text x="865" y="125" text-anchor="middle" font-size="10" fill="#94A3B8">Memory State</text>
+
+            <rect x="802" y="140" width="126" height="24" rx="4" fill="#1E293B" />
+            <text x="865" y="156" text-anchor="middle" font-size="9" font-family="monospace" fill="#6EE7B7">Resume Data</text>
+
+            <rect x="802" y="170" width="126" height="24" rx="4" fill="#1E293B" />
+            <text x="865" y="186" text-anchor="middle" font-size="9" font-family="monospace" fill="#6EE7B7">Q&A History</text>
+
+            <rect x="802" y="200" width="126" height="24" rx="4" fill="#1E293B" />
+            <text x="865" y="216" text-anchor="middle" font-size="9" font-family="monospace" fill="#6EE7B7">Evidence Radar</text>
+          </svg>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 text-xs text-slate-300">
+          <div class="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
+            <strong class="text-white block mb-0.5">1. Ingress & VAD (&lt;30ms)</strong>
+            Agora SDK captures high-fidelity 48kHz audio and detects speech boundaries instantly with zero buffer bloat.
+          </div>
+          <div class="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
+            <strong class="text-white block mb-0.5">2. Committee Arbitrator (&lt;60ms)</strong>
+            Multi-agent orchestrator ranks candidate depth and picks the optimal specialist to probe or challenge.
+          </div>
+          <div class="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
+            <strong class="text-white block mb-0.5">3. Egress Stream (&lt;30ms)</strong>
+            Agora SD-RTN streams the selected interviewer's voice with spatial positioning and instant barge-in support.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- SLIDE 5: Planned Utilization of Agora Technologies -->
+    <!-- ========================================== -->
+    <div class="slide slide-hidden w-full flex-col justify-center max-w-6xl mx-auto space-y-6 py-6 transition-all duration-300" data-notes="Slide 5 is the centerpiece for Agora judges: our Planned Utilization of Agora Technologies. We map each critical requirement to Agora's portfolio: 1) Agora Voice SDK for ultra-low latency WebRTC, 2) Agora SD-RTN for 99.99% packet delivery and global edge routing, 3) Agora Conversational AI Engine for speech-to-speech synchronization and echo cancellation, 4) Agora Multi-Channel Spatial Audio for persona distinctiveness, and 5) Agora Analytics for call health tracking.">
+      
+      <div class="space-y-2">
+        <div class="text-xs font-mono font-bold uppercase tracking-wider text-blue-400">4. Deep Dive: Planned Utilization of Agora Technologies</div>
+        <h2 class="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">Harnessing the Full Power of Agora Real-Time AI</h2>
+        <p class="text-sm text-slate-300 max-w-3xl">How Vocalis natively integrates Agora's core SDKs, Conversational AI Engine, and Global SD-RTN™ mesh.</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
+        <!-- Agora Pillar 1 -->
+        <div class="glass-panel p-5 rounded-2xl border border-blue-500/30 space-y-2 hover:border-blue-400 transition">
+          <div class="w-8 h-8 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center font-mono font-bold text-xs">
+            01
+          </div>
+          <h3 class="text-sm font-bold text-white">Agora Voice SDK (Web & Mobile)</h3>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            Ultra-low latency bidirectional audio streaming with Opus 48kHz studio audio, dynamic bitrate scaling, and seamless WebRTC fallback across all browsers.
+          </p>
+          <div class="text-[11px] font-mono text-blue-300 bg-blue-950/50 p-2 rounded-lg border border-blue-800/40">
+            Agora API: <code>RtcEngine.joinChannel()</code> + Raw Audio Observers
+          </div>
+        </div>
+
+        <!-- Agora Pillar 2 -->
+        <div class="glass-panel p-5 rounded-2xl border border-cyan-500/30 space-y-2 hover:border-cyan-400 transition">
+          <div class="w-8 h-8 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-mono font-bold text-xs">
+            02
+          </div>
+          <h3 class="text-sm font-bold text-white">Agora SD-RTN™ Global Mesh</h3>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            Software-Defined Real-Time Network guarantees <strong>&lt;100ms global latency</strong>, 99.99% uptime, and up to 80% packet loss resilience for international candidates.
+          </p>
+          <div class="text-[11px] font-mono text-cyan-300 bg-cyan-950/50 p-2 rounded-lg border border-cyan-800/40">
+            Feature: Dynamic Edge Routing & Anti-Jitter Buffer
+          </div>
+        </div>
+
+        <!-- Agora Pillar 3 -->
+        <div class="glass-panel p-5 rounded-2xl border border-indigo-500/30 space-y-2 hover:border-indigo-400 transition">
+          <div class="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-mono font-bold text-xs">
+            03
+          </div>
+          <h3 class="text-sm font-bold text-white">Conversational AI & Barge-In VAD</h3>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            Integrated Voice Activity Detection (VAD) and Acoustic Echo Cancellation (AEC). When candidate speaks, Agora immediately interrupts AI audio playback without clipping.
+          </p>
+          <div class="text-[11px] font-mono text-indigo-300 bg-indigo-950/50 p-2 rounded-lg border border-indigo-800/40">
+            Feature: Sub-150ms Instant Barge-In Interrupt
+          </div>
+        </div>
+
+        <!-- Agora Pillar 4 -->
+        <div class="glass-panel p-5 rounded-2xl border border-purple-500/30 space-y-2 hover:border-purple-400 transition">
+          <div class="w-8 h-8 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center font-mono font-bold text-xs">
+            04
+          </div>
+          <h3 class="text-sm font-bold text-white">Multi-Track Spatial Audio</h3>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            Assigns separate 3D spatial audio positions to each AI interviewer (e.g. Lead Architect on Left, Product VP on Center, Security Lead on Right) replicating physical room acoustics.
+          </p>
+          <div class="text-[11px] font-mono text-purple-300 bg-purple-950/50 p-2 rounded-lg border border-purple-800/40">
+            Agora API: <code>SpatialAudioEngine.updatePlayerPosition()</code>
+          </div>
+        </div>
+
+        <!-- Agora Pillar 5 -->
+        <div class="glass-panel p-5 rounded-2xl border border-emerald-500/30 space-y-2 hover:border-emerald-400 transition">
+          <div class="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-mono font-bold text-xs">
+            05
+          </div>
+          <h3 class="text-sm font-bold text-white">Agora AI Noise Suppression (ANS)</h3>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            Deep-learning powered background noise suppression removes keyboard clicks, HVAC rumble, and room echo, ensuring clean transcripts for LLM parsing.
+          </p>
+          <div class="text-[11px] font-mono text-emerald-300 bg-emerald-950/50 p-2 rounded-lg border border-emerald-800/40">
+            Feature: AI Accoustic Noise Suppression (ANS)
+          </div>
+        </div>
+
+        <!-- Agora Pillar 6 -->
+        <div class="glass-panel p-5 rounded-2xl border border-amber-500/30 space-y-2 hover:border-amber-400 transition">
+          <div class="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center font-mono font-bold text-xs">
+            06
+          </div>
+          <h3 class="text-sm font-bold text-white">Agora Analytics & Quality Insights</h3>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            Real-time telemetry tracking round audio quality, candidate speech clarity, packet loss, and latency metrics to verify fairness and prevent interview disruptions.
+          </p>
+          <div class="text-[11px] font-mono text-amber-300 bg-amber-950/50 p-2 rounded-lg border border-amber-800/40">
+            Feature: Agora Quality of Experience (QoE) Telemetry
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- SLIDE 6: Innovation & Competitive Advantage -->
+    <!-- ========================================== -->
+    <div class="slide slide-hidden w-full flex-col justify-center max-w-6xl mx-auto space-y-6 py-6 transition-all duration-300" data-notes="Slide 6 highlights our Innovation & Competitive Matrix. We compare Vocalis against traditional human panel interviews and first-gen AI chatbots (like generic ChatGPT prompts or basic mock voice bots). We dominate across multi-agent dynamics, latency, resume interrogation, and objective quote scorecards.">
+      
+      <div class="space-y-2">
+        <div class="text-xs font-mono font-bold uppercase tracking-wider text-purple-400">5. Competitive Advantage & Innovation Matrix</div>
+        <h2 class="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">Why Vocalis Outperforms All Existing Alternatives</h2>
+        <p class="text-sm text-slate-300 max-w-3xl">Comprehensive comparison against traditional human committees and first-generation AI mock bots.</p>
+      </div>
+
+      <div class="glass-panel rounded-2xl overflow-hidden border border-slate-800">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs text-slate-300">
+            <thead class="bg-slate-900/90 text-slate-400 uppercase font-mono text-[10px] border-b border-slate-800">
+              <tr>
+                <th class="p-3.5 sm:p-4">Capability Dimension</th>
+                <th class="p-3.5 sm:p-4 text-rose-400">Human Interview Panel</th>
+                <th class="p-3.5 sm:p-4 text-amber-400">Generic AI Voice Bots</th>
+                <th class="p-3.5 sm:p-4 text-cyan-300 bg-blue-950/40 font-bold">Vocalis AI + Agora</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800">
+              <tr>
+                <td class="p-3.5 sm:p-4 font-bold text-white">Committee Deliberation</td>
+                <td class="p-3.5 sm:p-4">High, but uncoordinated & fatigued</td>
+                <td class="p-3.5 sm:p-4 text-slate-500">❌ Single flat perspective</td>
+                <td class="p-3.5 sm:p-4 text-cyan-300 bg-blue-950/20 font-semibold">✓ 4 Specialized Agents + Backstage Deliberation</td>
+              </tr>
+              <tr>
+                <td class="p-3.5 sm:p-4 font-bold text-white">Voice Latency & Flow</td>
+                <td class="p-3.5 sm:p-4">Natural (0ms)</td>
+                <td class="p-3.5 sm:p-4 text-slate-500">❌ 1500–3000ms lag, unnatural</td>
+                <td class="p-3.5 sm:p-4 text-cyan-300 bg-blue-950/20 font-semibold">✓ &lt;100ms with Agora SD-RTN™ streaming</td>
+              </tr>
+              <tr>
+                <td class="p-3.5 sm:p-4 font-bold text-white">Real-Time Barge-In</td>
+                <td class="p-3.5 sm:p-4">Natural human interruption</td>
+                <td class="p-3.5 sm:p-4 text-slate-500">❌ AI talks over candidate</td>
+                <td class="p-3.5 sm:p-4 text-cyan-300 bg-blue-950/20 font-semibold">✓ Sub-150ms Instant Voice Interruption (VAD)</td>
+              </tr>
+              <tr>
+                <td class="p-3.5 sm:p-4 font-bold text-white">Resume & Metric Probing</td>
+                <td class="p-3.5 sm:p-4">Often skimmed in 2 mins</td>
+                <td class="p-3.5 sm:p-4 text-slate-500">❌ Generic question list</td>
+                <td class="p-3.5 sm:p-4 text-cyan-300 bg-blue-950/20 font-semibold">✓ Cites specific past claims, numbers & tech stack</td>
+              </tr>
+              <tr>
+                <td class="p-3.5 sm:p-4 font-bold text-white">Evaluation Scorecard</td>
+                <td class="p-3.5 sm:p-4">Subjective, delayed notes</td>
+                <td class="p-3.5 sm:p-4 text-slate-500">❌ Generic pass/fail summary</td>
+                <td class="p-3.5 sm:p-4 text-cyan-300 bg-blue-950/20 font-semibold">✓ Timestamped quotes, radar rubrics, action plan</td>
+              </tr>
+              <tr>
+                <td class="p-3.5 sm:p-4 font-bold text-white">Engineering Cost</td>
+                <td class="p-3.5 sm:p-4 text-rose-400 font-bold">$150–$250/hr per engineer</td>
+                <td class="p-3.5 sm:p-4">$10–$20/mo</td>
+                <td class="p-3.5 sm:p-4 text-emerald-400 bg-blue-950/20 font-bold">&lt;$2 per comprehensive 45-min panel round</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- SLIDE 7: Technical Feasibility & Roadmap -->
+    <!-- ========================================== -->
+    <div class="slide slide-hidden w-full flex-col justify-center max-w-6xl mx-auto space-y-6 py-6 transition-all duration-300" data-notes="Slide 7 covers Technical Feasibility and our 4-Phase Delivery Roadmap. Phase 1 is already complete with a fully operational browser prototype. Phase 2 deepens the Agora Conversational AI & WebRTC channel topology. Phase 3 introduces Enterprise ATS integration, and Phase 4 expands to global multilingual hiring panels.">
+      
+      <div class="space-y-2">
+        <div class="text-xs font-mono font-bold uppercase tracking-wider text-emerald-400">6. Technical Feasibility & Execution Roadmap</div>
+        <h2 class="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">From Working Prototype to Enterprise Global Scale</h2>
+        <p class="text-sm text-slate-300 max-w-3xl">De-risked architecture with concrete deployment milestones and production-ready components.</p>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
+        <!-- Phase 1 -->
+        <div class="glass-panel p-5 rounded-2xl border-t-4 border-t-emerald-500 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-mono font-bold text-emerald-400 uppercase">Phase 1 • Complete</span>
+            <span class="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">100% DONE</span>
+          </div>
+          <h3 class="text-sm font-bold text-white">Functional Studio Prototype</h3>
+          <ul class="text-xs text-slate-300 space-y-1.5 list-disc list-inside">
+            <li>Multi-Agent turn-taking logic</li>
+            <li>Shared context memory & resume engine</li>
+            <li>Real-time speech visualizer & barge-in</li>
+            <li>Evidence scorecard generator</li>
+          </ul>
+        </div>
+
+        <!-- Phase 2 -->
+        <div class="glass-panel p-5 rounded-2xl border-t-4 border-t-blue-500 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-mono font-bold text-blue-400 uppercase">Phase 2 • Current</span>
+            <span class="text-[10px] px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 font-bold">IN PROGRESS</span>
+          </div>
+          <h3 class="text-sm font-bold text-white">Full Agora Conversational AI</h3>
+          <ul class="text-xs text-slate-300 space-y-1.5 list-disc list-inside">
+            <li>Agora WebRTC Native Channel binding</li>
+            <li>Agora Spatial Audio Persona placement</li>
+            <li>Deep-learning Noise Suppression (ANS)</li>
+            <li>Sub-80ms global SD-RTN edge routing</li>
+          </ul>
+        </div>
+
+        <!-- Phase 3 -->
+        <div class="glass-panel p-5 rounded-2xl border-t-4 border-t-indigo-500 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-mono font-bold text-indigo-400 uppercase">Phase 3 • Q3 2026</span>
+            <span class="text-[10px] px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold">PLANNED</span>
+          </div>
+          <h3 class="text-sm font-bold text-white">Enterprise ATS Integration</h3>
+          <ul class="text-xs text-slate-300 space-y-1.5 list-disc list-inside">
+            <li>Greenhouse, Lever & Ashby 1-click sync</li>
+            <li>Custom role rubric calibration studio</li>
+            <li>SOC-2 Type II audit logging</li>
+            <li>Automated panel debrief digests</li>
+          </ul>
+        </div>
+
+        <!-- Phase 4 -->
+        <div class="glass-panel p-5 rounded-2xl border-t-4 border-t-purple-500 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-mono font-bold text-purple-400 uppercase">Phase 4 • Q4 2026</span>
+            <span class="text-[10px] px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 font-bold">SCALE</span>
+          </div>
+          <h3 class="text-sm font-bold text-white">Multilingual Global Mesh</h3>
+          <ul class="text-xs text-slate-300 space-y-1.5 list-disc list-inside">
+            <li>Simultaneous multi-language interviews</li>
+            <li>Live code execution sandbox stream</li>
+            <li>Executive leadership board simulations</li>
+            <li>Agora Whiteboard interactive diagramming</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- SLIDE 8: Expected Impact, Business ROI & Metrics -->
+    <!-- ========================================== -->
+    <div class="slide slide-hidden w-full flex-col justify-center max-w-6xl mx-auto space-y-6 py-6 transition-all duration-300" data-notes="Slide 8 highlights Expected Impact and Financial ROI. We present quantitative metrics: 80% engineering time saved, 3.8x faster time-to-hire, $1.2M annual savings per 100 hires, and a 100% objective, bias-free interview record.">
+      
+      <div class="space-y-2">
+        <div class="text-xs font-mono font-bold uppercase tracking-wider text-amber-400">7. Expected Impact & Quantifiable Business ROI</div>
+        <h2 class="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">Massive Value Creation for Engineering & Talent Teams</h2>
+        <p class="text-sm text-slate-300 max-w-3xl">Transforming candidate experience while returning thousands of productive engineering hours to the business.</p>
+      </div>
+
+      <!-- 4 Huge Metric Cards -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
+        <div class="glass-panel p-6 rounded-2xl border border-blue-500/40 text-center space-y-1 glow-border">
+          <p class="text-3xl sm:text-5xl font-black text-blue-400">80%</p>
+          <h4 class="text-xs sm:text-sm font-bold text-white">Engineering Time Saved</h4>
+          <p class="text-[11px] text-slate-400">Frees senior architects from repetitive initial screening loops.</p>
+        </div>
+
+        <div class="glass-panel p-6 rounded-2xl border border-cyan-500/40 text-center space-y-1">
+          <p class="text-3xl sm:text-5xl font-black text-cyan-400">3.8x</p>
+          <h4 class="text-xs sm:text-sm font-bold text-white">Faster Time-to-Offer</h4>
+          <p class="text-[11px] text-slate-400">Eliminates scheduling lag; candidates interview 24/7 on-demand.</p>
+        </div>
+
+        <div class="glass-panel p-6 rounded-2xl border border-emerald-500/40 text-center space-y-1">
+          <p class="text-3xl sm:text-5xl font-black text-emerald-400">$1.2M+</p>
+          <h4 class="text-xs sm:text-sm font-bold text-white">Annual Cost Savings</h4>
+          <p class="text-[11px] text-slate-400">Calculated on 100 technical hires @ $200/hr engineer rate.</p>
+        </div>
+
+        <div class="glass-panel p-6 rounded-2xl border border-purple-500/40 text-center space-y-1">
+          <p class="text-3xl sm:text-5xl font-black text-purple-400">100%</p>
+          <h4 class="text-xs sm:text-sm font-bold text-white">Objective & Auditable</h4>
+          <p class="text-[11px] text-slate-400">Every decision grounded in verbatim transcript evidence.</p>
+        </div>
+      </div>
+
+      <!-- Candidate & Enterprise Impact Row -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+        <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2">
+          <h4 class="text-xs font-bold text-blue-300 uppercase tracking-wider font-mono">For Candidates</h4>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            Zero scheduling friction, instant fair feedback, realistic interview pressure without human bias, and an actionable development roadmap regardless of outcome.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2">
+          <h4 class="text-xs font-bold text-cyan-300 uppercase tracking-wider font-mono">For Hiring Organizations</h4>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            Standardized calibration across global locations, immediate deep dive into candidates' real technical depth, and elimination of false-positive senior hires.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- SLIDE 9: Conclusion, Live Demo & Q&A -->
+    <!-- ========================================== -->
+    <div class="slide slide-hidden w-full flex-col justify-center max-w-6xl mx-auto space-y-6 py-6 transition-all duration-300" data-notes="Slide 9 concludes our pitch. We summarize why Vocalis is the winning Agora Conversational AI project: High Innovation, Direct Market Relevance, Proven Technical Feasibility, Huge Business Impact, and a deeply native use of Agora's Real-Time Voice & SD-RTN ecosystem. Thank you, and we welcome questions!">
+      
+      <div class="space-y-4 text-center max-w-4xl mx-auto">
+        <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-bold font-mono uppercase tracking-wider">
+          <span>✨ Summary & Live Demo Ready</span>
+        </div>
+        <h2 class="text-3xl sm:text-5xl font-black text-white tracking-tight leading-tight">
+          Pioneering the Future of <br/>
+          <span class="gradient-text-agora">Real-Time Voice Conversational AI</span>
+        </h2>
+        <p class="text-sm sm:text-base text-slate-300 max-w-2xl mx-auto leading-relaxed">
+          Vocalis AI proves what is possible when multi-agent intelligence meets Agora's world-class ultra-low latency real-time voice infrastructure.
+        </p>
+      </div>
+
+      <!-- Evaluation Criteria Score Summary Box -->
+      <div class="glass-panel p-6 rounded-2xl border border-slate-800 max-w-4xl mx-auto w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-center">
+        <div class="p-3 bg-slate-900/90 rounded-xl border border-slate-800">
+          <p class="text-[10px] text-blue-400 font-mono font-bold uppercase">Innovation</p>
+          <p class="text-sm font-extrabold text-white mt-1">Multi-Agent</p>
+          <p class="text-[10px] text-slate-400 mt-0.5">Deliberative Turn-Taking</p>
+        </div>
+        <div class="p-3 bg-slate-900/90 rounded-xl border border-slate-800">
+          <p class="text-[10px] text-cyan-400 font-mono font-bold uppercase">Problem Relevance</p>
+          <p class="text-sm font-extrabold text-white mt-1">High ROI</p>
+          <p class="text-[10px] text-slate-400 mt-0.5">$400B Hiring Market</p>
+        </div>
+        <div class="p-3 bg-slate-900/90 rounded-xl border border-slate-800">
+          <p class="text-[10px] text-indigo-400 font-mono font-bold uppercase">Feasibility</p>
+          <p class="text-sm font-extrabold text-white mt-1">Working Prototype</p>
+          <p class="text-[10px] text-slate-400 mt-0.5">Fully Built & Tested</p>
+        </div>
+        <div class="p-3 bg-slate-900/90 rounded-xl border border-emerald-400 font-mono font-bold uppercase">
+          <p class="text-[10px] text-emerald-400 font-mono font-bold uppercase">Impact</p>
+          <p class="text-sm font-extrabold text-white mt-1">80% Time Saved</p>
+          <p class="text-[10px] text-slate-400 mt-0.5">$1.2M Saved / 100 Hires</p>
+        </div>
+        <div class="p-3 bg-slate-900/90 rounded-xl border border-amber-400 font-mono font-bold uppercase">
+          <p class="text-[10px] text-amber-400 font-mono font-bold uppercase">Agora Utilization</p>
+          <p class="text-sm font-extrabold text-white mt-1">Native SD-RTN</p>
+          <p class="text-[10px] text-slate-400 mt-0.5">&lt;100ms Voice + VAD</p>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="flex flex-wrap items-center justify-center gap-3 pt-2">
+        <a href="/" class="bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white font-extrabold text-xs sm:text-sm px-6 py-3 rounded-xl shadow-lg transition cursor-pointer flex items-center gap-2">
+          <span>🎙️ Launch Interactive Voice Studio</span>
+          <span>→</span>
+        </a>
+        <button onclick="goToSlide(1)" class="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs sm:text-sm px-5 py-3 rounded-xl border border-slate-700 transition cursor-pointer">
+          ↺ Restart Slide Deck
+        </button>
+      </div>
+
+      <div class="text-center text-xs text-slate-500">
+        Thank you for reviewing our submission. We welcome questions from the evaluation committee.
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Presenter Speaker Notes Drawer (Toggled with P or Notes button) -->
+  <div id="notesDrawer" class="no-print hidden fixed bottom-14 left-0 right-0 bg-slate-900/95 border-t border-slate-700/80 p-4 z-40 max-w-5xl mx-auto rounded-t-2xl shadow-2xl backdrop-blur-xl transition-all">
+    <div class="flex items-center justify-between pb-2 border-b border-slate-800">
+      <span class="text-xs font-mono font-bold text-cyan-400 uppercase flex items-center gap-1.5">
+        <span>🎤 Presenter Script & Evaluation Notes</span>
+      </span>
+      <button onclick="toggleNotes()" class="text-xs text-slate-400 hover:text-white cursor-pointer">✕ Close</button>
+    </div>
+    <p id="speakerNotesText" class="text-xs sm:text-sm text-slate-200 pt-2 leading-relaxed font-sans"></p>
+  </div>
+
+  <!-- Bottom Persistent Slide Navigation Bar -->
+  <footer class="no-print h-14 bg-slate-900/90 backdrop-blur-md border-t border-slate-800 px-4 sm:px-8 flex items-center justify-between z-50 shrink-0">
+    <div class="flex items-center gap-2">
+      <button onclick="prevSlide()" class="bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold px-3.5 py-1.5 rounded-lg border border-slate-700 transition cursor-pointer flex items-center gap-1">
+        <span>← Prev</span>
+      </button>
+      <button onclick="nextSlide()" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-4 py-1.5 rounded-lg shadow-sm transition cursor-pointer flex items-center gap-1">
+        <span>Next →</span>
+      </button>
+    </div>
+
+    <!-- Slide Thumbnails / Indicator Dots -->
+    <div id="slideIndicators" class="flex items-center gap-1.5"></div>
+
+    <div class="text-[11px] text-slate-400 hidden sm:flex items-center gap-2 font-mono">
+      <span>Keys: <kbd class="px-1.5 py-0.5 bg-slate-800 border border-slate-700 rounded text-slate-300">←</kbd> <kbd class="px-1.5 py-0.5 bg-slate-800 border border-slate-700 rounded text-slate-300">→</kbd> <kbd class="px-1.5 py-0.5 bg-slate-800 border border-slate-700 rounded text-slate-300">Space</kbd> <kbd class="px-1.5 py-0.5 bg-slate-800 border border-slate-700 rounded text-slate-300">P</kbd> (Notes) <kbd class="px-1.5 py-0.5 bg-slate-800 border border-slate-700 rounded text-slate-300">F</kbd> (Fullscreen)</span>
+    </div>
+  </footer>
+
+  <!-- Slide Navigation Script -->
+  <script>
+    const slides = document.querySelectorAll('.slide');
+    const totalSlides = slides.length;
+    let currentSlide = 5;
+
+    const currentSlideNumEl = document.getElementById('currentSlideNum');
+    const totalSlidesNumEl = document.getElementById('totalSlidesNum');
+    const progressBar = document.getElementById('slideProgressBar');
+    const speakerNotesText = document.getElementById('speakerNotesText');
+    const indicatorsContainer = document.getElementById('slideIndicators');
+
+    totalSlidesNumEl.textContent = totalSlides;
+
+    // Build indicator dots
+    indicatorsContainer.innerHTML = '';
+    for (let i = 1; i <= totalSlides; i++) {
+      const dot = document.createElement('button');
+      dot.className = `w-2.5 h-2.5 rounded-full transition-all cursor-pointer ${i === 1 ? 'bg-cyan-400 w-5' : 'bg-slate-700 hover:bg-slate-500'}`;
+      dot.onclick = () => goToSlide(i);
+      dot.title = `Go to Slide ${i}`;
+      indicatorsContainer.appendChild(dot);
+    }
+
+    function updateSlideView() {
+      slides.forEach((slide, index) => {
+        if (index + 1 === currentSlide) {
+          slide.classList.remove('slide-hidden');
+          slide.classList.add('slide-active');
+          const notes = slide.getAttribute('data-notes') || 'No speaker notes for this slide.';
+          speakerNotesText.textContent = notes;
+        } else {
+          slide.classList.remove('slide-active');
+          slide.classList.add('slide-hidden');
+        }
+      });
+
+      currentSlideNumEl.textContent = currentSlide;
+      const progressPercent = Math.round((currentSlide / totalSlides) * 100);
+      progressBar.style.width = `${progressPercent}%`;
+
+      // Update dots
+      const dots = indicatorsContainer.querySelectorAll('button');
+      dots.forEach((dot, idx) => {
+        if (idx + 1 === currentSlide) {
+          dot.className = 'w-5 h-2.5 rounded-full bg-cyan-400 transition-all cursor-pointer';
+        } else {
+          dot.className = 'w-2.5 h-2.5 rounded-full bg-slate-700 hover:bg-slate-500 transition-all cursor-pointer';
+        }
+      });
+    }
+
+    function nextSlide() {
+      if (currentSlide < totalSlides) {
+        currentSlide++;
+        updateSlideView();
+      }
+    }
+
+    function prevSlide() {
+      if (currentSlide > 1) {
+        currentSlide--;
+        updateSlideView();
+      }
+    }
+
+    function goToSlide(n) {
+      if (n >= 1 && n <= totalSlides) {
+        currentSlide = n;
+        updateSlideView();
+      }
+    }
+
+    function toggleNotes() {
+      const drawer = document.getElementById('notesDrawer');
+      drawer.classList.toggle('hidden');
+    }
+
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        }
+      }
+    }
+
+    // Keyboard navigation
+    document.addEventListener('keydown', (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+        e.preventDefault();
+        nextSlide();
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        e.preventDefault();
+        prevSlide();
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        goToSlide(1);
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        goToSlide(totalSlides);
+      } else if (e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        toggleNotes();
+      } else if (e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        toggleFullscreen();
+      }
+    });
+
+    // Initialize
+    updateSlideView();
+  </script>
+</body>
+</html>
