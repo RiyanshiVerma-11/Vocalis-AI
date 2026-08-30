@@ -5,6 +5,10 @@
   # 🎙️ Vocalis AI
   ### Enterprise Autonomous Multi-Role AI Voice Interview Platform
 
+  **EchoSphere Hackathon 2026 Submission** | *Track: AI Interview Track (PS11)*  
+  *Author: [Riyanshi Verma](https://github.com/RiyanshiVerma-11)*  
+
+  [![GitHub Repo](https://img.shields.io/badge/GitHub-RiyanshiVerma--11%2FVocalis--AI-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/RiyanshiVerma-11/Vocalis-AI)
   [![Agora RTC SDK](https://img.shields.io/badge/Agora-RTC%20SDK%20v4.22-099DFD?style=for-the-badge&logo=agora&logoColor=white)](https://www.agora.io/)
   [![Gemini 2.5 Flash](https://img.shields.io/badge/Gemini-2.5%20Flash-8E75B5?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev/)
   [![Groq Llama 3.3](https://img.shields.io/badge/Groq-Llama%203.3%2070B-F05032?style=for-the-badge&logo=groq&logoColor=white)](https://groq.com/)
@@ -16,12 +20,11 @@
 
   <br />
 
-  **EchoSphere Hackathon 2026 Submission** | *Track: AI Interview Track (PS11)*  
   *Real-time cross-functional AI committee deliberation, sub-100ms VAD barge-in voice transport, dynamic difficulty calibration, and quote-backed scorecard synthesis.*
 
   <br />
 
-  [Live Demo](http://localhost:3000) · [Architecture & Diagrams](#-system-architecture) · [PS11 Feature Matrix](#-ps11-hackathon-feature-matrix) · [API Specification](#-api-specifications) · [Quick Start](#-quick-start--installation)
+  [GitHub Repository](https://github.com/RiyanshiVerma-11/Vocalis-AI) · [Live Demo](http://localhost:3000) · [Architecture & Diagrams](#-system-architecture) · [PS11 Feature Matrix](#-ps11-hackathon-feature-matrix) · [API Specification](#-api-specifications) · [Quick Start](#-quick-start--installation)
 
 </div>
 
@@ -357,8 +360,8 @@ Content-Type: application/json
 
 ### 1. Clone & Install
 ```bash
-git clone https://github.com/your-username/37-voiceintro-ai.git
-cd "37 VoiceIntro AI"
+git clone https://github.com/RiyanshiVerma-11/Vocalis-AI.git
+cd Vocalis-AI
 npm install
 ```
 
@@ -446,5 +449,5 @@ npm run build
 - Released under the [MIT License](LICENSE).
 
 <div align="center">
-  <sub>Built with ❤️ by Team Vocalis AI for EchoSphere 2026</sub>
+  <sub>Created with ❤️ by <strong><a href="https://github.com/RiyanshiVerma-11">Riyanshi Verma (@RiyanshiVerma-11)</a></strong> for EchoSphere 2026</sub>
 </div>
