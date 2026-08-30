@@ -461,10 +461,10 @@ async function generateContentWithGroq(prompt: string): Promise<any> {
   if (keys.length === 0) throw new Error('GROQ_API_KEY missing');
 
   const modelsToTry = [
-    'llama-3.3-70b-versatile',
-    'llama-3.1-8b-instant',
+    'compound-beta',
+    'meta-llama/llama-4-scout-17b-16e-instruct',
+    'meta-llama/llama-4-maverick-17b-128e-instruct',
     'llama3-70b-8192',
-    'llama3-8b-8192',
     'gemma2-9b-it',
     'qwen-2.5-32b',
   ];
@@ -673,7 +673,7 @@ Do NOT hallucinate fake company names or fake project names if not in raw text. 
             Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
           },
           body: JSON.stringify({
-            model: 'llama-3.3-70b-versatile',
+            model: 'meta-llama/llama-4-scout-17b-16e-instruct',
             messages: [
               { role: 'system', content: systemPrompt },
               { role: 'user', content: userPrompt },
@@ -1440,7 +1440,7 @@ app.post('/api/agora/llm-webhook', async (req, res) => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey.trim()}` },
           body: JSON.stringify({
-            model: 'llama-3.3-70b-versatile',
+            model: 'meta-llama/llama-4-scout-17b-16e-instruct',
             messages: [
               { role: 'system', content: 'You are an adaptive AI interviewer. Ask concise, probing follow-up questions (max 2 sentences) based on the candidate response. Be conversational and direct.' },
               { role: 'user', content: candidateSpeech },
