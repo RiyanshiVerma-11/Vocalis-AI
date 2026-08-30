@@ -1,13 +1,7 @@
 import { CandidateResume } from '../types';
 
 export function parseResumeText(rawText: string, fallbackName?: string): CandidateResume {
-  // Normalize unformatted single-line raw text pasted from PDF or browser textareas
-  const normalizedText = rawText
-    .replace(/\r\n/g, '\n')
-    .replace(/([^\n])\s*([•*\-])\s*/g, '$1\n$2 ')
-    .replace(/([^\n])\s*(Professional Summary|Skills Summary|Internship Experience|Work Experience|Education|Projects|Notable Projects|Achievements|Certifications)\b/gi, '$1\n\n$2\n');
-
-  const text = normalizedText.trim();
+  const text = rawText.replace(/\r\n/g, '\n').trim();
   const defaultCandidateName = fallbackName?.trim() || 'Candidate';
 
   if (!text) {
@@ -31,258 +25,229 @@ export function parseResumeText(rawText: string, fallbackName?: string): Candida
     };
   }
 
-  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  // ── 1. FULL NAME EXTRACTION ────────────────────────────────────────────────
+  // Only accept lines that look like "Firstname Lastname" — 2–4 TitleCase words, no numbers or bullets
+  const sectionHeaderRx = /^(summary|professional summary|resume|cv|profile|objective|contact|work experience|experience|education|skills|projects|achievements|certifications|technical skills|internship|b\.tech|bachelor|master|cgpa)$/i;
+  const suspiciousRx = /\d{4}|@|http|www\.|linkedin|github|leetcode|\bcgpa\b|\bgpa\b|[•\-\|]/i;
 
-  // 1. Dynamic Full Name Extraction
-  const invalidNameHeaders = /^(summary|professional summary|resume|cv|curriculum vitae|profile|objective|personal information|contact|work experience|experience|education|skills|projects|achievements)$/i;
-
-  let fullName = defaultCandidateName;
-  for (const line of lines) {
-    let cleaned = line
-      .replace(/[\w.-]+@[\w.-]+/g, '')
-      .replace(/[\d|\-+()\s]{10,}/g, '')
-      .replace(/(linkedin|github|leetcode|hackerrank|portfolio|website|certificate|summary|professional summary|resume|cv)/gi, '')
-      .replace(/(meerut|delhi|mumbai|bangalore|noida|gurgaon|hyderabad|uttar pradesh|india|remote)[^]*$/gi, '')
-      .replace(/[—|•\-,]/g, ' ')
+  let fullName = '';
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    // Strip trailing link annotations like [GitHub] | [Live Demo] and rank details in parens
+    const stripped = line
+      .replace(/\[.*?\]/g, '')
+      .replace(/\|.*$/, '')
+      .replace(/\(.*?\)/g, '')
+      .replace(/[—•,]/g, ' ')
       .trim();
 
-    cleaned = cleaned.replace(/([a-z])([A-Z])/g, '$1 $2').trim();
-
-    if (
-      cleaned &&
-      !invalidNameHeaders.test(cleaned) &&
-      cleaned.length >= 2 &&
-      cleaned.length <= 40 &&
-      !cleaned.toLowerCase().includes('http') &&
-      !cleaned.toLowerCase().includes('gmail')
-    ) {
-      const nameWords = cleaned.split(/\s+/).slice(0, 3).join(' ');
-      if (nameWords.length >= 2) {
-        fullName = nameWords;
-        break;
-      }
+    const nameMatch = stripped.match(/^([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})$/);
+    if (nameMatch && !sectionHeaderRx.test(stripped) && !suspiciousRx.test(stripped)) {
+      fullName = nameMatch[1];
+      break;
     }
   }
 
-  if (invalidNameHeaders.test(fullName) || fullName === 'SUMMARY') {
-    fullName = defaultCandidateName;
+  // If no standalone name found, prettify dot/email-separated usernames like "riyanshi.verma.55"
+  if (!fullName) {
+    if (defaultCandidateName.includes('.') || defaultCandidateName.includes('@')) {
+      const parts = defaultCandidateName
+        .split(/[\.\@]/)
+        .filter((p) => /^[a-zA-Z]+$/.test(p))
+        .map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase());
+      fullName = parts.length >= 2 ? parts.slice(0, 2).join(' ') : (parts[0] || defaultCandidateName);
+    } else {
+      fullName = defaultCandidateName;
+    }
   }
 
-  // 2. Extract Location
+  // ── 2. LOCATION ───────────────────────────────────────────────────────────
   let location = 'Remote / Open to Relocation';
   const locMatch = text.match(/(Meerut|Delhi|Mumbai|Bangalore|Noida|Gurgaon|Hyderabad|San Francisco|New York|Seattle|London|Remote)(?:,\s*[A-Za-z\s]+)?/i);
-  if (locMatch) {
-    location = locMatch[0].trim();
-  }
+  if (locMatch) location = locMatch[0].trim();
 
-  // 3. Extract Headline / Role
+  // ── 3. HEADLINE ───────────────────────────────────────────────────────────
   let headline = 'Software Engineer';
-  if (text.match(/Data Science|Machine Learning|AI\/ML/i)) {
+  if (text.match(/multi.?agent|agent orchestration|RAG|Llama|Groq|Gemini|Prompt Engineering/i)) {
+    headline = 'AI/ML & Distributed Systems Engineer';
+  } else if (text.match(/Data Science|Machine Learning|AI\/ML/i)) {
     headline = 'Data Science & AI/ML Engineer';
   } else if (text.match(/Full Stack|MERN|Next\.js|Django/i)) {
     headline = 'Full Stack Software Engineer';
-  } else if (text.match(/Backend|Distributed Systems|Microservices/i)) {
+  } else if (text.match(/Microservices|Distributed Systems|Backend/i)) {
     headline = 'Backend & Distributed Systems Engineer';
-  } else if (text.match(/Frontend|React|UI/i)) {
+  } else if (text.match(/Frontend|React|UI\/UX/i)) {
     headline = 'Frontend UI Engineer';
   }
 
-  // 4. Extract Summary
+  // ── 4. SUMMARY ────────────────────────────────────────────────────────────
   let summary = '';
-  const summaryIdx = text.search(/summary|profile|objective/i);
-  if (summaryIdx !== -1) {
-    const afterSummary = text.slice(summaryIdx).replace(/^(summary|professional summary|profile|objective)\s*/i, '').trim();
-    const nextSecIdx = afterSummary.search(/education|skills|experience|internship|projects|achievements/i);
-    summary = (nextSecIdx !== -1 ? afterSummary.slice(0, nextSecIdx) : afterSummary.slice(0, 350)).trim();
+  const summaryMatch = text.match(/(?:SUMMARY|PROFESSIONAL SUMMARY|PROFILE|OBJECTIVE)\s*([\s\S]*?)(?=\n\s*\n|\n(?:EDUCATION|TECHNICAL SKILLS|SKILLS|EXPERIENCE|INTERNSHIP|PROJECTS)\b)/i);
+  if (summaryMatch) {
+    summary = summaryMatch[1].trim().replace(/\n/g, ' ').slice(0, 450);
   }
   if (!summary) {
-    summary = lines.slice(1, 5).join(' ').slice(0, 300);
+    const firstFewLines = text.split('\n').map(l => l.trim()).filter(Boolean).slice(1, 6);
+    summary = firstFewLines.join(' ').slice(0, 350);
   }
 
-  // 5. Extract Education
+  // ── 5. EDUCATION ──────────────────────────────────────────────────────────
   const education: Array<{ institution: string; degree: string; year: string }> = [];
-  const eduSectionMatch = text.match(/(?:EDUCATION)([\s\S]*?)(?=(?:INTERNSHIP|EXPERIENCE|PROJECTS|SKILLS|ACHIEVEMENTS|$))/i);
-  const eduTextToSearch = eduSectionMatch ? eduSectionMatch[1] : text;
-  
-  const degMatch = eduTextToSearch.match(/(B\.Tech|Bachelor|Master|M\.Tech|B\.E\.|B\.S\.|M\.S\.|Class XII|Class X)[^\n]*/gi);
-  const instMatch = eduTextToSearch.match(/(Institute|University|College|School|MIET|Academy|Vardhman|Presidency)[^\n]*/gi);
+  const eduMatch = text.match(/(?:EDUCATION)([\s\S]*?)(?=(?:TECHNICAL SKILLS|SKILLS|INTERNSHIP|EXPERIENCE|PROJECTS|ACHIEVEMENTS|$))/i);
+  const eduText = eduMatch ? eduMatch[1] : text;
+  const degMatch = eduText.match(/(B\.Tech|Bachelor|Master|M\.Tech|B\.E\.|B\.S\.|M\.S\.|Class XII|Class X)[^\n]*/gi);
+  const instMatch = eduText.match(/(Institute|University|College|School|MIET|Academy|Vardhman|Presidency)[^\n]*/gi);
+  const yearRangeMatch = eduText.match(/\b(20\d{2})\s*[–\-]\s*(20\d{2}|Present)\b/i);
   if (degMatch || instMatch) {
     education.push({
       degree: degMatch ? degMatch[0].trim() : 'B.Tech in Computer Science',
       institution: instMatch ? instMatch[0].trim() : 'Engineering Institute',
-      year: eduTextToSearch.match(/\d{4}\s*[–\-]\s*\d{4}|\d{4}/)?.[0] || '2026',
+      year: yearRangeMatch ? yearRangeMatch[0] : (eduText.match(/\b20\d{2}\b/)?.[0] ?? '2026'),
     });
   }
 
-  // 6. Dynamic Skills Extraction
+  // ── 6. SKILLS ─────────────────────────────────────────────────────────────
   const coreArchitecture: string[] = [];
   const languagesAndFrameworks: string[] = [];
   const cloudAndInfrastructure: string[] = [];
   const practicesAndMethodologies: string[] = [];
 
-  const skillKeywords = [
-    { word: 'Python', category: 'lang' },
-    { word: 'SQL', category: 'lang' },
-    { word: 'FastAPI', category: 'lang' },
-    { word: 'React', category: 'lang' },
-    { word: 'Streamlit', category: 'lang' },
-    { word: 'TypeScript', category: 'lang' },
-    { word: 'JavaScript', category: 'lang' },
-    { word: 'Django', category: 'lang' },
-    { word: 'HTML', category: 'lang' },
-    { word: 'CSS', category: 'lang' },
-    { word: 'NumPy', category: 'lang' },
-    { word: 'Pandas', category: 'lang' },
-    { word: 'Scikit-learn', category: 'lang' },
-    { word: 'MongoDB', category: 'cloud' },
-    { word: 'PostgreSQL', category: 'cloud' },
-    { word: 'Git', category: 'cloud' },
-    { word: 'GitHub', category: 'cloud' },
-    { word: 'Docker', category: 'cloud' },
-    { word: 'VS Code', category: 'cloud' },
-    { word: 'Machine Learning', category: 'arch' },
-    { word: 'Exploratory Data Analysis', category: 'arch' },
-    { word: 'Data Cleaning', category: 'arch' },
-    { word: 'REST API', category: 'arch' },
-    { word: 'Microservices', category: 'arch' },
-    { word: 'Supervised Learning', category: 'prac' },
-    { word: 'Classification', category: 'prac' },
-    { word: 'Regression', category: 'prac' },
-    { word: 'Model Evaluation', category: 'prac' },
+  const skillKeywords: Array<{ word: string; cat: string }> = [
+    { word: 'Python', cat: 'lang' }, { word: 'SQL', cat: 'lang' },
+    { word: 'FastAPI', cat: 'lang' }, { word: 'React', cat: 'lang' },
+    { word: 'Streamlit', cat: 'lang' }, { word: 'TypeScript', cat: 'lang' },
+    { word: 'JavaScript', cat: 'lang' }, { word: 'Django', cat: 'lang' },
+    { word: 'NumPy', cat: 'lang' }, { word: 'Pandas', cat: 'lang' },
+    { word: 'Scikit-learn', cat: 'lang' }, { word: 'HTML', cat: 'lang' },
+    { word: 'CSS', cat: 'lang' },
+    { word: 'MongoDB', cat: 'cloud' }, { word: 'PostgreSQL', cat: 'cloud' },
+    { word: 'Git', cat: 'cloud' }, { word: 'GitHub', cat: 'cloud' },
+    { word: 'Docker', cat: 'cloud' }, { word: 'Vercel', cat: 'cloud' },
+    { word: 'Render', cat: 'cloud' }, { word: 'Google Cloud', cat: 'cloud' },
+    { word: 'SQLite', cat: 'cloud' }, { word: 'VS Code', cat: 'cloud' },
+    { word: 'Machine Learning', cat: 'arch' }, { word: 'Microservices', cat: 'arch' },
+    { word: 'RAG', cat: 'arch' }, { word: 'Multi-agent', cat: 'arch' },
+    { word: 'REST API', cat: 'arch' }, { word: 'Prompt Engineering', cat: 'arch' },
+    { word: 'Agent Orchestration', cat: 'arch' }, { word: 'Data Cleaning', cat: 'arch' },
+    { word: 'GitHub Actions', cat: 'prac' }, { word: 'RBAC', cat: 'prac' },
+    { word: 'Supervised Learning', cat: 'prac' }, { word: 'Model Evaluation', cat: 'prac' },
   ];
 
-  skillKeywords.forEach((k) => {
-    if (new RegExp(`\\b${k.word.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'i').test(text)) {
-      if (k.category === 'lang') languagesAndFrameworks.push(k.word);
-      else if (k.category === 'arch') coreArchitecture.push(k.word);
-      else if (k.category === 'cloud') cloudAndInfrastructure.push(k.word);
-      else if (k.category === 'prac') practicesAndMethodologies.push(k.word);
+  skillKeywords.forEach(({ word, cat }) => {
+    if (new RegExp(`\\b${word.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'i').test(text)) {
+      if (cat === 'lang') languagesAndFrameworks.push(word);
+      else if (cat === 'arch') coreArchitecture.push(word);
+      else if (cat === 'cloud') cloudAndInfrastructure.push(word);
+      else if (cat === 'prac') practicesAndMethodologies.push(word);
     }
   });
 
-  if (coreArchitecture.length === 0) coreArchitecture.push('Machine Learning', 'Data Analysis', 'REST APIs');
-  if (languagesAndFrameworks.length === 0) languagesAndFrameworks.push('Python', 'SQL', 'JavaScript');
-  if (cloudAndInfrastructure.length === 0) cloudAndInfrastructure.push('Git', 'GitHub', 'PostgreSQL');
-  if (practicesAndMethodologies.length === 0) practicesAndMethodologies.push('Data Preprocessing', 'Model Evaluation');
+  if (coreArchitecture.length === 0) coreArchitecture.push('System Architecture', 'REST APIs');
+  if (languagesAndFrameworks.length === 0) languagesAndFrameworks.push('Python', 'SQL');
+  if (cloudAndInfrastructure.length === 0) cloudAndInfrastructure.push('Git', 'GitHub');
+  if (practicesAndMethodologies.length === 0) practicesAndMethodologies.push('Agile', 'Code Review');
 
-  // 7. Dynamic Work Experience Parser
+  // ── 7. WORK EXPERIENCE ────────────────────────────────────────────────────
   const workExperience: Array<{ company: string; role: string; duration: string; highlights: string[] }> = [];
-  const expSectionMatch = text.match(/(?:INTERNSHIP|WORK EXPERIENCE|EXPERIENCE|EMPLOYMENT)([\s\S]*?)(?=(?:PROJECTS|ACHIEVEMENTS|CERTIFICATIONS|EDUCATION|$))/i);
-  
+  const expSectionMatch = text.match(/(?:EXPERIENCE|INTERNSHIP|WORK EXPERIENCE|EMPLOYMENT)([\s\S]*?)(?=(?:CERTIFICATIONS|ACHIEVEMENTS|EDUCATION|PROJECTS|$))/i);
+
   if (expSectionMatch && expSectionMatch[1].trim()) {
-    const expBlock = expSectionMatch[1].trim();
-    const blockLines = expBlock.split('\n').map((l) => l.trim()).filter(Boolean);
-    
-    let currentRole = 'Data Science Intern';
-    let currentCompany = 'CodSoft';
-    let currentDuration = 'Mar 2026 – Apr 2026';
+    const expLines = expSectionMatch[1].split('\n').map((l) => l.trim()).filter(Boolean);
+    let currentRole = '';
+    let currentCompany = '';
+    let currentDuration = '';
     const highlights: string[] = [];
 
-    blockLines.forEach((line) => {
-      if (line.match(/intern|developer|engineer|analyst|manager|lead/i) || line.match(/[–\-]/) && line.match(/20\d\d/)) {
-        if (line.includes('–') || line.includes('-')) {
-          const parts = line.split(/[–\-]/);
-          if (parts[0] && parts[0].length < 50) {
-            if (line.toLowerCase().includes('intern')) currentRole = line.replace(/^•\s*/, '').trim();
-            currentCompany = line.split(/[–\-]/)[0].trim().replace(/^•\s*/, '');
-          }
-          const dateMatch = line.match(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s*\d{4}[^\n]*/i);
-          if (dateMatch) currentDuration = dateMatch[0];
-        } else {
-          currentRole = line.replace(/^•\s*/, '').slice(0, 45);
-        }
-      } else if (line.startsWith('•') || line.startsWith('-') || line.length > 15) {
-        if (!line.match(/EXPERIENCE|PROJECTS|EDUCATION/i)) {
-          highlights.push(line.replace(/^[•\-]\s*/, ''));
-        }
+    expLines.forEach((line) => {
+      const roleCompanyM = line.match(/^([A-Za-z][A-Za-z \/&\.,0-9]*(?:Intern|Engineer|Developer|Manager|Lead|Analyst|Architect|Director|Consultant|Researcher|Founder)[A-Za-z ,&\.0-9]*)\s*[–\-]\s*(.+)$/i);
+      if (roleCompanyM) {
+        currentRole = roleCompanyM[1].trim();
+        currentCompany = roleCompanyM[2].replace(/\[.*?\]/g, '').trim();
+        return;
+      }
+      const dateLine = line.match(/^(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|July|August|September|October|November|December)\s+\d{4}\s*[–\-]\s*(?:Present|\w+\s+\d{4})$/i);
+      if (dateLine) { currentDuration = dateLine[0]; return; }
+      const yearRange = line.match(/^(20\d{2})\s*[–\-]\s*(20\d{2}|Present)$/i);
+      if (yearRange && !currentDuration) { currentDuration = yearRange[0]; return; }
+      if (/^[•\-*]/.test(line) && currentRole) {
+        const h = line.replace(/^[•\-*]\s*/, '').trim();
+        if (h.length > 10) highlights.push(h);
       }
     });
 
-    workExperience.push({
-      company: currentCompany || 'Tech Organization',
-      role: currentRole || 'Software Developer',
-      duration: currentDuration || 'Recent',
-      highlights: highlights.length > 0 ? highlights.slice(0, 4) : [
-        'Developed data pipelines and machine learning models using Python.',
-        'Performed exploratory data analysis and model evaluation.',
-      ],
-    });
-  }
-
-  // 8. Dynamic Projects Parser
-  const notableProjects: Array<{ name: string; description: string; metrics: string }> = [];
-  const projSectionMatch = text.match(/(?:PROJECTS|NOTABLE PROJECTS|KEY PROJECTS)\s*([\s\S]*?)(?=(?:ACHIEVEMENTS|CERTIFICATIONS|SKILLS|EDUCATION|INTERNSHIP|EXPERIENCE|$))/i);
-
-  const rawProjBlock = projSectionMatch ? projSectionMatch[1].trim() : text;
-
-  // Split into candidate project lines and strip attached section header keywords
-  const projLines = rawProjBlock
-    .split('\n')
-    .map((l) => l.replace(/^(PROJECTS|NOTABLE PROJECTS|KEY PROJECTS)\s*/i, '').trim())
-    .filter(Boolean);
-
-  let currentProjName = '';
-  let currentProjDesc = '';
-
-  projLines.forEach((l) => {
-    const isBullet = l.startsWith('•') || l.startsWith('-') || l.startsWith('*');
-    const cleanedLine = l.replace(/^[•\-*]\s*/, '').trim();
-
-    if (
-      !isBullet &&
-      cleanedLine.length >= 3 &&
-      cleanedLine.length <= 65 &&
-      !cleanedLine.match(/http|github\.com|linkedin\.com|gmail\.com|achievements|certifications|skills|education/i)
-    ) {
-      if (currentProjName && currentProjDesc) {
-        notableProjects.push({
-          name: currentProjName,
-          description: currentProjDesc,
-          metrics: 'Interactive web & database implementation',
-        });
-        currentProjDesc = '';
-      }
-      currentProjName = cleanedLine;
-    } else if (currentProjName) {
-      currentProjDesc += (currentProjDesc ? ' ' : '') + cleanedLine;
-    }
-  });
-
-  if (currentProjName && currentProjDesc) {
-    notableProjects.push({
-      name: currentProjName,
-      description: currentProjDesc,
-      metrics: 'Interactive web & database implementation',
-    });
-  }
-
-  // Fallback: If no projects extracted by section block, scan text for project lines dynamically
-  if (notableProjects.length === 0) {
-    const potentialProjLines = lines.filter(
-      (l) =>
-        (l.toLowerCase().includes('website') ||
-          l.toLowerCase().includes('project') ||
-          l.toLowerCase().includes('app') ||
-          l.toLowerCase().includes('platform') ||
-          l.toLowerCase().includes('system')) &&
-        l.length < 60 &&
-        !l.match(/http|github|linkedin|gmail/i)
-    );
-
-    potentialProjLines.slice(0, 2).forEach((projTitle) => {
-      notableProjects.push({
-        name: projTitle.replace(/^[•\-*]\s*/, '').trim(),
-        description: `Candidate project: ${projTitle}`,
-        metrics: 'Interactive software & data implementation',
+    if (currentRole || currentCompany) {
+      workExperience.push({
+        company: currentCompany || 'Tech Organization',
+        role: currentRole || 'Software Developer',
+        duration: currentDuration || 'Recent',
+        highlights: highlights.slice(0, 4),
       });
+    }
+  }
+
+  // ── 8. PROJECTS ───────────────────────────────────────────────────────────
+  // Project headers like "HospiSynAI (Rank 4 / 4200+)" or "VoteWise AI (Rank 30 / 26,090+)"
+  // They start with a capital letter, are NOT bullet lines, and appear before bullet description lines.
+  const notableProjects: Array<{ name: string; description: string; metrics: string }> = [];
+  const projSectionMatch = text.match(/(?:PROJECTS|NOTABLE PROJECTS|KEY PROJECTS)([\s\S]*?)(?=(?:EXPERIENCE|INTERNSHIP|ACHIEVEMENTS|CERTIFICATIONS|SKILLS|EDUCATION|$))/i);
+  const rawProjBlock = projSectionMatch ? projSectionMatch[1] : '';
+
+  if (rawProjBlock.trim()) {
+    const projLines = rawProjBlock.split('\n').map((l) => l.trim()).filter(Boolean);
+    let currentProjName = '';
+    let currentProjDesc = '';
+    let currentProjMetric = '';
+
+    const getHeaderName = (line: string): string | null => {
+      if (/^[•\-*]/.test(line)) return null;
+      const stripped = line
+        .replace(/\[.*?\]/g, '')
+        .replace(/\(Rank[^)]*\)/gi, '')
+        .replace(/\|.*$/, '')
+        .trim();
+      if (stripped.length < 2) return null;
+      if (/^\d{4}/.test(stripped)) return null;
+      if (/^(PROJECTS|ACHIEVEMENTS|CERTIFICATIONS|EXPERIENCE|EDUCATION|INTERNSHIP|SKILLS|TECHNICAL)/i.test(stripped)) return null;
+      if (/^[A-Z]/.test(stripped)) return stripped;
+      return null;
+    };
+
+    projLines.forEach((l) => {
+      const headerName = getHeaderName(l);
+      if (headerName) {
+        if (currentProjName) {
+          notableProjects.push({
+            name: currentProjName,
+            description: currentProjDesc || `Project: ${currentProjName}`,
+            metrics: currentProjMetric || 'AI-powered end-to-end engineering',
+          });
+        }
+        currentProjName = headerName;
+        currentProjDesc = '';
+        currentProjMetric = '';
+      } else if (currentProjName) {
+        const bullet = l.replace(/^[•\-*]\s*/, '').trim();
+        if (!currentProjMetric) {
+          const mMatch = bullet.match(/(\d+[\w%\+\/\s\.]*(?:reduction|latency|ms|sec|second|requests|languages|participants|rank|performance|accuracy))/i);
+          if (mMatch) currentProjMetric = mMatch[0].trim();
+        }
+        if (bullet.length > 10) currentProjDesc += (currentProjDesc ? ' ' : '') + bullet;
+      }
     });
+
+    if (currentProjName) {
+      notableProjects.push({
+        name: currentProjName,
+        description: currentProjDesc || `Project: ${currentProjName}`,
+        metrics: currentProjMetric || 'AI-powered end-to-end engineering',
+      });
+    }
   }
 
   if (notableProjects.length === 0) {
-    const primaryTech = languagesAndFrameworks[0] || 'AI & Data';
-    const primaryDomain = workExperience[0]?.company ? `${workExperience[0].company} Engineering` : headline;
     notableProjects.push({
-      name: `${primaryTech} ${primaryDomain} Platform`,
+      name: `${languagesAndFrameworks[0] || 'AI'} Engineering Platform`,
       description: summary || text.slice(0, 200),
       metrics: 'End-to-end features & technical design',
     });
