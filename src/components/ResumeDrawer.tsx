@@ -58,11 +58,13 @@ export const ResumeDrawer: React.FC<ResumeDrawerProps> = ({
   const handleSelectPreset = (preset: CandidateResume) => {
     notifyChange(preset);
     setIsEditing(false);
+    onClose();
   };
 
   const handleSaveEdit = () => {
     notifyChange(editedResume);
     setIsEditing(false);
+    onClose();
   };
 
   const handleApplyRawPaste = () => {
@@ -70,6 +72,7 @@ export const ResumeDrawer: React.FC<ResumeDrawerProps> = ({
     const parsed = parseResumeText(rawPasteText, currentResume.fullName || 'Candidate');
     notifyChange(parsed);
     setShowRawPaste(false);
+    onClose();
   };
 
   return (

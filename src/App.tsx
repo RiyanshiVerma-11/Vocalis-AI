@@ -547,10 +547,11 @@ export default function App() {
     }
   };
 
-  // Update Resume Handler (from drawer) — Recalibrates dynamic panel!
+  // Update Resume Handler (from drawer) — Recalibrates dynamic panel & restarts fresh interview!
   const handleUpdateResume = (updated: CandidateResume) => {
+    const newName = updated.fullName || candidateName;
     setCandidateResume(updated);
-    setCandidateName(updated.fullName);
+    setCandidateName(newName);
     if (updated.headline) {
       setTargetRole(updated.headline);
     }
@@ -564,17 +565,10 @@ export default function App() {
     );
     setActivePanel(updatedPanel);
 
-    setSharedContext((prev) => ({
-      ...prev,
-      candidateName: updated.fullName,
-      targetRole: updated.headline || prev.targetRole,
-      candidateResume: updated,
-    }));
-
     try {
       localStorage.setItem('vocalis_candidate_resume', JSON.stringify(updated));
       if (currentUser && currentUser.role === 'candidate') {
-        const updatedUser = { ...currentUser, name: updated.fullName || currentUser.name };
+        const updatedUser = { ...currentUser, name: newName || currentUser.name };
         setCurrentUser(updatedUser);
         localStorage.setItem('vocalis_user_session', JSON.stringify(updatedUser));
       }
@@ -582,8 +576,25 @@ export default function App() {
       // Ignore storage errors
     }
 
-    setErrorToast('✓ Candidate profile & interview panel dynamically recalibrated');
-    setTimeout(() => setErrorToast(null), 2500);
+    // Cancel active TTS playback if speaking
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+
+    // Start a fresh interview session tailored to the new candidate resume!
+    handleStartInterview({
+      scenario,
+      activePanel: updatedPanel,
+      candidateName: newName,
+      targetRole: updated.headline || targetRole,
+      initialDifficulty: sharedContext.targetLevel || 'Senior',
+      candidateResume: updated,
+      panelStrictness: sharedContext.panelStrictness,
+      rubricWeights: sharedContext.rubricWeights,
+    });
+
+    setErrorToast(`✓ Fresh interview session started for ${newName}`);
+    setTimeout(() => setErrorToast(null), 3000);
   };
 
   // Toggle Microphone — routes through Agora RTC channel
