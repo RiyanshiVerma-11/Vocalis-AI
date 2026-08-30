@@ -368,27 +368,31 @@ export function generatePersonalizedOpening(
       ? candidateResume.notableProjects.map((p) => p.name.split('(')[0].trim()).slice(0, 2).join(' and ')
       : '';
 
-  // If scenario has a starter prompt and is not generic custom-freeform, personalize the scenario prompt
-  if (scenario && scenario.id !== 'custom-freeform' && scenario.starterPrompt) {
-    const projRef = projNames ? ` We reviewed your background and notable work on ${projNames}.` : '';
+  // If scenario is custom-freeform or personalized interview, ask directly about candidate's resume projects
+  if (
+    !scenario ||
+    scenario.id === 'custom-freeform' ||
+    scenario.id === 'candidate-personalized-interview'
+  ) {
+    if (candidateResume.notableProjects && candidateResume.notableProjects.length > 0) {
+      const mainProj = candidateResume.notableProjects[0];
+      return `${greeting} ${panelIntro} We reviewed your background and notable work on ${projNames}. To start off: Could you walk us through the core system architecture of ${mainProj.name.split('(')[0].trim()}, explaining how you designed it, key engineering trade-offs you made, and how you handled data processing and reliability?`;
+    }
 
-    const cleanScenarioPrompt = scenario.starterPrompt
-      .replace(/^Welcome![^:]*:\s*/i, '')
-      .replace(/^Hello,[^:]*:\s*/i, '');
+    if (candidateResume.workExperience && candidateResume.workExperience.length > 0) {
+      const exp = candidateResume.workExperience[0];
+      return `${greeting} ${panelIntro} We noted your background at ${exp.company} as ${exp.role}. To start off: Could you walk us through the system architecture of your most impactful project, highlighting key engineering trade-offs?`;
+    }
 
-    return `${greeting} ${panelIntro}${projRef} ${cleanScenarioPrompt}`;
+    return `${greeting} ${panelIntro} To start off: Please introduce yourself and walk us through your most impactful engineering project, highlighting key architectural decisions and system trade-offs.`;
   }
 
-  if (candidateResume.notableProjects && candidateResume.notableProjects.length > 0) {
-    const mainProj = candidateResume.notableProjects[0];
-    return `${greeting} ${panelIntro} We reviewed your background and notable work on ${projNames}. To start off: Could you walk us through the core system architecture of ${mainProj.name.split('(')[0].trim()}, explaining how you designed it, key trade-offs you made, and how you handled performance under load?`;
-  }
+  // For simulation scenarios (like PS11 cache invalidation or outage post-mortems), frame clearly as a technical case study
+  const headlineRef = candidateResume.headline ? ` in ${candidateResume.headline}` : '';
+  const cleanScenarioPrompt = scenario.starterPrompt
+    ? scenario.starterPrompt.replace(/^Welcome![^:]*:\s*/i, '').replace(/^Hello,[^:]*:\s*/i, '')
+    : scenario.context || '';
 
-  if (candidateResume.workExperience && candidateResume.workExperience.length > 0) {
-    const exp = candidateResume.workExperience[0];
-    return `${greeting} ${panelIntro} We noted your background at ${exp.company} as ${exp.role}. To start off: Could you walk us through the system architecture of your most impactful project, highlighting key engineering trade-offs?`;
-  }
-
-  return `${greeting} ${panelIntro} To start off: Please introduce yourself and walk us through your most impactful engineering project, highlighting key architectural decisions and system trade-offs.`;
+  return `${greeting} ${panelIntro} We reviewed your background${headlineRef}. For today's technical case study: ${cleanScenarioPrompt}`;
 }
 

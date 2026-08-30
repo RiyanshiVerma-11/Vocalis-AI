@@ -1,6 +1,23 @@
 import { InterviewScenario } from '../types';
 
 export const INTERVIEW_SCENARIOS: InterviewScenario[] = [
+  {
+    id: 'candidate-personalized-interview',
+    title: '🎯 Tailored Candidate Resume & AI Project Interview',
+    category: 'Personalized Candidate Evaluation',
+    targetRole: 'Custom Role (100% Tailored to Resume)',
+    recommendedPanel: ['technical', 'product', 'customer'],
+    initialSpeakerRole: 'technical',
+    difficulty: 'Senior',
+    description:
+      '100% personalized technical interview tailored directly to your uploaded resume, projects, and target role. The AI panel evaluates your actual projects and system design choices.',
+    context:
+      'Deep-dive technical evaluation tailored specifically to the candidate\'s resume, past projects, system architecture decisions, and target role competencies.',
+    starterPrompt:
+      'Welcome! I am Alex Vance from Systems Architecture, joined by Maya Lin from Product and Sarah Chen representing our enterprise clients. We reviewed your background and notable projects. To start off: Could you walk us through the system architecture of your most impactful project, explaining key trade-offs and technical decisions?',
+    exampleDynamics:
+      'The panel asks probing questions grounded directly in your uploaded resume, past engineering positions, and project metric claims.'
+  },
   // ⭐ PS11 DEMO SCENARIO — The exact example from EchoSphere problem statement
   // Technical interviewer accepts implementation; PM challenges business impact
   {
