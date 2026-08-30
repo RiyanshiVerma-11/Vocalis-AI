@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   FileText,
   Briefcase,
@@ -22,8 +22,10 @@ interface ResumeDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   currentResume: CandidateResume;
-  onResumeChange: (resume: CandidateResume) => void;
+  onResumeChange?: (resume: CandidateResume) => void;
+  onUpdateResume?: (resume: CandidateResume) => void;
   sharedContext?: SharedCandidateContext;
+  questionHistory?: QuestionHistoryItem[];
 }
 
 export const ResumeDrawer: React.FC<ResumeDrawerProps> = ({
@@ -31,7 +33,9 @@ export const ResumeDrawer: React.FC<ResumeDrawerProps> = ({
   onClose,
   currentResume,
   onResumeChange,
+  onUpdateResume,
   sharedContext,
+  questionHistory,
 }) => {
   const [activeTab, setActiveTab] = useState<'resume' | 'memory'>('resume');
   const [isEditing, setIsEditing] = useState(false);
@@ -39,24 +43,32 @@ export const ResumeDrawer: React.FC<ResumeDrawerProps> = ({
   const [rawPasteText, setRawPasteText] = useState('');
   const [showRawPaste, setShowRawPaste] = useState(false);
 
+  useEffect(() => {
+    setEditedResume(currentResume);
+  }, [currentResume]);
+
   if (!isOpen) return null;
 
+  const notifyChange = (newResume: CandidateResume) => {
+    if (onUpdateResume) onUpdateResume(newResume);
+    if (onResumeChange) onResumeChange(newResume);
+    setEditedResume(newResume);
+  };
+
   const handleSelectPreset = (preset: CandidateResume) => {
-    onResumeChange(preset);
-    setEditedResume(preset);
+    notifyChange(preset);
     setIsEditing(false);
   };
 
   const handleSaveEdit = () => {
-    onResumeChange(editedResume);
+    notifyChange(editedResume);
     setIsEditing(false);
   };
 
   const handleApplyRawPaste = () => {
     if (!rawPasteText.trim()) return;
     const parsed = parseResumeText(rawPasteText, currentResume.fullName || 'Candidate');
-    onResumeChange(parsed);
-    setEditedResume(parsed);
+    notifyChange(parsed);
     setShowRawPaste(false);
   };
 
