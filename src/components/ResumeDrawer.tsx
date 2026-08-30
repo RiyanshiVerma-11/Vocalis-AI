@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { CandidateResume, QuestionHistoryItem, SharedCandidateContext } from '../types';
 import { RESUME_PRESETS } from '../data/resumes';
-import { parseResumeText } from '../utils/resumeParser';
+import { parseResumeText, parseResumeTextAsync } from '../utils/resumeParser';
 
 interface ResumeDrawerProps {
   isOpen: boolean;
@@ -42,6 +42,7 @@ export const ResumeDrawer: React.FC<ResumeDrawerProps> = ({
   const [editedResume, setEditedResume] = useState<CandidateResume>(currentResume);
   const [rawPasteText, setRawPasteText] = useState('');
   const [showRawPaste, setShowRawPaste] = useState(false);
+  const [isParsing, setIsParsing] = useState(false);
 
   useEffect(() => {
     setEditedResume(currentResume);
@@ -67,12 +68,17 @@ export const ResumeDrawer: React.FC<ResumeDrawerProps> = ({
     onClose();
   };
 
-  const handleApplyRawPaste = () => {
+  const handleApplyRawPaste = async () => {
     if (!rawPasteText.trim()) return;
-    const parsed = parseResumeText(rawPasteText, currentResume.fullName || 'Candidate');
-    notifyChange(parsed);
-    setShowRawPaste(false);
-    onClose();
+    setIsParsing(true);
+    try {
+      const parsed = await parseResumeTextAsync(rawPasteText, currentResume.fullName || 'Candidate');
+      notifyChange(parsed);
+      setShowRawPaste(false);
+      onClose();
+    } finally {
+      setIsParsing(false);
+    }
   };
 
   return (
@@ -197,9 +203,17 @@ export const ResumeDrawer: React.FC<ResumeDrawerProps> = ({
                   <div className="flex justify-end">
                     <button
                       onClick={handleApplyRawPaste}
-                      className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs cursor-pointer"
+                      disabled={isParsing}
+                      className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold px-3 py-1.5 rounded-lg text-xs cursor-pointer flex items-center gap-1.5"
                     >
-                      Update Candidate Profile
+                      {isParsing ? (
+                        <>
+                          <Sparkles className="w-3.5 h-3.5 animate-spin text-white" />
+                          <span>AI Parsing Resume...</span>
+                        </>
+                      ) : (
+                        <span>Update Candidate Profile</span>
+                      )}
                     </button>
                   </div>
                 </div>

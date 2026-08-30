@@ -588,15 +588,139 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Endpoint: Serve the Agora Pitch & Presentation Slide Deck
-app.get('/presentation', (req, res) => {
-  res.sendFile(path.join(process.cwd(), 'presentation.html'));
-});
-app.get('/pitch-deck', (req, res) => {
-  res.sendFile(path.join(process.cwd(), 'presentation.html'));
-});
-app.get('/presentation.html', (req, res) => {
-  res.sendFile(path.join(process.cwd(), 'presentation.html'));
+// Endpoint: AI-Powered Resume Parser using Gemini 2.5 Flash / Groq LLM
+app.post('/api/resume/parse', async (req, res) => {
+  try {
+    const { rawText, fallbackName = 'Candidate' } = req.body;
+    if (!rawText || !rawText.trim()) {
+      return res.status(400).json({ error: 'Resume rawText is required' });
+    }
+
+    const systemPrompt = `You are an expert AI talent intelligence parser.
+Parse the raw resume/LinkedIn text below into a clean, structured JSON object with ZERO assumptions.
+Return ONLY valid JSON matching this schema:
+
+{
+  "fullName": "Full candidate name (string)",
+  "headline": "Professional target headline or current role (string)",
+  "yearsOfExperience": number (default 2),
+  "location": "City, State/Country or Remote (string)",
+  "summary": "Executive summary paragraph (string)",
+  "skills": {
+    "coreArchitecture": ["Architecture/AI/System skill 1", "skill 2"],
+    "languagesAndFrameworks": ["Language/framework 1", "framework 2"],
+    "cloudAndInfrastructure": ["Cloud/database/tool 1", "tool 2"],
+    "practicesAndMethodologies": ["Methodology/practice 1", "practice 2"]
+  },
+  "workExperience": [
+    {
+      "company": "Company or Organization name",
+      "role": "Job or Intern Title",
+      "duration": "Dates (e.g. Mar 2026 - Apr 2026)",
+      "highlights": ["Bullet highlight 1", "Bullet highlight 2"]
+    }
+  ],
+  "education": [
+    {
+      "degree": "Degree name",
+      "institution": "School or University name",
+      "year": "Graduation year or date range"
+    }
+  ],
+  "notableProjects": [
+    {
+      "name": "Exact Project Name",
+      "description": "Full description of project implementation and features",
+      "metrics": "Key technical metric or outcome"
+    }
+  ]
+}
+
+If candidate name is missing in text, use fallback: "${fallbackName}".
+Do NOT hallucinate fake company names or fake project names if not in raw text. Extract exact real project names and real experience from the provided text.`;
+
+    const userPrompt = `RAW RESUME TEXT:\n${rawText.slice(0, 8000)}`;
+
+    let parsedResult: any = null;
+
+    // 1. Try Gemini 2.5 Flash
+    if (process.env.GEMINI_API_KEY) {
+      try {
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: `${systemPrompt}\n\n${userPrompt}`,
+          config: {
+            responseMimeType: 'application/json',
+          },
+        });
+        const responseText = response.text;
+        if (responseText) {
+          parsedResult = JSON.parse(responseText);
+        }
+      } catch (err: any) {
+        console.warn(`[Gemini Resume Parse Warning] ${err.message}`);
+      }
+    }
+
+    // 2. Fallback to Groq LLM API if Gemini fails or no key
+    if (!parsedResult && process.env.GROQ_API_KEY) {
+      try {
+        const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model: 'llama-3.3-70b-versatile',
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt },
+            ],
+            response_format: { type: 'json_object' },
+            temperature: 0.2,
+          }),
+        });
+
+        if (groqRes.ok) {
+          const json = await groqRes.json();
+          const contentStr = json.choices?.[0]?.message?.content || '{}';
+          parsedResult = JSON.parse(contentStr);
+        }
+      } catch (err: any) {
+        console.warn(`[Groq Resume Parse Warning] ${err.message}`);
+      }
+    }
+
+    if (parsedResult) {
+      return res.json({
+        success: true,
+        resume: {
+          id: `custom-resume-${Date.now()}`,
+          fullName: parsedResult.fullName || fallbackName,
+          headline: parsedResult.headline || 'Software Engineer',
+          yearsOfExperience: typeof parsedResult.yearsOfExperience === 'number' ? parsedResult.yearsOfExperience : 2,
+          location: parsedResult.location || 'Remote',
+          summary: parsedResult.summary || rawText.slice(0, 300),
+          skills: {
+            coreArchitecture: Array.isArray(parsedResult.skills?.coreArchitecture) ? parsedResult.skills.coreArchitecture : ['System Architecture'],
+            languagesAndFrameworks: Array.isArray(parsedResult.skills?.languagesAndFrameworks) ? parsedResult.skills.languagesAndFrameworks : ['Python', 'SQL'],
+            cloudAndInfrastructure: Array.isArray(parsedResult.skills?.cloudAndInfrastructure) ? parsedResult.skills.cloudAndInfrastructure : ['Git', 'GitHub'],
+            practicesAndMethodologies: Array.isArray(parsedResult.skills?.practicesAndMethodologies) ? parsedResult.skills.practicesAndMethodologies : ['Agile'],
+          },
+          workExperience: Array.isArray(parsedResult.workExperience) ? parsedResult.workExperience : [],
+          education: Array.isArray(parsedResult.education) ? parsedResult.education : [],
+          notableProjects: Array.isArray(parsedResult.notableProjects) ? parsedResult.notableProjects : [],
+          rawText,
+        },
+      });
+    }
+
+    return res.status(500).json({ error: 'LLM parsing failed' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Endpoint: Process Interview Turn with Multi-Role Deliberation & Adaptive Probing

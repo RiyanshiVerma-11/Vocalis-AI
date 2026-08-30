@@ -250,31 +250,33 @@ export function parseResumeText(rawText: string, fallbackName?: string): Candida
     });
   }
 
-  // Fallback: If no projects extracted by section parsing, scan text for specific project headers
+  // Fallback: If no projects extracted by section block, scan text for project lines dynamically
   if (notableProjects.length === 0) {
-    const fitnessMatch = text.match(/Fitness[^\n]*/i);
-    const mediMatch = text.match(/Medi[^\n]*/i);
-    if (fitnessMatch) {
+    const potentialProjLines = lines.filter(
+      (l) =>
+        (l.toLowerCase().includes('website') ||
+          l.toLowerCase().includes('project') ||
+          l.toLowerCase().includes('app') ||
+          l.toLowerCase().includes('platform') ||
+          l.toLowerCase().includes('system')) &&
+        l.length < 60 &&
+        !l.match(/http|github|linkedin|gmail/i)
+    );
+
+    potentialProjLines.slice(0, 2).forEach((projTitle) => {
       notableProjects.push({
-        name: 'Fitness Tracking Website',
-        description: 'Developed a fitness tracking website using Python Django, SQL, HTML, CSS, and JS with authentication & progress tracking.',
-        metrics: 'SQL database & responsive Django interface',
+        name: projTitle.replace(/^[•\-*]\s*/, '').trim(),
+        description: `Candidate project: ${projTitle}`,
+        metrics: 'Interactive software & data implementation',
       });
-    }
-    if (mediMatch) {
-      notableProjects.push({
-        name: 'Medi Mentors Project',
-        description: 'Built a responsive healthcare website using HTML, CSS, and Python displaying healthcare recommendations.',
-        metrics: 'Clean healthcare UI & recommendation engine',
-      });
-    }
+    });
   }
 
   if (notableProjects.length === 0) {
     notableProjects.push({
-      name: 'Generative AI & Multi-Model Platform',
+      name: 'Software Engineering Project',
       description: text.slice(0, 200),
-      metrics: 'Proven low latency (<1.5s) & failover resilience',
+      metrics: 'End-to-end features & technical design',
     });
   }
 
@@ -296,6 +298,31 @@ export function parseResumeText(rawText: string, fallbackName?: string): Candida
     notableProjects,
     rawText: text,
   };
+}
+
+// ── AI LLM RESUME PARSER API CALLER ──────────────────────────────────────────
+export async function parseResumeTextAsync(rawText: string, fallbackName?: string): Promise<CandidateResume> {
+  const text = rawText.trim();
+  if (!text) return parseResumeText(rawText, fallbackName);
+
+  try {
+    const res = await fetch('/api/resume/parse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rawText: text, fallbackName }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.resume) {
+        return data.resume;
+      }
+    }
+  } catch (err) {
+    console.warn('AI Resume Parse API call offline, falling back to dynamic parser:', err);
+  }
+
+  return parseResumeText(rawText, fallbackName);
 }
 
 export function generatePersonalizedOpening(
