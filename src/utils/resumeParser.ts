@@ -1,11 +1,13 @@
 import { CandidateResume } from '../types';
 
-export function parseResumeText(rawText: string): CandidateResume {
+export function parseResumeText(rawText: string, fallbackName?: string): CandidateResume {
   const text = rawText.trim();
+  const defaultCandidateName = fallbackName?.trim() || 'Candidate';
+
   if (!text) {
     return {
       id: `custom-resume-${Date.now()}`,
-      fullName: 'Candidate',
+      fullName: defaultCandidateName,
       headline: 'Software Engineer',
       yearsOfExperience: 3,
       location: 'Remote',
@@ -25,10 +27,28 @@ export function parseResumeText(rawText: string): CandidateResume {
 
   const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
 
-  // 1. Extract Full Name (usually line 1)
-  let fullName = lines[0] || 'Candidate';
-  // Strip out contact numbers or emails if glued to name line
-  fullName = fullName.replace(/[\d|\-+()]{7,}/g, '').replace(/[\w.-]+@[\w.-]+/g, '').trim() || 'Candidate';
+  // 1. Extract Full Name (skip section titles like SUMMARY, PROFILE, RESUME, CV, etc.)
+  const invalidNameHeaders = /^(summary|professional summary|resume|cv|curriculum vitae|profile|objective|personal information|contact|work experience|experience|education|skills|projects|achievements)$/i;
+
+  let fullName = defaultCandidateName;
+  for (const line of lines) {
+    const cleaned = line.replace(/[\d|\-+()]{7,}/g, '').replace(/[\w.-]+@[\w.-]+/g, '').trim();
+    if (
+      cleaned &&
+      !invalidNameHeaders.test(cleaned) &&
+      cleaned.length >= 2 &&
+      cleaned.length <= 50 &&
+      !cleaned.toLowerCase().includes('github.com') &&
+      !cleaned.toLowerCase().includes('linkedin.com')
+    ) {
+      fullName = cleaned;
+      break;
+    }
+  }
+
+  if (invalidNameHeaders.test(fullName) || fullName === 'SUMMARY') {
+    fullName = defaultCandidateName;
+  }
 
   // 2. Extract Email & Phone / Links
   let email = '';

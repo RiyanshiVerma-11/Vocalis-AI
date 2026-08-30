@@ -54,7 +54,7 @@ export const ResumeDrawer: React.FC<ResumeDrawerProps> = ({
 
   const handleApplyRawPaste = () => {
     if (!rawPasteText.trim()) return;
-    const parsed = parseResumeText(rawPasteText);
+    const parsed = parseResumeText(rawPasteText, currentResume.fullName || 'Candidate');
     onResumeChange(parsed);
     setEditedResume(parsed);
     setShowRawPaste(false);

@@ -783,56 +783,54 @@ export default function App() {
       <AIDisclosureBanner />
 
       {/* Main Top Navigation */}
-      <header className="border-b border-slate-800 bg-slate-900 sticky top-0 z-40 shadow-lg">
-        <div className="w-full max-w-[1920px] mx-auto px-4 sm:px-8 lg:px-12 py-2.5 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            {/* Top-Left Three-Lines Hamburger Menu Button (Mobile Only) */}
+      <header className="border-b border-slate-800 bg-slate-900 sticky top-0 z-40 shadow-md">
+        <div className="w-full max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 py-2.5 flex items-center justify-between gap-3">
+          {/* Left Brand Section */}
+          <div className="flex items-center gap-2.5">
+            {/* Mobile Hamburger Menu Toggle */}
             <button
               type="button"
               id="btn-toggle-mobile-menu"
               onClick={() => setIsSidebarOpen((prev) => !prev)}
-              className="md:hidden p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer flex items-center justify-center border border-slate-700"
-              title={isSidebarOpen ? 'Close Menu & Control Panel' : 'Open Menu & Control Panel'}
+              className="md:hidden p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer flex items-center justify-center border border-slate-700"
+              title={isSidebarOpen ? 'Close Control Panel' : 'Open Control Panel'}
               aria-label="Toggle menu navigation"
             >
-              <Menu className="w-5 h-5 text-indigo-400" />
+              <Menu className="w-4 h-4 text-indigo-400" />
             </button>
 
             <button
               type="button"
               onClick={() => setCurrentView('landing')}
-              className="w-9 h-9 rounded-xl overflow-hidden shadow-md hover:opacity-90 transition cursor-pointer shrink-0"
-              title="Vocalis AI"
+              className="w-8 h-8 rounded-lg overflow-hidden shadow-sm hover:opacity-90 transition cursor-pointer shrink-0"
+              title="Vocalis AI Landing Page"
             >
               <img src="/logo.jpg" alt="Vocalis AI Logo" className="w-full h-full object-cover" />
             </button>
-            <div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setCurrentView('landing')}
-                  className="text-sm sm:text-base font-extrabold text-white hover:text-indigo-400 transition flex items-center gap-1.5 cursor-pointer text-left"
-                >
-                  <span>Vocalis AI Studio</span>
-                </button>
-                <span className="text-[10px] px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-mono font-bold uppercase tracking-wider hidden sm:inline-block">
-                  Multi-Role Panel
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-400 hidden sm:block">
-                Real-Time Voice • Shared Candidate Memory • Sub-100ms RTC
-              </p>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setCurrentView('landing')}
+                className="text-sm font-extrabold text-white hover:text-indigo-300 transition cursor-pointer text-left tracking-tight"
+              >
+                Vocalis AI Studio
+              </button>
+              <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-mono font-bold uppercase tracking-wider hidden sm:inline-block">
+                Multi-Role Panel
+              </span>
             </div>
           </div>
 
+          {/* Right Controls & Navigation */}
           <div className="flex items-center gap-2 sm:gap-3">
             {/* Mode Switcher: Recruiter vs Candidate */}
             {!inInterview && (
-              <div className="flex rounded-xl bg-slate-800 p-1 border border-slate-700">
+              <div className="flex rounded-lg bg-slate-800/90 p-0.5 border border-slate-700/80">
                 <button
                   type="button"
                   onClick={() => setWorkspaceMode('candidate')}
-                  className={`px-2.5 py-1 text-xs font-bold rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
+                  className={`px-2.5 py-1 text-xs font-bold rounded transition flex items-center gap-1.5 cursor-pointer ${
                     workspaceMode === 'candidate'
                       ? 'bg-indigo-600 text-white shadow-xs'
                       : 'text-slate-400 hover:text-white'
@@ -845,7 +843,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setWorkspaceMode('recruiter')}
-                  className={`px-2.5 py-1 text-xs font-bold rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
+                  className={`px-2.5 py-1 text-xs font-bold rounded transition flex items-center gap-1.5 cursor-pointer ${
                     workspaceMode === 'recruiter'
                       ? 'bg-indigo-600 text-white shadow-xs'
                       : 'text-slate-400 hover:text-white'
@@ -862,19 +860,19 @@ export default function App() {
             <button
               type="button"
               onClick={() => setIsResumeDrawerOpen(true)}
-              className="text-xs font-semibold text-slate-300 hover:text-white px-3 py-1.5 rounded-lg border border-slate-800 hover:bg-slate-800 flex items-center gap-1.5 transition cursor-pointer"
+              className="text-xs font-semibold text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg border border-slate-700/80 bg-slate-800/60 hover:bg-slate-800 flex items-center gap-1.5 transition cursor-pointer"
               title="View Candidate Resume & Question Memory"
             >
               <FileText className="w-3.5 h-3.5 text-indigo-400" />
-              <span className="hidden lg:inline">Resume & Memory</span>
-              <span className="lg:hidden">Resume</span>
+              <span className="hidden md:inline">Resume & Memory</span>
+              <span className="md:hidden">Resume</span>
             </button>
 
             {/* User Profile / Auth State Button */}
             {currentUser ? (
-              <div className="flex items-center gap-1.5 pl-1 border-l border-slate-200">
+              <div className="flex items-center gap-1.5 pl-1.5 border-l border-slate-800">
                 <div
-                  className="w-7 h-7 rounded-lg bg-indigo-600 text-white font-bold text-[10px] flex items-center justify-center shrink-0 shadow-xs"
+                  className="w-7 h-7 rounded-lg bg-indigo-600 text-white font-extrabold text-[10px] flex items-center justify-center shrink-0 shadow-xs cursor-default"
                   title={`${currentUser.name} (${currentUser.role})`}
                 >
                   {currentUser.avatarInitials}
@@ -882,7 +880,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={handleLogout}
-                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                  className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition cursor-pointer"
                   title="Sign out"
                 >
                   <LogOut className="w-3.5 h-3.5" />
@@ -892,15 +890,15 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setCurrentView('login')}
-                className="text-xs font-semibold text-slate-700 hover:text-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 flex items-center gap-1.5 transition cursor-pointer"
+                className="text-xs font-semibold text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-800 flex items-center gap-1.5 transition cursor-pointer"
               >
-                <LogIn className="w-3.5 h-3.5 text-slate-500" />
+                <LogIn className="w-3.5 h-3.5 text-indigo-400" />
                 <span className="hidden sm:inline">Sign In</span>
               </button>
             )}
 
             {inInterview ? (
-              <div className="flex items-center gap-2 sm:gap-3 pl-1 sm:pl-2 border-l border-slate-700">
+              <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
                 {/* Focus Mode / Telemetry Mode Toggle */}
                 <button
                   type="button"
@@ -909,9 +907,9 @@ export default function App() {
                     setErrorToast(!isFocusMode ? '🧘 Focus Mode Active — Zero Distractions!' : '📊 Telemetry Mode Active — Full HUD Metrics');
                     setTimeout(() => setErrorToast(null), 2500);
                   }}
-                  className={`text-xs font-bold px-3 py-1.5 rounded-lg border flex items-center gap-1.5 transition cursor-pointer ${
+                  className={`text-xs font-bold px-2.5 py-1.5 rounded-lg border flex items-center gap-1.5 transition cursor-pointer ${
                     isFocusMode
-                      ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500 ring-2 ring-emerald-500/30'
+                      ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500 ring-1 ring-emerald-500/30'
                       : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
                   }`}
                   title="Toggle between Focus Mode (Clean View) and Telemetry Mode (Full HUD Metrics)"
@@ -919,23 +917,26 @@ export default function App() {
                   <span>{isFocusMode ? '🧘 Focus Mode' : '📊 Telemetry View'}</span>
                 </button>
 
-                <div className="hidden xl:flex items-center gap-2 text-xs bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300 font-medium">
-                  <span>Candidate: <strong className="text-white">{candidateName}</strong></span>
-                  <span className="text-slate-600">•</span>
-                  <span className="text-indigo-400 font-semibold">{scenario.title}</span>
+                <div
+                  className="hidden xl:flex items-center gap-1.5 text-xs bg-slate-800/80 px-2.5 py-1.5 rounded-lg border border-slate-700 text-slate-300 font-medium max-w-[240px] truncate"
+                  title={`Candidate: ${candidateName} | Scenario: ${scenario.title}`}
+                >
+                  <span className="truncate">Candidate: <strong className="text-white">{candidateName}</strong></span>
                 </div>
+
                 <button
                   id="btn-back-to-setup"
                   onClick={handleRestart}
-                  className="text-xs font-semibold text-slate-300 hover:text-white px-3 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-800 flex items-center gap-1.5 transition cursor-pointer"
+                  className="text-xs font-semibold text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-800 flex items-center gap-1.5 transition cursor-pointer"
+                  title="Reset & End Interview Session"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" />
                   <span>Reset</span>
                 </button>
               </div>
             ) : (
-              <div className="hidden sm:flex text-xs font-semibold text-slate-300 items-center gap-1.5 bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700">
-                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <div className="hidden lg:flex text-xs font-semibold text-slate-300 items-center gap-1.5 bg-slate-800/80 px-2.5 py-1.5 rounded-lg border border-slate-700/80">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
                 <span>Panel Ready</span>
               </div>
             )}

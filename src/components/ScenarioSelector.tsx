@@ -164,7 +164,7 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
 
   const handleApplyPastedResume = () => {
     if (!pastedText.trim()) return;
-    const parsed = parseResumeText(pastedText);
+    const parsed = parseResumeText(pastedText, candidateName || currentCandidateName || 'Candidate');
     setCustomResume(parsed);
     setSelectedResumeId(parsed.id);
     setCandidateName(parsed.fullName);
