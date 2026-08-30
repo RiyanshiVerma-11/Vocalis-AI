@@ -29,8 +29,10 @@ import { requestInterviewTurn, generateFinalAssessment, fetchTTSAudio, fetchAgor
 import { agoraVoiceEngine } from './services/agoraVoiceEngine';
 import { generatePersonalizedOpening } from './utils/resumeParser';
 import { generateDynamicPanel } from './utils/dynamicPanelGenerator';
-import { ArrowLeft, Sparkles, ShieldCheck, FileText, Home, User, LogOut, LogIn, PanelLeft, Building2, GraduationCap, Menu } from 'lucide-react';
+import { ArrowLeft, Sparkles, ShieldCheck, FileText, Home, User, LogOut, LogIn, PanelLeft, Building2, GraduationCap, Menu, Radio, Activity } from 'lucide-react';
 import { PWAInstallPrompt } from './components/PWAInstallPrompt';
+import { ToastNotification, ToastMessage } from './components/ToastNotification';
+import { LaunchSessionModal } from './components/LaunchSessionModal';
 
 export default function App() {
   // Navigation View State ('landing' | 'login' | 'studio')
@@ -127,6 +129,41 @@ export default function App() {
   const [assessment, setAssessment] = useState<StructuredAssessment | null>(null);
   const [isGeneratingAssessment, setIsGeneratingAssessment] = useState(false);
   const [errorToast, setErrorToast] = useState<string | null>(null);
+
+  // Enterprise Feedback System (Toasts, Launch Transitions & Session Timer)
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [isLaunchingSession, setIsLaunchingSession] = useState(false);
+  const [sessionSeconds, setSessionSeconds] = useState(0);
+
+  const addToast = useCallback((title: string, message: string, type: 'success' | 'info' | 'warning' | 'error' = 'success') => {
+    const id = `toast-${Date.now()}-${Math.random()}`;
+    setToasts((prev) => [...prev, { id, title, message, type }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4500);
+  }, []);
+
+  const dismissToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  useEffect(() => {
+    let interval: any;
+    if (inInterview) {
+      interval = setInterval(() => {
+        setSessionSeconds((s) => s + 1);
+      }, 1000);
+    } else {
+      setSessionSeconds(0);
+    }
+    return () => clearInterval(interval);
+  }, [inInterview]);
+
+  const formatTimer = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
 
   // Agora session tracking
   const [agoraChannelName, setAgoraChannelName] = useState<string | null>(null);
@@ -273,6 +310,7 @@ export default function App() {
     setCandidateName(config.candidateName);
     setTargetRole(config.targetRole);
     setCandidateResume(config.candidateResume);
+    setIsLaunchingSession(true);
 
     const initialSpeaker =
       config.activePanel.find((i) => i.role === config.scenario.initialSpeakerRole) ||
@@ -594,6 +632,7 @@ export default function App() {
     });
 
     setErrorToast(`✓ Fresh interview session started for ${newName}`);
+    addToast('✅ Resume Profile Synchronized!', `Loaded candidate profile for ${newName} (${updated.headline || 'Engineer'}).`, 'success');
     setTimeout(() => setErrorToast(null), 3000);
   };
 
@@ -923,13 +962,23 @@ export default function App() {
 
             {inInterview ? (
               <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
+                {/* Live Session Timer Badge */}
+                <div className="flex items-center gap-2 bg-rose-500/10 border border-rose-500/30 px-3 py-1 rounded-lg text-rose-400 text-xs font-mono font-bold animate-pulse">
+                  <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                  <span>INTERVIEW LIVE</span>
+                  <span className="text-white font-bold ml-1">{formatTimer(sessionSeconds)}</span>
+                </div>
+
                 {/* Focus Mode / Telemetry Mode Toggle */}
                 <button
                   type="button"
                   onClick={() => {
                     setIsFocusMode((prev) => !prev);
-                    setErrorToast(!isFocusMode ? '🧘 Focus Mode Active — Zero Distractions!' : '📊 Telemetry Mode Active — Full HUD Metrics');
-                    setTimeout(() => setErrorToast(null), 2500);
+                    addToast(
+                      !isFocusMode ? '🧘 Focus Mode Active' : '📊 Telemetry Mode Active',
+                      !isFocusMode ? 'Clean layout with zero distractions enabled.' : 'Full HUD metrics & backstage deliberations enabled.',
+                      'info'
+                    );
                   }}
                   className={`text-xs font-bold px-2.5 py-1.5 rounded-lg border flex items-center gap-1.5 transition cursor-pointer ${
                     isFocusMode
@@ -943,9 +992,9 @@ export default function App() {
 
                 <div
                   className="hidden xl:flex items-center gap-1.5 text-xs bg-slate-800/80 px-2.5 py-1.5 rounded-lg border border-slate-700 text-slate-300 font-medium max-w-[240px] truncate"
-                  title={`Candidate: ${candidateName} | Scenario: ${scenario.title}`}
+                  title={`Candidate: ${candidateName} | Role: ${targetRole}`}
                 >
-                  <span className="truncate">Candidate: <strong className="text-white">{candidateName}</strong></span>
+                  <span className="truncate">Active: <strong className="text-emerald-400">{candidateName}</strong></span>
                 </div>
 
                 <button
@@ -955,26 +1004,42 @@ export default function App() {
                   title="Reset & End Interview Session"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" />
-                  <span>Reset</span>
+                  <span>End Session</span>
                 </button>
               </div>
             ) : (
-              <div className="hidden lg:flex text-xs font-semibold text-slate-300 items-center gap-1.5 bg-slate-800/80 px-2.5 py-1.5 rounded-lg border border-slate-700/80">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Panel Ready</span>
+              <div className="hidden lg:flex text-xs font-semibold text-slate-300 items-center gap-2 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700/80">
+                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                <span>Profile: <strong className="text-white">{candidateName}</strong> (Synced)</span>
               </div>
             )}
           </div>
         </div>
       </header>
 
-      {/* Global Error/Alert Toast */}
-      {errorToast && (
-        <div className="fixed top-16 right-4 z-50 bg-slate-900 border border-slate-700 text-white px-4 py-2.5 rounded-xl shadow-xl text-xs font-semibold flex items-center gap-2 animate-bounce">
-          <Sparkles className="w-4 h-4 text-indigo-400" />
-          <span>{errorToast}</span>
-        </div>
-      )}
+    {/* Enterprise Toast Notifications Container */}
+    <ToastNotification toasts={toasts} onDismiss={dismissToast} />
+
+    {/* Real-Time Session Launch Modal */}
+    <LaunchSessionModal
+      isOpen={isLaunchingSession}
+      candidateResume={candidateResume}
+      activePanel={activePanel}
+      scenario={scenario}
+      onComplete={() => {
+        setIsLaunchingSession(false);
+        const speakerName = activePanel[0]?.name || 'Lead Interviewer';
+        addToast('🎙️ Interview Session Active!', `${speakerName} has opened the panel for ${candidateName}.`, 'success');
+      }}
+    />
+
+    {/* Global Error/Alert Toast */}
+    {errorToast && (
+      <div className="fixed top-16 right-4 z-50 bg-slate-900 border border-slate-700 text-white px-4 py-2.5 rounded-xl shadow-xl text-xs font-semibold flex items-center gap-2 animate-bounce">
+        <Sparkles className="w-4 h-4 text-indigo-400" />
+        <span>{errorToast}</span>
+      </div>
+    )}
 
       {/* Main Workspace Layout with Hideable Sidebar */}
       <div className="flex-1 flex w-full">

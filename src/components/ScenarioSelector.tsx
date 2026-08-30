@@ -162,6 +162,8 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
     }
   };
 
+  const [resumeStatusMsg, setResumeStatusMsg] = useState<string | null>(null);
+
   const handleApplyPastedResume = () => {
     if (!pastedText.trim()) return;
     const parsed = parseResumeText(pastedText, candidateName || currentCandidateName || 'Candidate');
@@ -169,6 +171,8 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
     setSelectedResumeId(parsed.id);
     setCandidateName(parsed.fullName);
     setTargetRole(parsed.headline);
+    setResumeStatusMsg(`✓ Resume Loaded: ${parsed.fullName} (${parsed.headline}) — ${parsed.notableProjects?.length || 0} Projects Detected`);
+    setTimeout(() => setResumeStatusMsg(null), 5000);
   };
 
   const handleCustomJdChange = (val: string) => {
@@ -318,19 +322,26 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
               placeholder="Paste plain text resume here (e.g. Riyanshi Verma, B.Tech CSE Data Science, HospiSynAI, VoteWise AI, Infosys Springboard 7.0, Python, FastAPI, Docker, RAG...)"
               className="w-full bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs text-slate-900 focus:border-indigo-600 focus:bg-white outline-none font-sans"
             />
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <button
                 type="button"
                 onClick={handleApplyPastedResume}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold px-4 py-2 rounded-xl text-xs flex items-center gap-2 shadow-xs cursor-pointer transition"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold px-4 py-2 rounded-xl text-xs flex items-center gap-2 shadow-xs cursor-pointer transition shrink-0"
               >
                 <Check className="w-4 h-4" />
                 <span>Parse Resume & Load Profile</span>
               </button>
 
-              <span className="text-[11px] text-slate-500">
-                Or choose a sample preset ➔
-              </span>
+              {resumeStatusMsg ? (
+                <div className="px-3 py-1.5 bg-emerald-50 border border-emerald-300 rounded-lg text-emerald-800 text-[11px] font-bold flex items-center gap-1.5 animate-in fade-in">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>{resumeStatusMsg}</span>
+                </div>
+              ) : (
+                <span className="text-[11px] text-slate-500">
+                  Or choose a sample preset ➔
+                </span>
+              )}
             </div>
           </div>
 

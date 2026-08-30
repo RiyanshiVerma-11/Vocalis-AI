@@ -44,6 +44,8 @@ export const ResumeDrawer: React.FC<ResumeDrawerProps> = ({
   const [showRawPaste, setShowRawPaste] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
 
+  const [successBanner, setSuccessBanner] = useState<string | null>(null);
+
   useEffect(() => {
     setEditedResume(currentResume);
   }, [currentResume]);
@@ -54,18 +56,18 @@ export const ResumeDrawer: React.FC<ResumeDrawerProps> = ({
     if (onUpdateResume) onUpdateResume(newResume);
     if (onResumeChange) onResumeChange(newResume);
     setEditedResume(newResume);
+    setSuccessBanner(`✓ Resume Loaded: ${newResume.fullName} (${newResume.headline || 'Engineer'}) — ${newResume.notableProjects?.length || 0} Projects Synced`);
+    setTimeout(() => setSuccessBanner(null), 5000);
   };
 
   const handleSelectPreset = (preset: CandidateResume) => {
     notifyChange(preset);
     setIsEditing(false);
-    onClose();
   };
 
   const handleSaveEdit = () => {
     notifyChange(editedResume);
     setIsEditing(false);
-    onClose();
   };
 
   const handleApplyRawPaste = async () => {
@@ -75,7 +77,6 @@ export const ResumeDrawer: React.FC<ResumeDrawerProps> = ({
       const parsed = await parseResumeTextAsync(rawPasteText, currentResume.fullName || 'Candidate');
       notifyChange(parsed);
       setShowRawPaste(false);
-      onClose();
     } finally {
       setIsParsing(false);
     }
@@ -151,6 +152,23 @@ export const ResumeDrawer: React.FC<ResumeDrawerProps> = ({
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 text-xs text-slate-700">
           {activeTab === 'resume' ? (
             <>
+              {/* Success Notification Banner */}
+              {successBanner && (
+                <div className="p-3.5 bg-emerald-50 border border-emerald-300 rounded-xl text-emerald-900 font-semibold text-xs flex items-center justify-between shadow-xs animate-in slide-in-from-top-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0 font-bold">
+                      ✓
+                    </div>
+                    <span>{successBanner}</span>
+                  </div>
+                  <button
+                    onClick={onClose}
+                    className="ml-3 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg transition cursor-pointer shrink-0"
+                  >
+                    Done / Close Drawer
+                  </button>
+                </div>
+              )}
               {/* Preset Selector */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">

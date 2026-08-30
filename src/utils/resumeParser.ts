@@ -229,7 +229,7 @@ export function parseResumeText(rawText: string, fallbackName?: string): Candida
       } else if (currentProjName) {
         const bullet = l.replace(/^[•\-*]\s*/, '').trim();
         if (!currentProjMetric) {
-          const mMatch = bullet.match(/(\d+[\w%\+\/\s\.]*(?:reduction|latency|ms|sec|second|requests|languages|participants|rank|performance|accuracy))/i);
+          const mMatch = bullet.match(/\b(\d+(?:\.\d+)?(?:\s*%|\s*x|[Kk]\+?|\+)?\s*(?:reduction|latency|ms|sec(?:ond)?s?|requests?|languages?|participants?|rank|performance|accuracy|mins?))\b/i);
           if (mMatch) currentProjMetric = mMatch[0].trim();
         }
         if (bullet.length > 10) currentProjDesc += (currentProjDesc ? ' ' : '') + bullet;
