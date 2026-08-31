@@ -46,6 +46,9 @@ export const LaunchSessionModal: React.FC<LaunchSessionModalProps> = ({
     },
   ];
 
+  const onCompleteRef = React.useRef(onComplete);
+  onCompleteRef.current = onComplete;
+
   useEffect(() => {
     if (!isOpen) {
       setCurrentStep(0);
@@ -56,7 +59,7 @@ export const LaunchSessionModal: React.FC<LaunchSessionModalProps> = ({
     const timer2 = setTimeout(() => setCurrentStep(2), 800);
     const timer3 = setTimeout(() => setCurrentStep(3), 1200);
     const timer4 = setTimeout(() => {
-      onComplete();
+      onCompleteRef.current();
     }, 1700);
 
     return () => {
@@ -65,7 +68,7 @@ export const LaunchSessionModal: React.FC<LaunchSessionModalProps> = ({
       clearTimeout(timer3);
       clearTimeout(timer4);
     };
-  }, [isOpen, onComplete]);
+  }, [isOpen]); // ← only re-run when isOpen changes, not on every render
 
   if (!isOpen) return null;
 
