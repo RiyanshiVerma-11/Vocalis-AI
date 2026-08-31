@@ -1069,7 +1069,7 @@ export default function App() {
         />
 
         {/* Main Center Content Workspace */}
-        <main className="flex-1 min-w-0 p-4 sm:p-8 lg:p-10 space-y-6">
+        <main className="flex-1 min-w-0 p-2.5 sm:p-4 lg:p-5 space-y-3">
           {!inInterview ? (
             workspaceMode === 'recruiter' ? (
               <RecruiterDashboard
@@ -1085,7 +1085,7 @@ export default function App() {
               />
             )
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-3">
               {/* Top Stage: Active Interviewers Display */}
               <InterviewerStage
                 panel={activePanel}
@@ -1098,9 +1098,9 @@ export default function App() {
               />
 
               {/* Middle Grid: Transcript & Shared Context Panel */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5">
                 {/* Transcript & Response Controls */}
-                <div className="lg:col-span-7 xl:col-span-8 space-y-4">
+                <div className="lg:col-span-7 xl:col-span-8 space-y-3">
                   <TranscriptView
                     transcript={transcript}
                     isProcessing={isProcessing}

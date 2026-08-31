@@ -118,7 +118,7 @@ export const LivePanelContext: React.FC<LivePanelContextProps> = ({
   }
 
   return (
-    <div id="live-panel-context-container" className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-sm space-y-5">
+    <div id="live-panel-context-container" className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-3.5 shadow-sm space-y-3">
       {/* Top Header with Agora Mode Indicator */}
       <div className="flex items-center justify-between pb-3 border-b border-slate-100">
         <div className="flex items-center gap-2">

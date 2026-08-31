@@ -32,7 +32,10 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({
   const [expandedThoughts, setExpandedThoughts] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const timer = setTimeout(() => {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }, 100);
+    return () => clearTimeout(timer);
   }, [transcript, isProcessing]);
 
   const toggleThought = (id: string) => {
@@ -119,7 +122,7 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({
   };
 
   return (
-    <div id="transcript-view-panel" className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-4 shadow-sm flex flex-col h-[560px] sm:h-[600px]">
+    <div id="transcript-view-panel" className="bg-white rounded-2xl border border-slate-200 p-2.5 sm:p-3 shadow-sm flex flex-col h-[360px] sm:h-[400px] lg:h-[420px]">
       {/* Header */}
       <div className="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-100">
         <div className="flex items-center gap-2">
