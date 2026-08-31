@@ -239,13 +239,33 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
               AI Voice Interview Studio
             </h1>
             <p className="text-slate-400 text-[11px]">
-              Follow 3 steps: Submit Resume ➔ Select Job Track / Paste JD ➔ Launch Voice Room
+              Autonomous multi-role AI interview panel with adaptive probing, shared context, and live calibration.
             </p>
           </div>
 
           <div className="flex items-center gap-2 bg-slate-950/80 px-3 py-1.5 rounded-lg border border-slate-800 text-[11px] text-slate-300 shrink-0">
             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span className="font-mono font-bold">Sub-100ms Voice Engine</span>
+          </div>
+        </div>
+
+        {/* Feature Capabilities Badge Strip */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+          <div className="p-2 rounded-lg bg-slate-950/60 border border-slate-800 flex items-center gap-2 text-[11px] text-slate-300">
+            <Sparkles className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+            <span className="truncate">5 Specialized AI Roles</span>
+          </div>
+          <div className="p-2 rounded-lg bg-slate-950/60 border border-slate-800 flex items-center gap-2 text-[11px] text-slate-300">
+            <Zap className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span className="truncate">Real-Time Interruptible Voice</span>
+          </div>
+          <div className="p-2 rounded-lg bg-slate-950/60 border border-slate-800 flex items-center gap-2 text-[11px] text-slate-300">
+            <CheckCircle2 className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+            <span className="truncate">Shared Candidate Context</span>
+          </div>
+          <div className="p-2 rounded-lg bg-slate-950/60 border border-slate-800 flex items-center gap-2 text-[11px] text-slate-300">
+            <FileText className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <span className="truncate">Evidence Transcript Citations</span>
           </div>
         </div>
 
@@ -306,43 +326,60 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-          {/* Left 2 Cols: Paste Resume Box */}
+          {/* Left 2 Cols: Resume Section */}
           <div className="lg:col-span-2 space-y-2.5">
-            <label className="text-xs font-bold text-slate-800 flex items-center justify-between">
-              <span className="flex items-center gap-1.5">
-                <UploadCloud className="w-4 h-4 text-indigo-600" />
-                <span>Paste Your Full Resume or LinkedIn Bio:</span>
-              </span>
-              <span className="text-[11px] text-slate-400 font-normal">Auto-detects Name, Projects & Tech Stack</span>
-            </label>
-            <textarea
-              rows={4}
-              value={pastedText}
-              onChange={(e) => setPastedText(e.target.value)}
-              placeholder="Paste plain text resume here (e.g. Riyanshi Verma, B.Tech CSE Data Science, HospiSynAI, VoteWise AI, Infosys Springboard 7.0, Python, FastAPI, Docker, RAG...)"
-              className="w-full bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs text-slate-900 focus:border-indigo-600 focus:bg-white outline-none font-sans"
-            />
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-              <button
-                type="button"
-                onClick={handleApplyPastedResume}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold px-4 py-2 rounded-xl text-xs flex items-center gap-2 shadow-xs cursor-pointer transition shrink-0"
-              >
-                <Check className="w-4 h-4" />
-                <span>Parse Resume & Load Profile</span>
-              </button>
-
-              {resumeStatusMsg ? (
-                <div className="px-3 py-1.5 bg-emerald-50 border border-emerald-300 rounded-lg text-emerald-800 text-[11px] font-bold flex items-center gap-1.5 animate-in fade-in">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span>{resumeStatusMsg}</span>
+            {currentUser?.isDemo || currentUser?.email?.endsWith('@vocalis.ai') ? (
+              <div className="p-4 bg-indigo-50/80 border border-indigo-200 rounded-xl space-y-2">
+                <div className="flex items-center gap-2 text-indigo-900 font-bold text-xs">
+                  <CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0" />
+                  <span>Demo Account Active — Prefilled Resume Loaded</span>
                 </div>
-              ) : (
-                <span className="text-[11px] text-slate-500">
-                  Or choose a sample preset ➔
-                </span>
-              )}
-            </div>
+                <p className="text-[11px] text-indigo-700 leading-relaxed">
+                  You are exploring in Demo Mode with a prefilled engineering resume profile (<strong>{currentResume.fullName}</strong> — <em>{currentResume.headline}</em>). You can start the interview directly!
+                </p>
+                <div className="text-[10px] text-slate-500 italic pt-1 border-t border-indigo-100">
+                  💡 Note: Custom resume parsing and PDF uploads are enabled for registered user accounts.
+                </div>
+              </div>
+            ) : (
+              <>
+                <label className="text-xs font-bold text-slate-800 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <UploadCloud className="w-4 h-4 text-indigo-600" />
+                    <span>Paste Your Full Resume or LinkedIn Bio:</span>
+                  </span>
+                  <span className="text-[11px] text-slate-400 font-normal">Auto-detects Name, Projects & Tech Stack</span>
+                </label>
+                <textarea
+                  rows={4}
+                  value={pastedText}
+                  onChange={(e) => setPastedText(e.target.value)}
+                  placeholder="Paste plain text resume here (e.g. Riyanshi Verma, B.Tech CSE Data Science, HospiSynAI, VoteWise AI, Infosys Springboard 7.0, Python, FastAPI, Docker, RAG...)"
+                  className="w-full bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs text-slate-900 focus:border-indigo-600 focus:bg-white outline-none font-sans"
+                />
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={handleApplyPastedResume}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold px-4 py-2 rounded-xl text-xs flex items-center gap-2 shadow-xs cursor-pointer transition shrink-0"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>Parse Resume & Load Profile</span>
+                  </button>
+
+                  {resumeStatusMsg ? (
+                    <div className="px-3 py-1.5 bg-emerald-50 border border-emerald-300 rounded-lg text-emerald-800 text-[11px] font-bold flex items-center gap-1.5 animate-in fade-in">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      <span>{resumeStatusMsg}</span>
+                    </div>
+                  ) : (
+                    <span className="text-[11px] text-slate-500">
+                      Or choose a sample preset ➔
+                    </span>
+                  )}
+                </div>
+              </>
+            )}
           </div>
 
           {/* Right 1 Col: Active Candidate Profile Summary */}

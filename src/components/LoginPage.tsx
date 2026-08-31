@@ -84,6 +84,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         targetTitle: preset.targetTitle,
         avatarInitials: preset.initials,
         isLoggedIn: true,
+        isDemo: true,
       };
 
       onLoginSuccess(user);

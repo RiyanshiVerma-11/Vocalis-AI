@@ -1,79 +1,104 @@
 import React, { useState } from 'react';
-import { ShieldCheck, Info, X, Sparkles } from 'lucide-react';
+import { ShieldCheck, Info, Sparkles, Bot, Scale, BrainCircuit, FileCheck, CheckCircle2 } from 'lucide-react';
 
 export const AIDisclosureBanner: React.FC = () => {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [isDismissed, setIsDismissed] = useState(false);
-
-  if (isDismissed) return null;
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   return (
-    <div id="ai-disclosure-banner" className="bg-slate-950 text-slate-300 border-b border-slate-800/70 text-xs transition-all">
-      <div className="w-full max-w-[1920px] mx-auto px-4 sm:px-8 lg:px-12 py-1.5 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 uppercase tracking-wider">
-            <Sparkles className="w-3 h-3 text-indigo-400" /> AI Interactive Demo
-          </span>
-          <p className="text-slate-400 text-xs">
-            <strong className="text-slate-200">Synthetic Voice Panel:</strong> You are interviewing with autonomous AI interviewers representing distinct functional roles.
-          </p>
-        </div>
+    <>
+      <div id="ai-disclosure-banner" className="bg-slate-950 text-slate-300 border-b border-indigo-900/40 text-xs shadow-inner">
+        <div className="w-full max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 py-2 flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 uppercase tracking-wider shadow-xs">
+              <Bot className="w-3.5 h-3.5 text-indigo-400" /> Mandatory AI Disclosure
+            </span>
+            <p className="text-slate-300 text-xs font-medium">
+              <strong className="text-white">Autonomous Synthetic Voice Panel:</strong> You are interacting with dynamic AI interviewers (No human evaluators present).
+            </p>
+          </div>
 
-        <div className="flex items-center gap-3 shrink-0">
-          <button
-            id="btn-disclosure-details"
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="text-[11px] font-medium text-slate-400 hover:text-white flex items-center gap-1 transition-colors cursor-pointer"
-          >
-            <Info className="w-3 h-3 text-indigo-400" />
-            {isExpanded ? 'Hide Info' : 'Guidelines & Ethics'}
-          </button>
-          <button
-            id="btn-dismiss-disclosure"
-            onClick={() => setIsDismissed(true)}
-            aria-label="Dismiss banner"
-            className="text-slate-500 hover:text-slate-300 p-0.5 rounded transition-colors cursor-pointer"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
+          <div className="flex items-center gap-3 shrink-0">
+            <span className="hidden md:inline-flex items-center gap-1 text-[11px] text-emerald-400 font-mono">
+              <ShieldCheck className="w-3.5 h-3.5" /> 100% Evidence & Quote-Backed Scoring
+            </span>
+            <button
+              id="btn-disclosure-details"
+              onClick={() => setIsModalOpen(true)}
+              className="text-[11px] font-bold text-indigo-300 hover:text-white bg-indigo-950/80 hover:bg-indigo-900 px-2.5 py-1 rounded-lg border border-indigo-700/60 flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Info className="w-3.5 h-3.5 text-indigo-400" />
+              <span>AI System & Ethics Specs</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      {isExpanded && (
-        <div id="disclosure-expanded-panel" className="bg-slate-900 border-t border-slate-800 px-4 sm:px-8 lg:px-12 py-3.5 text-xs text-slate-300 shadow-xl">
-          <div className="w-full max-w-[1920px] mx-auto grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="space-y-1 p-3 rounded-xl bg-slate-950/60 border border-slate-800/80">
-              <div className="flex items-center gap-1.5 text-white font-semibold text-xs">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Real-Time Sub-100ms Voice</span>
+      {/* AI System Architecture & Ethics Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-[110] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl p-6 sm:p-7 shadow-2xl text-white space-y-5 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+                  <Scale className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-white">AI Transparency & Disclosure Notice</h3>
+                  <p className="text-xs text-slate-400">Compliance with Autonomous Synthetic Voice Interview Standards</p>
+                </div>
               </div>
-              <p className="text-slate-400 text-[11px] leading-relaxed">
-                Interviews are interactive. You can speak naturally or barge-in at any time to clarify trade-offs.
-              </p>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition cursor-pointer text-xs"
+              >
+                ✕ Close
+              </button>
             </div>
 
-            <div className="space-y-1 p-3 rounded-xl bg-slate-950/60 border border-slate-800/80">
-              <div className="flex items-center gap-1.5 text-white font-semibold text-xs">
-                <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Multi-Role AI Panel</span>
+            <div className="space-y-4 text-xs text-slate-300 leading-relaxed">
+              <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/80 space-y-1.5">
+                <div className="flex items-center gap-2 text-indigo-400 font-bold text-xs uppercase tracking-wider">
+                  <Bot className="w-4 h-4" />
+                  <span>1. Autonomous Multi-Role Panelists</span>
+                </div>
+                <p className="text-slate-400">
+                  All panel members (Technical Architect, Product Manager, VP of Engineering, Client Director, Talent Psychologist) are generated by collaborative LLMs and neural TTS models. No human interviewers are on the call.
+                </p>
               </div>
-              <p className="text-slate-400 text-[11px] leading-relaxed">
-                4 distinct personas (Architect, Product VP, Engineering Director, Security Lead) deliberate backstage in real time.
-              </p>
+
+              <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/80 space-y-1.5">
+                <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs uppercase tracking-wider">
+                  <BrainCircuit className="w-4 h-4" />
+                  <span>2. Dynamic Adaptation & Shared Context</span>
+                </div>
+                <p className="text-slate-400">
+                  Questions are generated dynamically based on your spoken responses, identified ambiguities, and resume claims. A shared backstage memory synchronizes insights between all 5 roles.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/80 space-y-1.5">
+                <div className="flex items-center gap-2 text-purple-400 font-bold text-xs uppercase tracking-wider">
+                  <FileCheck className="w-4 h-4" />
+                  <span>3. Verifiable Evidence-Linked Scorecards</span>
+                </div>
+                <p className="text-slate-400">
+                  Every score, hiring recommendation, and identified strength/contradiction is directly backed by verbatim transcript quotes and timestamped citations to prevent hallucinated feedback.
+                </p>
+              </div>
             </div>
 
-            <div className="space-y-1 p-3 rounded-xl bg-slate-950/60 border border-slate-800/80">
-              <div className="flex items-center gap-1.5 text-white font-semibold text-xs">
-                <Info className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Quote-Backed Scorecard</span>
-              </div>
-              <p className="text-slate-400 text-[11px] leading-relaxed">
-                Generates evidence scorecards with transcript citations after every session.
-              </p>
+            <div className="pt-2 flex items-center justify-between border-t border-slate-800">
+              <span className="text-[11px] text-slate-400 font-mono">Status: Active & Transparent</span>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-4 py-2 rounded-xl text-xs transition cursor-pointer"
+              >
+                I Understand & Acknowledge
+              </button>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };

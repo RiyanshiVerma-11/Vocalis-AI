@@ -210,16 +210,20 @@ export const InterviewerStage: React.FC<InterviewerStageProps> = ({
 
       {/* Backstage Rationale & Deliberation Sub-Banner */}
       {(lastTurnTakingReason || lastInternalThought) && (
-        <div className="mt-3.5 p-3 rounded-xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 text-xs text-slate-600">
-          <div className="flex items-center gap-2">
-            <MessageSquare className="w-4 h-4 text-indigo-600 shrink-0" />
-            <span>
-              <strong className="text-slate-900">Panel Deliberation Rationale:</strong>{' '}
-              {lastTurnTakingReason || 'Next interviewer selected based on cross-role balance.'}
+        <div className="mt-3 p-3.5 rounded-xl bg-gradient-to-r from-slate-900 to-indigo-950 border border-slate-800 text-white flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs shadow-md">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="p-1.5 rounded-lg bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 shrink-0 font-bold font-mono text-[10px] uppercase flex items-center gap-1">
+              <Sparkles className="w-3 h-3 text-indigo-400" /> Turn-Taking
             </span>
+            <div className="min-w-0">
+              <p className="font-semibold text-slate-200 truncate">
+                <strong className="text-white">Deliberation:</strong>{' '}
+                {lastTurnTakingReason || 'Next interviewer selected dynamically based on candidate response and role specializations.'}
+              </p>
+            </div>
           </div>
           {lastInternalThought && (
-            <span className="text-[11px] text-slate-500 italic bg-white px-2 py-1 rounded border border-slate-200 truncate max-w-md">
+            <span className="text-[11px] text-slate-300 italic bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-700 max-w-lg truncate shrink-0">
               "{lastInternalThought}"
             </span>
           )}

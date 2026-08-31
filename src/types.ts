@@ -242,5 +242,6 @@ export interface UserSession {
   targetTitle?: string;
   avatarInitials: string;
   isLoggedIn: boolean;
+  isDemo?: boolean;
 }
 
