@@ -3,7 +3,7 @@ import { InterviewScenario, Interviewer, InterviewerRole, DifficultyLevel, Candi
 import { INTERVIEW_SCENARIOS } from '../data/scenarios';
 import { ALL_INTERVIEWERS } from '../data/interviewers';
 import { RESUME_PRESETS, createDefaultCandidateResume } from '../data/resumes';
-import { parseResumeText } from '../utils/resumeParser';
+import { parseResumeTextAsync } from '../utils/resumeParser';
 import { generateDynamicPanel } from '../utils/dynamicPanelGenerator';
 import {
   Play,
@@ -163,16 +163,25 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
   };
 
   const [resumeStatusMsg, setResumeStatusMsg] = useState<string | null>(null);
+  const [isParsing, setIsParsing] = useState(false);
 
-  const handleApplyPastedResume = () => {
+  const handleApplyPastedResume = async () => {
     if (!pastedText.trim()) return;
-    const parsed = parseResumeText(pastedText, candidateName || currentCandidateName || 'Candidate');
-    setCustomResume(parsed);
-    setSelectedResumeId(parsed.id);
-    setCandidateName(parsed.fullName);
-    setTargetRole(parsed.headline);
-    setResumeStatusMsg(`✓ Resume Loaded: ${parsed.fullName} (${parsed.headline}) — ${parsed.notableProjects?.length || 0} Projects Detected`);
-    setTimeout(() => setResumeStatusMsg(null), 5000);
+    setIsParsing(true);
+    setResumeStatusMsg('⏳ AI parsing your resume...');
+    try {
+      const parsed = await parseResumeTextAsync(pastedText, candidateName || currentCandidateName || 'Candidate');
+      setCustomResume(parsed);
+      setSelectedResumeId(parsed.id);
+      setCandidateName(parsed.fullName);
+      setTargetRole(parsed.headline);
+      setResumeStatusMsg(`✓ Resume Loaded: ${parsed.fullName} (${parsed.headline}) — ${parsed.notableProjects?.length || 0} Projects Detected`);
+      setTimeout(() => setResumeStatusMsg(null), 5000);
+    } catch {
+      setResumeStatusMsg('⚠️ Parse failed, try again.');
+    } finally {
+      setIsParsing(false);
+    }
   };
 
   const handleCustomJdChange = (val: string) => {
@@ -361,10 +370,20 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
                   <button
                     type="button"
                     onClick={handleApplyPastedResume}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold px-4 py-2 rounded-xl text-xs flex items-center gap-2 shadow-xs cursor-pointer transition shrink-0"
+                    disabled={isParsing}
+                    className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-extrabold px-4 py-2 rounded-xl text-xs flex items-center gap-2 shadow-xs cursor-pointer transition shrink-0"
                   >
-                    <Check className="w-4 h-4" />
-                    <span>Parse Resume & Load Profile</span>
+                    {isParsing ? (
+                      <>
+                        <Sparkles className="w-4 h-4 animate-spin" />
+                        <span>AI Parsing Resume...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-4 h-4" />
+                        <span>Parse Resume & Load Profile</span>
+                      </>
+                    )}
                   </button>
 
                   {resumeStatusMsg ? (
