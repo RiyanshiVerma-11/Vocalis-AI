@@ -26,6 +26,7 @@ interface ResumeDrawerProps {
   onUpdateResume?: (resume: CandidateResume) => void;
   sharedContext?: SharedCandidateContext;
   questionHistory?: QuestionHistoryItem[];
+  isDemo?: boolean;
 }
 
 export const ResumeDrawer: React.FC<ResumeDrawerProps> = ({
@@ -36,6 +37,7 @@ export const ResumeDrawer: React.FC<ResumeDrawerProps> = ({
   onUpdateResume,
   sharedContext,
   questionHistory,
+  isDemo = false,
 }) => {
   const [activeTab, setActiveTab] = useState<'resume' | 'memory'>('resume');
   const [isEditing, setIsEditing] = useState(false);
@@ -169,41 +171,55 @@ export const ResumeDrawer: React.FC<ResumeDrawerProps> = ({
                   </button>
                 </div>
               )}
-              {/* Preset Selector */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-900 uppercase tracking-wider text-[11px]">
-                    Switch Candidate Profile Preset
-                  </span>
-                  <button
-                    onClick={() => setShowRawPaste(!showRawPaste)}
-                    className="text-indigo-600 hover:text-indigo-700 font-semibold underline text-[11px] cursor-pointer"
-                  >
-                    {showRawPaste ? 'Hide Raw Input' : 'Paste Custom Resume'}
-                  </button>
+              {/* Preset Selector — only shown for demo accounts */}
+              {isDemo ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-900 uppercase tracking-wider text-[11px]">
+                      Demo Candidate Profiles
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {RESUME_PRESETS.map((preset) => {
+                      const isSelected = currentResume.id === preset.id;
+                      return (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => handleSelectPreset(preset)}
+                          className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                            isSelected
+                              ? 'bg-indigo-50/80 border-indigo-600 ring-1 ring-indigo-600/30'
+                              : 'bg-white border-slate-200 hover:border-slate-300'
+                          }`}
+                        >
+                          <p className="font-bold text-slate-900 truncate">{preset.fullName}</p>
+                          <p className="text-[10px] text-slate-500 truncate">{preset.headline}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  {RESUME_PRESETS.map((preset) => {
-                    const isSelected = currentResume.id === preset.id;
-                    return (
-                      <button
-                        key={preset.id}
-                        type="button"
-                        onClick={() => handleSelectPreset(preset)}
-                        className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
-                          isSelected
-                            ? 'bg-indigo-50/80 border-indigo-600 ring-1 ring-indigo-600/30'
-                            : 'bg-white border-slate-200 hover:border-slate-300'
-                        }`}
-                      >
-                        <p className="font-bold text-slate-900 truncate">{preset.fullName}</p>
-                        <p className="text-[10px] text-slate-500 truncate">{preset.headline}</p>
-                      </button>
-                    );
-                  })}
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-900 uppercase tracking-wider text-[11px]">
+                      Your Resume Profile
+                    </span>
+                    <button
+                      onClick={() => setShowRawPaste(!showRawPaste)}
+                      className="text-indigo-600 hover:text-indigo-700 font-semibold underline text-[11px] cursor-pointer"
+                    >
+                      {showRawPaste ? 'Hide' : 'Update Resume'}
+                    </button>
+                  </div>
+                  <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-xs text-indigo-900 space-y-1">
+                    <p className="font-extrabold">{currentResume.fullName}</p>
+                    <p className="text-indigo-700 font-medium">{currentResume.headline}</p>
+                    <p className="text-slate-500 line-clamp-2 text-[11px]">{currentResume.summary}</p>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Paste Raw Text Section */}
               {showRawPaste && (

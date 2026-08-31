@@ -1181,6 +1181,7 @@ export default function App() {
         onUpdateResume={handleUpdateResume}
         onResumeChange={handleUpdateResume}
         questionHistory={sharedContext.questionHistory}
+        isDemo={currentUser?.isDemo ?? false}
       />
 
       {/* Final Assessment Modal */}
