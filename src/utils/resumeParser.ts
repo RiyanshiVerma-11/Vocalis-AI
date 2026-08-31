@@ -190,7 +190,11 @@ export function parseResumeText(rawText: string, fallbackName?: string): Candida
   // Project headers like "HospiSynAI (Rank 4 / 4200+)" or "VoteWise AI (Rank 30 / 26,090+)"
   // They start with a capital letter, are NOT bullet lines, and appear before bullet description lines.
   const notableProjects: Array<{ name: string; description: string; metrics: string }> = [];
-  const projSectionMatch = text.match(/(?:PROJECTS|NOTABLE PROJECTS|KEY PROJECTS)([\s\S]*?)(?=(?:EXPERIENCE|INTERNSHIP|ACHIEVEMENTS|CERTIFICATIONS|SKILLS|EDUCATION|$))/i);
+
+  // Try to extract PROJECTS section — stop at EXPERIENCE/INTERNSHIP/ACHIEVEMENTS/CERTIFICATIONS/end
+  const projSectionMatch = text.match(
+    /(?:PROJECTS|NOTABLE PROJECTS|KEY PROJECTS)[^\n]*\n([\s\S]*?)(?=\n\s*(?:EXPERIENCE|INTERNSHIP|WORK EXPERIENCE|EMPLOYMENT|ACHIEVEMENTS|CERTIFICATIONS|$))/i
+  );
   const rawProjBlock = projSectionMatch ? projSectionMatch[1] : '';
 
   if (rawProjBlock.trim()) {
@@ -202,14 +206,19 @@ export function parseResumeText(rawText: string, fallbackName?: string): Candida
     const getHeaderName = (line: string): string | null => {
       if (/^[•\-*]/.test(line)) return null;
       const stripped = line
-        .replace(/\[.*?\]/g, '')
-        .replace(/\(Rank[^)]*\)/gi, '')
-        .replace(/\|.*$/, '')
+        .replace(/\[.*?\]/g, '')          // remove [GitHub], [Live Demo]
+        .replace(/\(Rank[^)]*\)/gi, '')   // remove (Rank 4 / 4200+)
+        .replace(/\(\d[^)]*\)/g, '')       // remove other (numbers...)
+        .replace(/\|.*$/, '')             // remove | and everything after
         .trim();
       if (stripped.length < 2) return null;
-      if (/^\d{4}/.test(stripped)) return null;
+      if (/^\d{4}/.test(stripped)) return null;  // skip year lines
       if (/^(PROJECTS|ACHIEVEMENTS|CERTIFICATIONS|EXPERIENCE|EDUCATION|INTERNSHIP|SKILLS|TECHNICAL)/i.test(stripped)) return null;
-      if (/^[A-Z]/.test(stripped)) return stripped;
+      // Accept: starts with capital, has at least one letter, not purely numeric
+      // Handles "HospiSynAI", "VoteWise AI", "CommAI", etc.
+      if (/^[A-Z]/.test(stripped) && /[A-Za-z]{2,}/.test(stripped) && stripped.split(' ').length <= 6) {
+        return stripped;
+      }
       return null;
     };
 
