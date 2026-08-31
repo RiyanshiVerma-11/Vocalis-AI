@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Mic, MicOff, Send, Hand, Sparkles, Volume2, AudioLines, Pause, Play, Clock } from 'lucide-react';
+import { Mic, MicOff, Send, Hand, Sparkles, Volume2, AudioLines, Pause, Play, Clock, X } from 'lucide-react';
 
 interface VoiceControllerProps {
   isListening: boolean;
@@ -204,6 +204,17 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
             disabled={isProcessing}
             className="flex-1 bg-transparent text-slate-900 placeholder-slate-400 text-xs px-2.5 py-1.5 outline-none"
           />
+
+          {textInput.trim() && (
+            <button
+              type="button"
+              onClick={() => setTextInput('')}
+              className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition cursor-pointer"
+              title="Clear input text"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
 
           <button
             id="btn-submit-response"
