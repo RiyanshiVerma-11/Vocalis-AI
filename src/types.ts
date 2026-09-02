@@ -17,6 +17,11 @@ export interface Interviewer {
   company: string;
   avatarColor: string;
   avatarIcon: string;
+  avatarUrl?: string;
+  /** CSS object-position value to perfectly frame the face in the tile, e.g. '50% 25%' */
+  avatarObjectPosition?: string;
+  /** HeyGen digital human avatar ID for real-time video stream */
+  heygenAvatarId?: string;
   voiceName: 'Fenrir' | 'Kore' | 'Zephyr' | 'Puck' | 'Aoede' | 'Charon';
   pitch: number;
   rate: number;
@@ -82,6 +87,22 @@ export interface QuestionHistoryItem {
   timestamp: number;
 }
 
+export interface DebateDialogueStep {
+  speakerId: string;
+  speakerName: string;
+  speakerRole: InterviewerRole;
+  speech: string;
+  internalThought?: string;
+}
+
+export type PanelistReactionType = 'nodding' | 'taking_notes' | 'skeptical' | 'intrigued' | 'concerned';
+
+export interface AmbientPanelReaction {
+  reactionType: PanelistReactionType;
+  label: string;
+  timestamp?: number;
+}
+
 export interface TranscriptMessage {
   id: string;
   speakerId: string; // 'candidate' or interviewer id
@@ -91,6 +112,8 @@ export interface TranscriptMessage {
   timestamp: number;
   audioDurationMs?: number;
   interrupted?: boolean;
+  isDebateTurn?: boolean;
+  debatePartnerName?: string;
   detectedFlags?: AnalysisFlag[];
   internalThought?: string;
   difficultyAtTurn?: DifficultyLevel;
@@ -114,7 +137,7 @@ export interface AnalysisFlag {
   suggestedProbe?: string;
 }
 
-export type PanelStrictness = 'Supportive' | 'Balanced' | 'Strict' | 'Relentless Bar Raiser';
+export type PanelStrictness = 'Supportive' | 'Balanced' | 'Strict' | 'Relentless Bar Raiser' | 'Standard' | 'Exacting';
 
 export interface RubricWeights {
   technicalArchitecture: number; // e.g. 30 (percentage)
@@ -132,6 +155,46 @@ export interface JargonAuditResult {
   auditSummary: string;
 }
 
+export interface ArchitectureNode {
+  id: string;
+  type: 'client' | 'gateway' | 'service' | 'cache' | 'queue' | 'database' | 'storage' | 'worker';
+  label: string;
+  technology: string;
+  x: number;
+  y: number;
+  specs?: string;
+}
+
+export interface ArchitectureEdge {
+  id: string;
+  from: string;
+  to: string;
+  label?: string;
+  protocol?: 'HTTPS' | 'gRPC' | 'Kafka' | 'WebSocket' | 'SQL' | 'TCP';
+}
+
+export interface ArchitectureCanvasState {
+  nodes: ArchitectureNode[];
+  edges: ArchitectureEdge[];
+  lastSyncedAt?: number;
+  diagramSummary?: string;
+  rawNotes?: string;
+}
+
+export interface CustomCompanyRubric {
+  id: string;
+  companyName: string;
+  targetLevel: string; // e.g. 'Google L6 Staff', 'Amazon SDE-3', 'Stripe L4'
+  strictnessRating: PanelStrictness;
+  rubricWeights: RubricWeights;
+  keySignals: string[];
+  redFlags: string[];
+  mandatoryQuestions: string[];
+  rawDocText?: string;
+  fileName?: string;
+  uploadedAt?: string;
+}
+
 export interface SharedCandidateContext {
   candidateName: string;
   candidateResume: CandidateResume;
@@ -141,6 +204,7 @@ export interface SharedCandidateContext {
   difficultyScore: number; // 1 to 10
   panelStrictness?: PanelStrictness;
   rubricWeights?: RubricWeights;
+  customRubric?: CustomCompanyRubric;
   runningSummary: string;
   demonstratedStrengths: string[];
   identifiedWeaknesses: string[];
@@ -154,6 +218,7 @@ export interface SharedCandidateContext {
     lastStrategy: AdaptiveStrategy;
     resumePointReferenced?: string;
   };
+  architectureDiagram?: ArchitectureCanvasState;
   competencyScores: {
     technicalArchitecture: number; // 0-100
     businessAndCustomerImpact: number; // 0-100
@@ -183,6 +248,7 @@ export interface InterviewScenario {
   difficulty: DifficultyLevel;
   exampleDynamics: string;
   customConstraints?: string;
+  customRubric?: CustomCompanyRubric;
 }
 
 export interface StructuredAssessment {
@@ -193,6 +259,7 @@ export interface StructuredAssessment {
   overallScore: number; // 0-100
   panelStrictness?: PanelStrictness;
   rubricWeightsUsed?: RubricWeights;
+  customRubricUsed?: CustomCompanyRubric;
   jargonAudit?: JargonAuditResult;
   hiringRecommendation: 'Strong Hire' | 'Hire' | 'Leaning Hire' | 'Leaning No Hire' | 'Strong No Hire';
   executiveSummary: string;

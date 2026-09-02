@@ -9,6 +9,7 @@ import {
   CandidateResume,
   AppView,
   UserSession,
+  PanelistReactionType,
 } from './types';
 import { ALL_INTERVIEWERS } from './data/interviewers';
 import { INTERVIEW_SCENARIOS } from './data/scenarios';
@@ -25,10 +26,17 @@ import { LandingPage } from './components/LandingPage';
 import { LoginPage } from './components/LoginPage';
 import { StudioSidebar } from './components/StudioSidebar';
 import { RecruiterDashboard } from './components/RecruiterDashboard';
+import { SkillProgressionHub } from './components/SkillProgressionHub';
+import { TurnTimeMachineModal } from './components/TurnTimeMachineModal';
+import { SystemDesignWhiteboardModal } from './components/SystemDesignWhiteboardModal';
+import { ArchitectureCanvasState } from './types';
 import { requestInterviewTurn, generateFinalAssessment, fetchTTSAudio, fetchAgoraToken, startAgoraAgent, stopAgoraAgent } from './services/apiService';
+import { sessionHistoryService } from './services/sessionHistoryService';
+import { turnForkService, TurnCheckpoint } from './services/turnForkService';
 import { agoraVoiceEngine } from './services/agoraVoiceEngine';
 import { generatePersonalizedOpening } from './utils/resumeParser';
 import { generateDynamicPanel } from './utils/dynamicPanelGenerator';
+import { analyzeSemanticPause, boostTechnicalJargon } from './utils/jargonBooster';
 import { ArrowLeft, Sparkles, ShieldCheck, FileText, Home, User, LogOut, LogIn, PanelLeft, Building2, GraduationCap, Menu, Radio, Activity } from 'lucide-react';
 import { PWAInstallPrompt } from './components/PWAInstallPrompt';
 import { ToastNotification, ToastMessage } from './components/ToastNotification';
@@ -84,9 +92,9 @@ export default function App() {
   const [sharedContext, setSharedContext] = useState<SharedCandidateContext>({
     candidateName: candidateResume.fullName,
     targetRole: candidateResume.headline || 'Senior / Staff Software Engineer',
-    targetLevel: 'Senior',
-    currentDifficulty: 'Senior',
-    difficultyScore: 7,
+    targetLevel: 'Intermediate',
+    currentDifficulty: 'Intermediate',
+    difficultyScore: 5,
     runningSummary: 'Interview initiated. Panel ready.',
     demonstratedStrengths: [],
     identifiedWeaknesses: [],
@@ -115,15 +123,31 @@ export default function App() {
   const [currentInterimTranscript, setCurrentInterimTranscript] = useState('');
   const [lastTurnTakingReason, setLastTurnTakingReason] = useState<string>('');
   const [lastInternalThought, setLastInternalThought] = useState<string>('');
+  const [ambientReactions, setAmbientReactions] = useState<Record<string, { reactionType: PanelistReactionType; label: string }>>({});
 
   // Silence Tolerance & Floor Control (Fixes Accidental Cut-offs / VAD Sensitivity)
-  const [silenceTimeoutMs, setSilenceTimeoutMs] = useState<number>(4000); // 4s relaxed default
+  const [silenceTimeoutMs, setSilenceTimeoutMs] = useState<number>(8000); // 8s relaxed default (with VAD volume guard)
   const [isFloorHeld, setIsFloorHeld] = useState<boolean>(false);
   const [isFocusMode, setIsFocusMode] = useState<boolean>(false);
+  const [thoughtGraceActive, setThoughtGraceActive] = useState<boolean>(false);
+  const [thoughtGraceReason, setThoughtGraceReason] = useState<string>('');
+  const [backchannelDetectedPhrase, setBackchannelDetectedPhrase] = useState<string | null>(null);
+
   const silenceTimeoutMsRef = useRef<number>(silenceTimeoutMs);
   silenceTimeoutMsRef.current = silenceTimeoutMs;
   const isFloorHeldRef = useRef<boolean>(isFloorHeld);
   isFloorHeldRef.current = isFloorHeld;
+  const candidateVolumeRef = useRef<number>(0);
+
+  // Setup Backchannel Listener Callback on mount
+  useEffect(() => {
+    agoraVoiceEngine.setCallbacks({
+      onBackchannelDetected: (phrase) => {
+        setBackchannelDetectedPhrase(phrase);
+        setTimeout(() => setBackchannelDetectedPhrase(null), 2500);
+      },
+    });
+  }, []);
 
   // Assessment Modal
   const [assessment, setAssessment] = useState<StructuredAssessment | null>(null);
@@ -134,6 +158,9 @@ export default function App() {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [isLaunchingSession, setIsLaunchingSession] = useState(false);
   const [sessionSeconds, setSessionSeconds] = useState(0);
+  const [showProgressionHub, setShowProgressionHub] = useState(false);
+  const [activeCheckpoint, setActiveCheckpoint] = useState<TurnCheckpoint | null>(null);
+  const [isWhiteboardOpen, setIsWhiteboardOpen] = useState(false);
 
   const addToast = useCallback((title: string, message: string, type: 'success' | 'info' | 'warning' | 'error' = 'success') => {
     const id = `toast-${Date.now()}-${Math.random()}`;
@@ -153,10 +180,10 @@ export default function App() {
       interval = setInterval(() => {
         setSessionSeconds((s) => s + 1);
       }, 1000);
-    } else {
-      setSessionSeconds(0);
     }
-    return () => clearInterval(interval);
+    return () => {
+      if (interval) clearInterval(interval);
+    };
   }, [inInterview]);
 
   const formatTimer = (secs: number) => {
@@ -177,8 +204,63 @@ export default function App() {
   sharedContextRef.current = sharedContext;
   const isProcessingRef = useRef<boolean>(isProcessing);
   isProcessingRef.current = isProcessing;
+  const isAISpeakingRef = useRef<boolean>(isAISpeaking);
+  isAISpeakingRef.current = isAISpeaking;
   const speechSilenceTimerRef = useRef<any>(null);
   const currentTurnIdRef = useRef<number>(0);
+
+  // Intelligent VAD Volume & Semantic Floor Guarded Auto-Submit
+  // Prevents premature cut-offs: checks microphone audio volume and dynamic thought completion
+  const scheduleSilenceAutoSubmit = useCallback((fullText: string) => {
+    if (speechSilenceTimerRef.current) {
+      clearTimeout(speechSilenceTimerRef.current);
+      speechSilenceTimerRef.current = null;
+    }
+
+    // STRICT GUARD: If AI is actively speaking, processing, or floor held, DO NOT auto-submit!
+    if (!fullText.trim() || isProcessingRef.current || isFloorHeldRef.current || isAISpeakingRef.current) {
+      return;
+    }
+
+    const currentTimeout = silenceTimeoutMsRef.current;
+    if (currentTimeout <= 0) {
+      // Manual submit mode: no timer will automatically cut the candidate off
+      setThoughtGraceActive(false);
+      setThoughtGraceReason('');
+      return;
+    }
+
+    // Dynamic Semantic Pause Analysis
+    const pauseAnalysis = analyzeSemanticPause(fullText, currentTimeout);
+    if (pauseAnalysis.isIncompleteThought) {
+      setThoughtGraceActive(true);
+      setThoughtGraceReason(pauseAnalysis.reason || '');
+    } else {
+      setThoughtGraceActive(false);
+      setThoughtGraceReason('');
+    }
+
+    const effectiveTimeout = currentTimeout + pauseAnalysis.recommendedGraceMs;
+
+    const checkAndSubmit = () => {
+      // Guard 1: If candidate is actively talking/making sound (volume > 8), DO NOT SUBMIT!
+      if (candidateVolumeRef.current > 8) {
+        console.log(`[AutoSubmit Guard] Candidate active speech detected (vol: ${candidateVolumeRef.current}%). Deferring submit.`);
+        speechSilenceTimerRef.current = setTimeout(checkAndSubmit, 2500);
+        return;
+      }
+
+      // Guard 2: Still processing, floor held, or AI is currently speaking
+      if (isProcessingRef.current || isFloorHeldRef.current || isAISpeakingRef.current) {
+        return;
+      }
+
+      setThoughtGraceActive(false);
+      handleCandidateResponse(fullText);
+    };
+
+    speechSilenceTimerRef.current = setTimeout(checkAndSubmit, effectiveTimeout);
+  }, []);
 
   // Immediate Interruption Handler (synchronously cancels AI audio & in-flight requests, turns ON mic)
   const handleInterrupt = useCallback(() => {
@@ -194,26 +276,16 @@ export default function App() {
 
     setIsAISpeaking(false);
     setIsProcessing(false);
+    setThoughtGraceActive(false);
 
     // 3. Automatically activate mic if not listening so candidate can speak immediately
     agoraVoiceEngine.clearSpeechBuffer();
+    setCurrentInterimTranscript('');
     agoraVoiceEngine.startSpeechRecognition(
       (fullText) => {
-        setCurrentInterimTranscript(fullText);
-        if (speechSilenceTimerRef.current) clearTimeout(speechSilenceTimerRef.current);
-        
-        // Auto-submit after silence ONLY if floor is not held and timeout > 0
-        if (
-          fullText.trim() &&
-          !isProcessingRef.current &&
-          !isFloorHeldRef.current &&
-          silenceTimeoutMsRef.current > 0
-        ) {
-          speechSilenceTimerRef.current = setTimeout(() => {
-            if (!isProcessingRef.current && !isFloorHeldRef.current) {
-              handleCandidateResponse(fullText);
-            }
-          }, silenceTimeoutMsRef.current);
+        if (!isAISpeakingRef.current && !isProcessingRef.current) {
+          setCurrentInterimTranscript(fullText);
+          scheduleSilenceAutoSubmit(fullText);
         }
       },
       () => {
@@ -225,11 +297,14 @@ export default function App() {
     ).then((started) => {
       if (started) {
         setIsListening(true);
-        agoraVoiceEngine.initMicVisualizer((vol) => setCandidateVolume(vol));
+        agoraVoiceEngine.initMicVisualizer((vol) => {
+          candidateVolumeRef.current = vol;
+          setCandidateVolume(vol);
+        });
       }
     }).catch(() => {});
 
-    setErrorToast('⚡ Interrupted active speaker — Microphone Active! Speak now.');
+    setErrorToast('Interrupted — Microphone active. Speak now.');
     setTimeout(() => setErrorToast(null), 3000);
   }, []);
 
@@ -241,6 +316,14 @@ export default function App() {
       const turnId = ++currentTurnIdRef.current;
       setIsAISpeaking(true);
       setActiveSpeakerId(interviewer.id);
+
+      // Reset candidate interim transcript and speech buffer before interviewer speaks
+      if (speechSilenceTimerRef.current) {
+        clearTimeout(speechSilenceTimerRef.current);
+        speechSilenceTimerRef.current = null;
+      }
+      agoraVoiceEngine.clearSpeechBuffer();
+      setCurrentInterimTranscript('');
 
       try {
         // Race Gemini TTS with a 400ms timeout for instant speech start
@@ -277,6 +360,13 @@ export default function App() {
       } finally {
         if (currentTurnIdRef.current === turnId) {
           setIsAISpeaking(false);
+          // Clean speech buffer & clear interim transcript when AI finishes speaking
+          agoraVoiceEngine.clearSpeechBuffer();
+          setCurrentInterimTranscript('');
+          if (speechSilenceTimerRef.current) {
+            clearTimeout(speechSilenceTimerRef.current);
+            speechSilenceTimerRef.current = null;
+          }
         }
       }
     },
@@ -291,7 +381,7 @@ export default function App() {
     targetRole: string;
     initialDifficulty: DifficultyLevel;
     candidateResume: CandidateResume;
-    panelStrictness?: 'Supportive' | 'Balanced' | 'Strict' | 'Relentless Bar Raiser';
+    panelStrictness?: 'Supportive' | 'Balanced' | 'Strict' | 'Relentless Bar Raiser' | 'Exacting';
     rubricWeights?: {
       technicalArchitecture: number;
       businessAndCustomerImpact: number;
@@ -299,6 +389,7 @@ export default function App() {
       leadershipAndOwnership: number;
       problemSolvingAndAgility: number;
     };
+    customRubric?: any;
   }) => {
     // Prime speech synthesis engine on user click gesture
     if ('speechSynthesis' in window) {
@@ -329,15 +420,16 @@ export default function App() {
       targetLevel: config.initialDifficulty,
       currentDifficulty: config.initialDifficulty,
       difficultyScore: config.initialDifficulty === 'Staff/Principal' ? 9 : config.initialDifficulty === 'Senior' ? 7 : 5,
-      panelStrictness: config.panelStrictness || 'Balanced',
-      rubricWeights: config.rubricWeights || {
+      panelStrictness: config.customRubric?.strictnessRating || config.panelStrictness || 'Balanced',
+      rubricWeights: config.customRubric?.rubricWeights || config.rubricWeights || {
         technicalArchitecture: 30,
         businessAndCustomerImpact: 25,
         communicationAndClarity: 15,
         leadershipAndOwnership: 15,
         problemSolvingAndAgility: 15,
       },
-      runningSummary: `Scenario: ${config.scenario.title}. Candidate: ${config.candidateName}`,
+      customRubric: config.customRubric || config.scenario.customRubric,
+      runningSummary: `Scenario: ${config.scenario.title}. Candidate: ${config.candidateName}${config.customRubric ? ` (Calibrated to ${config.customRubric.companyName} Bar)` : ''}`,
       demonstratedStrengths: [],
       identifiedWeaknesses: [],
       unresolvedProbes: ['Awaiting candidate introduction & initial solution architecture'],
@@ -393,7 +485,9 @@ export default function App() {
     setLastTurnTakingReason(`Initial question opened by ${initialSpeaker.name} (${initialSpeaker.title})`);
     setLastInternalThought(`Opening scenario question calibrated for ${config.initialDifficulty} level.`);
     setActiveSpeakerId(initialSpeaker.id);
+    setSessionSeconds(0);
     setInInterview(true);
+    setIsSidebarOpen(false); // Automatically hide sidebar for max focus during live interview
     setAssessment(null);
 
     // Speak initial prompt IMMEDIATELY (<200ms delay)
@@ -413,6 +507,7 @@ export default function App() {
               uid: 1,
               interviewerName: initialSpeaker.name,
               systemPrompt: initialSpeaker.systemPrompt,
+              heygenAvatarId: initialSpeaker.heygenAvatarId,
             });
             if (agentData?.agentId) setAgoraAgentId(agentData.agentId);
             setAgoraMode(agentData?.mode === 'conversational-ai' ? 'conversational-ai' : 'rtc-transport');
@@ -448,7 +543,33 @@ export default function App() {
 
     setIsAISpeaking(false);
     setIsProcessing(true);
+    setThoughtGraceActive(false);
+    setThoughtGraceReason('');
     setCurrentInterimTranscript('');
+
+    // Clean echoed AI question text if microphone recorded the previous interviewer's speech output
+    let cleanSpeechText = speechText.trim();
+    const lastAIMsg = [...transcriptRef.current].reverse().find((t) => t.speakerId && t.speakerId !== 'candidate');
+    if (lastAIMsg && lastAIMsg.content) {
+      const aiContent = lastAIMsg.content.trim();
+      // If candidate transcript starts with or contains the AI's question text, strip it out
+      const aiWords = aiContent.split(/\s+/);
+      if (aiWords.length > 4) {
+        const lastFewWords = aiWords.slice(-4).join(' ').toLowerCase().replace(/[^a-z0-9 ]/g, '');
+        const matchIdx = cleanSpeechText.toLowerCase().replace(/[^a-z0-9 ]/g, '').indexOf(lastFewWords);
+        if (matchIdx !== -1) {
+          // Find the cut point in the original speechText string
+          const rawLastWords = aiWords.slice(-3).join(' ').toLowerCase();
+          const rawMatchIdx = cleanSpeechText.toLowerCase().lastIndexOf(rawLastWords);
+          if (rawMatchIdx !== -1) {
+            const actualCandidateInput = cleanSpeechText.slice(rawMatchIdx + rawLastWords.length).trim();
+            if (actualCandidateInput.length > 5) {
+              cleanSpeechText = actualCandidateInput;
+            }
+          }
+        }
+      }
+    }
 
     const candidateMsgId = `turn-cand-${Date.now()}`;
     const candidateMsg: TranscriptMessage = {
@@ -456,7 +577,7 @@ export default function App() {
       speakerId: 'candidate',
       speakerName: candidateName || 'Candidate',
       speakerRole: 'candidate',
-      content: speechText.trim(),
+      content: cleanSpeechText,
       timestamp: Date.now(),
       difficultyAtTurn: sharedContextRef.current.currentDifficulty,
     };
@@ -470,7 +591,7 @@ export default function App() {
         transcript: updatedTranscript,
         sharedContext: sharedContextRef.current,
         activePanel,
-        lastCandidateSpeech: speechText.trim(),
+        lastCandidateSpeech: cleanSpeechText,
         scenario,
         interrupted: false,
         userAddressedInterviewerId: selectedTargetInterviewerId,
@@ -552,37 +673,144 @@ export default function App() {
       setLastTurnTakingReason(turnResult.turnTakingReason);
       setLastInternalThought(turnResult.internalThought);
 
-      const interviewerMsg: TranscriptMessage = {
-        id: `turn-ai-${Date.now()}`,
-        speakerId: nextInterviewer.id,
-        speakerName: nextInterviewer.name,
-        speakerRole: nextInterviewer.role,
-        content: turnResult.speech,
-        timestamp: Date.now(),
-        difficultyAtTurn: turnResult.updatedDifficulty,
-        internalThought: turnResult.internalThought,
-        adaptiveStrategy: turnResult.adaptiveStrategyApplied,
-        referencedResumePoint: turnResult.resumePointReferenced,
-      };
+      // Update ambient reactions for inactive panelists
+      if (turnResult.ambientReactions) {
+        setAmbientReactions(turnResult.ambientReactions);
+      }
 
-      setTranscript((prev) => [...prev, interviewerMsg]);
-      setSelectedTargetInterviewerId(null);
+      // Check if this turn sparked a Cross-Interviewer Debate (PS11 multi-role pushback)
+      if (turnResult.isDebateExchange && Array.isArray(turnResult.debateDialogue) && turnResult.debateDialogue.length >= 2) {
+        const [step1, step2] = turnResult.debateDialogue;
+        const speaker1 = activePanel.find((i) => i.id === step1.speakerId || i.role === step1.speakerRole) || activePanel[0];
+        const speaker2 = activePanel.find((i) => i.id === step2.speakerId || i.role === step2.speakerRole) || activePanel[1] || activePanel[0];
 
-      // Speak response if not interrupted
-      if (currentTurnIdRef.current === thisTurnId) {
-        await speakInterviewerMessage(turnResult.speech, nextInterviewer);
+        // Step 1: Speaker 1 (e.g. Alex, Technical) briefly acknowledges technical solution
+        const msg1: TranscriptMessage = {
+          id: `turn-ai-d1-${Date.now()}`,
+          speakerId: speaker1.id,
+          speakerName: speaker1.name,
+          speakerRole: speaker1.role,
+          content: step1.speech,
+          timestamp: Date.now(),
+          difficultyAtTurn: turnResult.updatedDifficulty,
+          internalThought: step1.internalThought || turnResult.internalThought,
+          isDebateTurn: true,
+          debatePartnerName: speaker2.name,
+          adaptiveStrategy: 'Cross-Role Handoff',
+        };
+
+        setTranscript((prev) => [...prev, msg1]);
+        setSelectedTargetInterviewerId(null);
+        setActiveSpeakerId(speaker1.id);
+        setLastTurnTakingReason(`⚡ Committee Debate: ${speaker1.name} & ${speaker2.name} are deliberating trade-offs.`);
+        setLastInternalThought(step1.internalThought || turnResult.internalThought);
+
+        if (currentTurnIdRef.current === thisTurnId) {
+          await speakInterviewerMessage(step1.speech, speaker1);
+        }
+
+        // Brief natural pause (350ms) between committee members
+        await new Promise((resolve) => setTimeout(resolve, 350));
+
+        // Step 2: Speaker 2 (e.g. Maya, Product) pushes back and challenges candidate to resolve
+        if (currentTurnIdRef.current === thisTurnId) {
+          const msg2: TranscriptMessage = {
+            id: `turn-ai-d2-${Date.now()}`,
+            speakerId: speaker2.id,
+            speakerName: speaker2.name,
+            speakerRole: speaker2.role,
+            content: step2.speech,
+            timestamp: Date.now(),
+            difficultyAtTurn: turnResult.updatedDifficulty,
+            internalThought: step2.internalThought || turnResult.internalThought,
+            isDebateTurn: true,
+            debatePartnerName: speaker1.name,
+            adaptiveStrategy: turnResult.adaptiveStrategyApplied,
+            referencedResumePoint: turnResult.resumePointReferenced,
+          };
+
+          setTranscript((prev) => [...prev, msg2]);
+          setActiveSpeakerId(speaker2.id);
+          setLastTurnTakingReason(`⚡ Committee Debate: ${speaker2.name} challenged ${speaker1.name} on constraints & asked candidate to resolve.`);
+          setLastInternalThought(step2.internalThought || turnResult.internalThought);
+
+          await speakInterviewerMessage(step2.speech, speaker2);
+        }
+      } else {
+        // Standard Single-Speaker Follow-Up Turn
+        const interviewerMsg: TranscriptMessage = {
+          id: `turn-ai-${Date.now()}`,
+          speakerId: nextInterviewer.id,
+          speakerName: nextInterviewer.name,
+          speakerRole: nextInterviewer.role,
+          content: turnResult.speech,
+          timestamp: Date.now(),
+          difficultyAtTurn: turnResult.updatedDifficulty,
+          internalThought: turnResult.internalThought,
+          adaptiveStrategy: turnResult.adaptiveStrategyApplied,
+          referencedResumePoint: turnResult.resumePointReferenced,
+        };
+
+        setTranscript((prev) => [...prev, interviewerMsg]);
+        setSelectedTargetInterviewerId(null);
+
+        // Speak response if not interrupted
+        if (currentTurnIdRef.current === thisTurnId) {
+          await speakInterviewerMessage(turnResult.speech, nextInterviewer);
+        }
       }
     } catch (err: any) {
-      if (currentTurnIdRef.current === thisTurnId) {
-        console.error('Turn processing failed:', err);
-        setErrorToast(err.message || 'Failed to get interviewer response. Please retry.');
-        setTimeout(() => setErrorToast(null), 4000);
-      }
+      console.error('Turn processing failed:', err);
+      setErrorToast(err.message || 'Failed to get interviewer response. Please retry.');
+      setTimeout(() => setErrorToast(null), 4000);
     } finally {
-      if (currentTurnIdRef.current === thisTurnId) {
-        setIsProcessing(false);
-      }
+      setIsProcessing(false);
     }
+  };
+
+  // Time-Machine: Open checkpoint modal for specific turn
+  const handleOpenForkTurn = (turnIndex: number) => {
+    const cp = turnForkService.createCheckpoint(turnIndex, transcript, sharedContext, activePanel);
+    if (cp) {
+      setActiveCheckpoint(cp);
+    } else {
+      setErrorToast('Could not initialize time-machine checkpoint for this turn.');
+      setTimeout(() => setErrorToast(null), 3000);
+    }
+  };
+
+  // Time-Machine: Apply fork or rollback
+  const handleApplyFork = (checkpoint: TurnCheckpoint, newAnswer?: string) => {
+    handleInterrupt();
+    setTranscript(checkpoint.transcriptPrefix);
+    setSharedContext(checkpoint.sharedContextSnapshot);
+
+    addToast(
+      'Time-Machine Active',
+      `Rolled back to Turn #${checkpoint.turnIndex + 1} with ${checkpoint.interviewerName}.`,
+      'info'
+    );
+
+    if (newAnswer && newAnswer.trim()) {
+      // Delay slightly so transcript state settles before candidate response processing
+      setTimeout(() => {
+        handleCandidateResponse(newAnswer.trim());
+      }, 100);
+    }
+  };
+
+  // Sync System Design Whiteboard with Panel Context
+  const handleSyncWhiteboard = (diagram: ArchitectureCanvasState) => {
+    setSharedContext((prev) => ({
+      ...prev,
+      architectureDiagram: diagram,
+    }));
+
+    addToast(
+      'Whiteboard Synced',
+      `Shared ${diagram.nodes.length} architecture blocks with the AI interview panel.`,
+      'success'
+    );
   };
 
   // Update Resume Handler (from drawer) — Recalibrates dynamic panel & restarts fresh interview!
@@ -619,20 +847,24 @@ export default function App() {
       window.speechSynthesis.cancel();
     }
 
-    // Start a fresh interview session tailored to the new candidate resume!
-    handleStartInterview({
-      scenario,
-      activePanel: updatedPanel,
-      candidateName: newName,
-      targetRole: updated.headline || targetRole,
-      initialDifficulty: sharedContext.targetLevel || 'Senior',
-      candidateResume: updated,
-      panelStrictness: sharedContext.panelStrictness,
-      rubricWeights: sharedContext.rubricWeights,
-    });
-
-    setErrorToast(`✓ Fresh interview session started for ${newName}`);
-    addToast('✅ Resume Profile Synchronized!', `Loaded candidate profile for ${newName} (${updated.headline || 'Engineer'}).`, 'success');
+    // If user is currently in an active interview, recalibrate the session; otherwise just update state
+    if (inInterview) {
+      handleStartInterview({
+        scenario,
+        activePanel: updatedPanel,
+        candidateName: newName,
+        targetRole: updated.headline || targetRole,
+        initialDifficulty: sharedContext.targetLevel || 'Senior',
+        candidateResume: updated,
+        panelStrictness: sharedContext.panelStrictness,
+        rubricWeights: sharedContext.rubricWeights,
+      });
+      setErrorToast(`Session recalibrated for ${newName}`);
+      addToast('Resume Profile Updated', `Calibrated active session for ${newName} (${updated.headline || 'Engineer'}).`, 'success');
+    } else {
+      setErrorToast(`Profile saved: ${newName}`);
+      addToast('Candidate Profile Saved', `Profile updated for ${newName}. Click "Launch AI Interview" when ready to start!`, 'success');
+    }
     setTimeout(() => setErrorToast(null), 3000);
   };
 
@@ -641,32 +873,18 @@ export default function App() {
     if (isListening) {
       if (speechSilenceTimerRef.current) {
         clearTimeout(speechSilenceTimerRef.current);
+        speechSilenceTimerRef.current = null;
       }
       agoraVoiceEngine.stopSpeechRecognition();
       setIsListening(false);
     } else {
       agoraVoiceEngine.clearSpeechBuffer();
+      setCurrentInterimTranscript('');
       const started = await agoraVoiceEngine.startSpeechRecognition(
-        (fullText, hasFinalChunk) => {
-          setCurrentInterimTranscript(fullText);
-
-          // Reset silence debounce timer on every new speech chunk
-          if (speechSilenceTimerRef.current) {
-            clearTimeout(speechSilenceTimerRef.current);
-          }
-
-          // Auto-submit after silence ONLY if floor is not held and timeout > 0
-          if (
-            fullText.trim() &&
-            !isProcessingRef.current &&
-            !isFloorHeldRef.current &&
-            silenceTimeoutMsRef.current > 0
-          ) {
-            speechSilenceTimerRef.current = setTimeout(() => {
-              if (!isProcessingRef.current && !isFloorHeldRef.current) {
-                handleCandidateResponse(fullText);
-              }
-            }, silenceTimeoutMsRef.current);
+        (fullText) => {
+          if (!isAISpeakingRef.current && !isProcessingRef.current) {
+            setCurrentInterimTranscript(fullText);
+            scheduleSilenceAutoSubmit(fullText);
           }
         },
         () => {
@@ -679,10 +897,11 @@ export default function App() {
       if (started) {
         setIsListening(true);
         await agoraVoiceEngine.initMicVisualizer((vol) => {
+          candidateVolumeRef.current = vol;
           setCandidateVolume(vol);
         });
       } else {
-        setErrorToast('Microphone access denied. Please allow microphone permissions.');
+        setErrorToast('Microphone access denied. Please check browser microphone permissions.');
         setTimeout(() => setErrorToast(null), 4000);
       }
     }
@@ -696,7 +915,30 @@ export default function App() {
       return;
     }
 
+    // 1. Immediately freeze the session and stop the ticking timer
+    setInInterview(false);
+
+    // 2. Immediately stop speech recognition, TTS, audio engine & cancel silence auto-submit timers
     handleInterrupt();
+    setIsAISpeaking(false);
+    setIsListening(false);
+    if (speechSilenceTimerRef.current) {
+      clearTimeout(speechSilenceTimerRef.current);
+      speechSilenceTimerRef.current = null;
+    }
+
+    // 3. Immediately disconnect and leave Agora RTC channels (avoids consuming credentials/bandwidth)
+    agoraVoiceEngine.cleanup();
+    if (agoraAgentId) {
+      stopAgoraAgent(agoraAgentId).catch(() => {});
+      setAgoraAgentId(null);
+    }
+    setAgoraChannelName(null);
+    setAgoraMode('offline');
+
+    addToast('Session Concluded', 'Voice channels disconnected. Generating candidate scorecard...', 'info');
+
+    // 4. Generate final assessment
     setIsGeneratingAssessment(true);
 
     try {
@@ -708,6 +950,19 @@ export default function App() {
         candidateName,
       });
       setAssessment(finalReport);
+
+      // Auto-save session to longitudinal history for Skill Progression Hub
+      try {
+        const sessionMinutes = Math.round(sessionSeconds / 60) || 1;
+        sessionHistoryService.saveSession(
+          finalReport,
+          scenario.title,
+          sessionMinutes,
+          sharedContext.currentDifficulty || 'Intermediate'
+        );
+      } catch (saveErr) {
+        console.warn('Could not archive session to history:', saveErr);
+      }
     } catch (err: any) {
       console.error('Assessment generation failed:', err);
       setErrorToast(err.message || 'Could not generate final evaluation.');
@@ -730,6 +985,7 @@ export default function App() {
     setIsAISpeaking(false);
     setIsListening(false);
     setInInterview(false);
+    setIsSidebarOpen(true); // Re-open sidebar when returning to setup/dashboard
     setAssessment(null);
     setTranscript([]);
   };
@@ -776,7 +1032,7 @@ export default function App() {
         candidateResume: userResume,
       }));
     }
-    setErrorToast(`✓ Signed in as ${user.name} (${user.role === 'recruiter' ? 'Recruiter Mode' : 'Candidate Mode'})`);
+    setErrorToast(`Signed in as ${user.name} (${user.role === 'recruiter' ? 'Recruiter Mode' : 'Candidate Mode'})`);
     setTimeout(() => setErrorToast(null), 3000);
     setCurrentView('studio');
   };
@@ -789,7 +1045,7 @@ export default function App() {
     } catch {
       // ignore
     }
-    setErrorToast('✓ Signed out — Redirected to landing page');
+    setErrorToast('Signed out — Redirected to landing page');
     setTimeout(() => setErrorToast(null), 2500);
     setCurrentView('landing');
   };
@@ -875,7 +1131,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setCurrentView('landing')}
-                className="text-sm font-extrabold text-white hover:text-indigo-300 transition cursor-pointer text-left tracking-tight"
+                className="text-xs font-bold text-white hover:text-indigo-300 transition cursor-pointer text-left tracking-tight"
               >
                 Vocalis AI Studio
               </button>
@@ -887,8 +1143,8 @@ export default function App() {
 
           {/* Right Controls & Navigation */}
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Mode Switcher: Recruiter vs Candidate */}
-            {!inInterview && (
+            {/* Mode Switcher: Recruiter vs Candidate (Only visible to recruiters/hiring managers) */}
+            {!inInterview && (!currentUser || currentUser.role === 'recruiter' || currentUser.role === 'interviewer') && (
               <div className="flex rounded-lg bg-slate-800/90 p-0.5 border border-slate-700/80">
                 <button
                   type="button"
@@ -975,8 +1231,8 @@ export default function App() {
                   onClick={() => {
                     setIsFocusMode((prev) => !prev);
                     addToast(
-                      !isFocusMode ? '🧘 Focus Mode Active' : '📊 Telemetry Mode Active',
-                      !isFocusMode ? 'Clean layout with zero distractions enabled.' : 'Full HUD metrics & backstage deliberations enabled.',
+                      'Focus Mode Active',
+                      'Clean layout with zero distractions enabled.',
                       'info'
                     );
                   }}
@@ -987,7 +1243,7 @@ export default function App() {
                   }`}
                   title="Toggle between Focus Mode (Clean View) and Telemetry Mode (Full HUD Metrics)"
                 >
-                  <span>{isFocusMode ? '🧘 Focus Mode' : '📊 Telemetry View'}</span>
+                  <span>{isFocusMode ? 'Focus Mode' : 'Telemetry View'}</span>
                 </button>
 
                 <div
@@ -1029,7 +1285,7 @@ export default function App() {
       onComplete={() => {
         setIsLaunchingSession(false);
         const speakerName = activePanel[0]?.name || 'Lead Interviewer';
-        addToast('🎙️ Interview Session Active!', `${speakerName} has opened the panel for ${candidateName}.`, 'success');
+        addToast('Interview Session Active', `${speakerName} has opened the panel for ${candidateName}.`, 'success');
       }}
     />
 
@@ -1066,11 +1322,21 @@ export default function App() {
           }}
           currentUser={currentUser}
           onLogout={handleLogout}
+          onOpenProgressionHub={() => setShowProgressionHub(true)}
         />
 
         {/* Main Center Content Workspace */}
-        <main className="flex-1 min-w-0 p-2.5 sm:p-4 lg:p-5 space-y-3">
-          {!inInterview ? (
+        <main className="flex-1 min-w-0 p-2 sm:p-3 space-y-3">
+          {showProgressionHub ? (
+            <SkillProgressionHub
+              onSelectAssessment={(a) => {
+                setAssessment(a);
+              }}
+              onBackToStudio={() => setShowProgressionHub(false)}
+              candidateName={candidateName}
+              targetRole={targetRole}
+            />
+          ) : !inInterview ? (
             workspaceMode === 'recruiter' ? (
               <RecruiterDashboard
                 onStartInterview={handleStartInterview}
@@ -1095,6 +1361,13 @@ export default function App() {
                 onSelectTargetInterviewer={setSelectedTargetInterviewerId}
                 lastTurnTakingReason={lastTurnTakingReason}
                 lastInternalThought={lastInternalThought}
+                candidateName={candidateName}
+                candidateHeadline={`Candidate • ${targetRole || 'Software Engineer'}`}
+                isListening={isListening}
+                candidateVolume={candidateVolume}
+                onOpenWhiteboard={() => setIsWhiteboardOpen(true)}
+                isWhiteboardSynced={Boolean(sharedContext.architectureDiagram?.lastSyncedAt)}
+                ambientReactions={ambientReactions}
               />
 
               {/* Middle Grid: Transcript & Shared Context Panel */}
@@ -1106,6 +1379,7 @@ export default function App() {
                     isProcessing={isProcessing}
                     activeInterviewerName={activePanel.find((i) => i.id === activeSpeakerId)?.name}
                     isFocusMode={isFocusMode}
+                    onForkTurn={handleOpenForkTurn}
                   />
 
                   {/* Voice & Response Controller */}
@@ -1125,14 +1399,17 @@ export default function App() {
                       setErrorToast(`Pause tolerance set to ${ms > 0 ? `${ms / 1000}s` : 'Manual Send Only'}`);
                       setTimeout(() => setErrorToast(null), 2500);
                     }}
+                    thoughtGraceActive={thoughtGraceActive}
+                    thoughtGraceReason={thoughtGraceReason}
+                    backchannelDetectedPhrase={backchannelDetectedPhrase}
                     isFloorHeld={isFloorHeld}
                     onToggleHoldFloor={() => {
                       setIsFloorHeld((prev) => !prev);
                       if (!isFloorHeld) {
                         if (speechSilenceTimerRef.current) clearTimeout(speechSilenceTimerRef.current);
-                        setErrorToast('⏸️ Floor Held — AI will wait until you click Send or release floor.');
+                        setErrorToast('Floor held — AI will wait until you click Send or release the floor.');
                       } else {
-                        setErrorToast('▶️ Auto-Send Resumed');
+                        setErrorToast('Auto-Send Resumed');
                       }
                       setTimeout(() => setErrorToast(null), 2500);
                     }}
@@ -1192,6 +1469,24 @@ export default function App() {
           onRestart={handleRestart}
         />
       )}
+
+      {/* Turn Time-Machine Fork Modal */}
+      {activeCheckpoint && (
+        <TurnTimeMachineModal
+          checkpoint={activeCheckpoint}
+          isOpen={true}
+          onClose={() => setActiveCheckpoint(null)}
+          onApplyFork={handleApplyFork}
+        />
+      )}
+
+      {/* Interactive System Design Whiteboard Canvas Modal */}
+      <SystemDesignWhiteboardModal
+        isOpen={isWhiteboardOpen}
+        onClose={() => setIsWhiteboardOpen(false)}
+        currentDiagram={sharedContext.architectureDiagram}
+        onSyncDiagram={handleSyncWhiteboard}
+      />
     </div>
   );
 }

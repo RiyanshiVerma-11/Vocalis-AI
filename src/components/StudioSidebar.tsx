@@ -16,9 +16,10 @@ import {
   Clock,
   ShieldCheck,
   LogOut,
+  TrendingUp,
 } from 'lucide-react';
 import { Interviewer, SharedCandidateContext, CandidateResume, DifficultyLevel, UserSession } from '../types';
-import { renderAvatarIcon, getAvatarGradientClass } from '../utils/avatarUtils';
+import { renderAvatarIcon, getAvatarGradientClass, InterviewerAvatar } from '../utils/avatarUtils';
 
 interface StudioSidebarProps {
   isOpen: boolean;
@@ -38,6 +39,7 @@ interface StudioSidebarProps {
   onChangeSilenceTimeout: (ms: number) => void;
   currentUser?: UserSession | null;
   onLogout?: () => void;
+  onOpenProgressionHub?: () => void;
 }
 
 export const StudioSidebar: React.FC<StudioSidebarProps> = ({
@@ -58,6 +60,7 @@ export const StudioSidebar: React.FC<StudioSidebarProps> = ({
   onChangeSilenceTimeout,
   currentUser,
   onLogout,
+  onOpenProgressionHub,
 }) => {
   const getDifficultyBadge = (level: DifficultyLevel) => {
     switch (level) {
@@ -110,6 +113,17 @@ export const StudioSidebar: React.FC<StudioSidebarProps> = ({
         >
           <FileText className="w-4 h-4 text-indigo-400" />
         </button>
+
+        {onOpenProgressionHub && (
+          <button
+            type="button"
+            onClick={onOpenProgressionHub}
+            className="w-10 h-10 rounded-xl bg-slate-800/60 hover:bg-slate-800 text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer"
+            title="Skill Progression & Growth Analytics"
+          >
+            <TrendingUp className="w-4 h-4 text-emerald-400" />
+          </button>
+        )}
 
         <button
           type="button"
@@ -209,22 +223,14 @@ export const StudioSidebar: React.FC<StudioSidebarProps> = ({
             </div>
           </div>
 
-          <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 font-mono shrink-0">
-                {candidateResume.yearsOfExperience || 2}+ Yrs Exp
-              </span>
-              <span className={`text-[10px] px-2 py-0.5 rounded-md border font-bold truncate ${getDifficultyBadge(sharedContext.currentDifficulty)}`}>
-                {sharedContext.currentDifficulty} Level
-              </span>
-            </div>
-
+          <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
             <button
               type="button"
               onClick={onOpenResumeDrawer}
-              className="text-[10px] font-bold text-indigo-400 hover:text-indigo-300 transition cursor-pointer shrink-0"
+              className="text-[10px] font-bold text-indigo-400 hover:text-indigo-300 transition cursor-pointer flex items-center gap-1"
             >
-              Edit Resume →
+              <FileText className="w-3 h-3 text-indigo-400" />
+              <span>Edit Resume & Shared Profile →</span>
             </button>
           </div>
         </div>
@@ -263,11 +269,12 @@ export const StudioSidebar: React.FC<StudioSidebarProps> = ({
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <div
-                    className={`w-7 h-7 rounded-lg text-white font-bold text-xs flex items-center justify-center shrink-0 ${getAvatarGradientClass(interviewer.avatarColor)}`}
-                  >
-                    {renderAvatarIcon(interviewer.avatarIcon, "w-4 h-4 text-white")}
-                  </div>
+                  <InterviewerAvatar
+                    avatarIcon={interviewer.avatarIcon}
+                    avatarColor={interviewer.avatarColor}
+                    name={interviewer.name}
+                    className="w-7 h-7 rounded-lg border border-slate-700/80"
+                  />
                   <div className="min-w-0">
                     <p className="text-xs font-bold truncate text-white">{interviewer.name}</p>
                     <p className="text-[10px] text-slate-400 truncate">{interviewer.title}</p>
@@ -302,10 +309,10 @@ export const StudioSidebar: React.FC<StudioSidebarProps> = ({
               onChange={(e) => onChangeSilenceTimeout(Number(e.target.value))}
               className="bg-slate-800 border border-slate-700 rounded-lg text-white px-2 py-1 outline-none text-xs cursor-pointer"
             >
-              <option value={3000}>3s Fast</option>
-              <option value={4000}>4s Relaxed</option>
-              <option value={6000}>6s Deep</option>
-              <option value={-1}>Manual</option>
+              <option value={-1}>Manual Send (No Cutoff)</option>
+              <option value={10000}>10s Generous</option>
+              <option value={8000}>8s Relaxed</option>
+              <option value={5000}>5s Quick</option>
             </select>
           </div>
 
@@ -346,6 +353,17 @@ export const StudioSidebar: React.FC<StudioSidebarProps> = ({
             Agora SD-RTN™ global real-time network with sub-100ms latency.
           </p>
         </div>
+
+        {onOpenProgressionHub && (
+          <button
+            type="button"
+            onClick={onOpenProgressionHub}
+            className="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-slate-700 transition cursor-pointer flex items-center justify-center gap-2"
+          >
+            <TrendingUp className="w-4 h-4 text-emerald-400" />
+            <span>Skill Progression Hub</span>
+          </button>
+        )}
 
         <button
           type="button"

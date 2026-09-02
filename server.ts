@@ -461,12 +461,10 @@ async function generateContentWithGroq(prompt: string): Promise<any> {
   if (keys.length === 0) throw new Error('GROQ_API_KEY missing');
 
   const modelsToTry = [
-    'compound-beta',
+    'llama-3.3-70b-versatile',
+    'llama-3.1-8b-instant',
+    'mixtral-8x7b-32768',
     'meta-llama/llama-4-scout-17b-16e-instruct',
-    'meta-llama/llama-4-maverick-17b-128e-instruct',
-    'llama3-70b-8192',
-    'gemma2-9b-it',
-    'qwen-2.5-32b',
   ];
 
   let lastError: any = null;
@@ -521,10 +519,59 @@ function normalizeTurnResponse(raw: any, activePanel: any[], scenario: any, shar
   const fallbackInterviewer =
     activePanel && activePanel.length > 0
       ? activePanel[0]
-      : { id: 'alex-vance', name: 'Alex Vance', role: 'technical' };
+      : { id: 'tech-alex', name: 'Rohan Sharma', role: 'technical' };
 
-  const nextSpeakerId = raw.nextSpeakerId || fallbackInterviewer.id;
-  const matchedInterviewer = activePanel.find((p: any) => p.id === nextSpeakerId) || fallbackInterviewer;
+  const rawSpeakerId = String(raw.nextSpeakerId || '').trim().toLowerCase();
+  const rawSpeakerName = String(raw.nextSpeakerName || '').trim().toLowerCase();
+  const rawSpeakerRole = String(raw.nextSpeakerRole || '').trim().toLowerCase();
+  const speechText = String(raw.speech || '').toLowerCase();
+
+  // Multi-tier flexible matcher for panel persona identification:
+  // 1. Exact or partial ID match
+  let matchedInterviewer = activePanel.find((p: any) => {
+    const pid = String(p.id).toLowerCase();
+    return pid === rawSpeakerId || rawSpeakerId.includes(pid) || pid.includes(rawSpeakerId);
+  });
+
+  // 2. Persona Full Name or First Name match
+  if (!matchedInterviewer && (rawSpeakerName || rawSpeakerId)) {
+    matchedInterviewer = activePanel.find((p: any) => {
+      const pname = String(p.name).toLowerCase();
+      const pFirst = pname.split(' ')[0];
+      return (
+        pname === rawSpeakerName ||
+        pname.includes(rawSpeakerName) ||
+        rawSpeakerName.includes(pFirst) ||
+        rawSpeakerId.includes(pFirst) ||
+        pname.includes(rawSpeakerId)
+      );
+    });
+  }
+
+  // 3. Role match
+  if (!matchedInterviewer && (rawSpeakerRole || rawSpeakerId)) {
+    matchedInterviewer = activePanel.find((p: any) => {
+      const prole = String(p.role).toLowerCase();
+      return (
+        prole === rawSpeakerRole ||
+        prole === rawSpeakerId ||
+        rawSpeakerRole.includes(prole) ||
+        rawSpeakerId.includes(prole)
+      );
+    });
+  }
+
+  // 4. In-speech self-introduction match (e.g., "Priya here", "I am Vikram", "Dr. Meera here", "Neha from enterprise")
+  if (!matchedInterviewer) {
+    matchedInterviewer = activePanel.find((p: any) => {
+      const pFirst = p.name.split(' ')[0].toLowerCase();
+      return speechText.includes(pFirst) || speechText.includes(p.name.toLowerCase());
+    });
+  }
+
+  if (!matchedInterviewer) {
+    matchedInterviewer = fallbackInterviewer;
+  }
 
   const defaultScores = {
     technicalArchitecture: 75,
@@ -539,8 +586,8 @@ function normalizeTurnResponse(raw: any, activePanel: any[], scenario: any, shar
 
   return {
     nextSpeakerId: matchedInterviewer.id,
-    nextSpeakerName: raw.nextSpeakerName || matchedInterviewer.name,
-    nextSpeakerRole: raw.nextSpeakerRole || matchedInterviewer.role || 'technical',
+    nextSpeakerName: matchedInterviewer.name,
+    nextSpeakerRole: matchedInterviewer.role,
     speech: raw.speech || 'Could you walk us through the system architecture and key engineering trade-offs?',
     internalThought: raw.internalThought || 'Panel evaluated candidate response. Formulated adaptive follow-up question.',
     turnTakingReason: raw.turnTakingReason || `${matchedInterviewer.name} asked the next probing question.`,
@@ -557,7 +604,7 @@ function normalizeTurnResponse(raw: any, activePanel: any[], scenario: any, shar
       candidateResponseSummary: raw.analysisOfCandidateAnswer?.candidateResponseSummary || 'Candidate explained system overview.',
     },
     detectedFlags: Array.isArray(raw.detectedFlags) ? raw.detectedFlags : [],
-    updatedDifficulty: raw.updatedDifficulty || sharedContext.currentDifficulty || 'Senior',
+    updatedDifficulty: raw.updatedDifficulty || sharedContext.currentDifficulty || 'Intermediate',
     difficultyAdjustmentReason: raw.difficultyAdjustmentReason || undefined,
     updatedCompetencyScores: {
       technicalArchitecture: typeof incomingScores.technicalArchitecture === 'number' ? incomingScores.technicalArchitecture : defaultScores.technicalArchitecture,
@@ -571,6 +618,22 @@ function normalizeTurnResponse(raw: any, activePanel: any[], scenario: any, shar
           authorRole: raw.newBackstageNote.authorRole || matchedInterviewer.role,
           note: raw.newBackstageNote.note,
         }
+      : undefined,
+    isDebateExchange: Boolean(raw.isDebateExchange && Array.isArray(raw.debateDialogue) && raw.debateDialogue.length >= 2),
+    debateDialogue: Array.isArray(raw.debateDialogue) && raw.debateDialogue.length >= 2
+      ? raw.debateDialogue.map((d: any) => {
+          const matched = activePanel.find((p: any) => p.id === d.speakerId || p.role === d.speakerRole) || fallbackInterviewer;
+          return {
+            speakerId: matched.id,
+            speakerName: d.speakerName || matched.name,
+            speakerRole: d.speakerRole || matched.role || 'technical',
+            speech: d.speech || '',
+            internalThought: d.internalThought || undefined,
+          };
+        })
+      : undefined,
+    ambientReactions: raw.ambientReactions && typeof raw.ambientReactions === 'object'
+      ? raw.ambientReactions
       : undefined,
     updatedRunningSummary: raw.updatedRunningSummary || sharedContext.runningSummary || 'Interview in progress.',
     unresolvedProbesToAdd: Array.isArray(raw.unresolvedProbesToAdd) ? raw.unresolvedProbesToAdd : undefined,
@@ -739,6 +802,47 @@ app.post('/api/interview/turn', async (req, res) => {
     const candidateResume = sharedContext.candidateResume || {};
     const questionHistory = sharedContext.questionHistory || [];
 
+    // ── Resume-First Strict Mode (for Tailored Candidate Resume Interview) ──
+    const isResumeFirstMode = (scenario?.id === 'candidate-personalized-interview') ||
+      (scenario?.id && String(scenario.id).includes('personalized'));
+
+    // Build a resume anchor bank so every question must cite a real resume element
+    const resumeProjects = (candidateResume.notableProjects || []).map((p: any) => `"${p.name}": ${p.description} [Metrics: ${p.metrics}]`);
+    const resumeWorkItems = (candidateResume.workExperience || []).map((w: any) => `"${w.role}" at ${w.company} (${w.duration}): ${(w.highlights || []).join('; ')}`);
+    const resumeEduItems = (candidateResume.education || []).map((e: any) => `${e.degree} from ${e.institution} (${e.year})`);
+    const resumeSkills = [
+      ...(candidateResume.skills?.coreArchitecture || []),
+      ...(candidateResume.skills?.languagesAndFrameworks || []),
+      ...(candidateResume.skills?.cloudAndInfrastructure || []),
+      ...(candidateResume.skills?.practicesAndMethodologies || []),
+    ];
+    const hasRealResume = resumeProjects.length > 0 || resumeWorkItems.length > 0;
+
+    const resumeAnchorBank = hasRealResume ? `
+=== ⚠️ RESUME ANCHOR BANK — EVERY QUESTION MUST CITE ONE OF THESE EXACT ITEMS ===
+You are STRICTLY FORBIDDEN from asking hypothetical or generic engineering questions.
+EVERY SINGLE question you ask MUST reference one of the following real items from this candidate's actual resume:
+
+THEIR ACTUAL PROJECTS (${resumeProjects.length}):
+${resumeProjects.map((p: string, i: number) => `  ${i + 1}. ${p}`).join('\n') || '  (No projects found — ask candidate to introduce their most impactful work)'}
+
+THEIR ACTUAL WORK HISTORY (${resumeWorkItems.length}):
+${resumeWorkItems.map((w: string, i: number) => `  ${i + 1}. ${w}`).join('\n') || '  (No work experience found — probe academic projects and coursework)'}
+
+THEIR ACADEMIC BACKGROUND:
+${resumeEduItems.map((e: string, i: number) => `  ${i + 1}. ${e}`).join('\n') || `  1. ${candidateResume.headline || 'Engineering Background'}`}
+
+THEIR STATED SKILLS & TECHNOLOGIES:
+  ${resumeSkills.slice(0, 12).join(', ') || 'Python, JavaScript, System Design'}
+
+ENFORCEMENT RULES:
+1. BEFORE formulating any question, pick ONE specific item from the ANCHOR BANK above.
+2. Open your question with a reference to it: "I noticed you worked on ${resumeProjects[0]?.split('"')[1] || 'your project'}..." or "At ${resumeWorkItems[0]?.split('"')[1]?.split('"')[0] || 'your previous role'}, you mentioned..."
+3. NEVER ask a generic textbook question like "Design a load balancer" unless it is DIRECTLY tied to a challenge they mentioned in their actual resume.
+4. If their resume lists specific metrics (e.g. "reduced latency by 40%"), challenge those numbers directly: "You claim 40% latency reduction — what exactly was your baseline and how did you measure that?"
+` : '';
+
+
     // Format interviewer personas with detailed speaking styles, jargon, and questioning strategies
     const panelDescriptions = activePanel
       .map((p: any) => {
@@ -762,41 +866,154 @@ app.post('/api/interview/turn', async (req, res) => {
           .join('\n')
       : 'No previous structured questions in record.';
 
-    // Format candidate's resume highlights
+    // Format candidate's resume highlights across all sections
     const resumeSummary = `
 Candidate Name: ${candidateResume.fullName || sharedContext.candidateName || 'Candidate'}
 Headline: ${candidateResume.headline || 'Software Professional'}
 Experience: ${candidateResume.yearsOfExperience || 2}+ Years | Location: ${candidateResume.location || 'Remote'}
-Summary: ${candidateResume.summary || 'Experienced engineering professional.'}
-Core Skills: ${(candidateResume.skills?.coreArchitecture || []).join(', ')}
-Languages/Tools: ${(candidateResume.skills?.languagesAndFrameworks || []).join(', ')} | ${(candidateResume.skills?.cloudAndInfrastructure || []).join(', ')}
-Work History:
-${(candidateResume.workExperience || []).map((w: any) => `  - ${w.company} (${w.role}, ${w.duration}): ${w.highlights?.join(' ')}`).join('\n')}
-Key Highlight Projects:
-${(candidateResume.notableProjects || []).map((np: any) => `  - ${np.name}: ${np.description} [Metrics: ${np.metrics}]`).join('\n')}
-Full Raw Resume Text / Bio:
+Summary / Bio: ${candidateResume.summary || 'Experienced engineering professional.'}
+
+Academic & Education:
+${(candidateResume.education || []).map((e: any) => `  - ${e.degree} | ${e.institution} (${e.year || ''})`).join('\n') || '  - Computer Science & Engineering Background'}
+
+Core Technical Stack & Competencies:
+  • Architecture & Systems: ${(candidateResume.skills?.coreArchitecture || []).join(', ') || 'Distributed Systems, API Design'}
+  • Languages & Frameworks: ${(candidateResume.skills?.languagesAndFrameworks || []).join(', ') || 'Python, FastAPI, React, TypeScript'}
+  • Cloud & Infrastructure: ${(candidateResume.skills?.cloudAndInfrastructure || []).join(', ') || 'Docker, PostgreSQL, Redis, AWS'}
+  • Practices & Methodologies: ${(candidateResume.skills?.practicesAndMethodologies || []).join(', ') || 'CI/CD, Agile, Code Reviews'}
+
+Work History & Past Professional Experience:
+${(candidateResume.workExperience || []).map((w: any) => `  - Company: "${w.company}", Role: "${w.role}" (${w.duration || 'Past'}): ${w.highlights?.join(' ') || 'Engineering responsibilities'}`).join('\n') || '  - Engineering and software development experience.'}
+
+Notable Projects & Systems Built:
+${(candidateResume.notableProjects || []).map((np: any, idx: number) => `  ${idx + 1}. "${np.name}": ${np.description} [Key Metrics: ${np.metrics || 'Production deployed'}]`).join('\n') || '  - Software engineering projects.'}
+
+Full Raw Resume Content:
 ${candidateResume.rawText || ''}
 `;
 
     // Extract last AI speaker from transcript history to enable smooth conversational handoffs
     const lastAITurn = [...transcript].reverse().find((t: any) => t.speakerId && t.speakerId !== 'candidate');
-    const lastAISpeakerName = lastAITurn?.speakerName || 'the previous interviewer';
-    const lastAISpeakerRole = lastAITurn?.speakerRole || 'panel member';
-    const lastAISpeakerId = lastAITurn?.speakerId || null;
+    const lastAISpeakerName = lastAITurn?.speakerName || activePanel[0]?.name || 'Rohan Sharma';
+    const lastAISpeakerRole = lastAITurn?.speakerRole || activePanel[0]?.role || 'technical';
+    const lastAISpeakerId = lastAITurn?.speakerId || activePanel[0]?.id || 'alex-vance';
+
+    // ── 360° Comprehensive Full-Resume Section Coverage Engine ──────────
+    const notableProjects: any[] = candidateResume.notableProjects || [];
+    const workExperiences: any[] = candidateResume.workExperience || [];
+    const educationList: any[] = candidateResume.education || [];
+    const skillsList = [
+      ...(candidateResume.skills?.languagesAndFrameworks || []),
+      ...(candidateResume.skills?.coreArchitecture || []),
+      ...(candidateResume.skills?.cloudAndInfrastructure || [])
+    ];
+
+    const aiTurns = transcript.filter((t: any) => t.speakerId && t.speakerId !== 'candidate');
+    const aiTurnsCount = aiTurns.length;
+
+    // Track which resume sections have been probed so far
+    const transcriptFullText = transcript.map((t: any) => t.content).join(' ');
+
+    const project1 = notableProjects[0]?.name || 'Primary Project';
+    const project2 = notableProjects[1]?.name || null;
+    const pastCompany = workExperiences[0]?.company || null;
+    const pastRole = workExperiences[0]?.role || null;
+    const pastHighlight = workExperiences[0]?.highlights?.[0] || '';
+    const educationDegree = educationList[0]?.degree || candidateResume.headline || 'Computer Science';
+
+    // Analyze project mention counts
+    const projectStats = notableProjects.map((p: any) => {
+      const pName = p.name || '';
+      const regex = new RegExp(pName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+      const mentions = (transcriptFullText.match(regex) || []).length;
+      return { name: pName, mentions, description: p.description || '', metrics: p.metrics || '' };
+    });
+
+    // Dynamic 360° Resume Section Rotation Agenda
+    let currentInterviewPhase = '';
+    let targetSectionGoal = '';
+    let mandatorySpeakerGuidance = '';
+
+    if (aiTurnsCount === 0) {
+      currentInterviewPhase = `SECTION 1: RESUME GREETING & PRIMARY PROJECT OVERVIEW (${project1})`;
+      targetSectionGoal = `Welcome the candidate, acknowledge their background in ${educationDegree}, and ask them to walk through the core architecture, key decisions, and data processing of "${project1}".`;
+      mandatorySpeakerGuidance = `Rohan Sharma (Technical Architect)`;
+    } else if (aiTurnsCount === 1) {
+      currentInterviewPhase = `SECTION 1 (CONT.): DEEP TECHNICAL PROBE ON ${project1}`;
+      targetSectionGoal = `Ask ONE focused deep-dive follow-up on "${project1}" regarding concurrency, data layer failover, or asynchronous processing. (⚠️ This is the FINAL question allowed on ${project1}).`;
+      mandatorySpeakerGuidance = `Rohan Sharma (Technical) or Vikram Malhotra (VP Engineering)`;
+    } else if (aiTurnsCount === 2) {
+      if (pastCompany) {
+        currentInterviewPhase = `SECTION 2: WORK EXPERIENCE & PROFESSIONAL HISTORY (${pastCompany})`;
+        targetSectionGoal = `⚠️ MANDATORY PIVOT AWAY FROM ${project1}! Probe candidate's past work experience at "${pastCompany}" as a ${pastRole || 'Software Engineer'}. Ask about their daily engineering responsibilities, specific contributions (${pastHighlight || 'team projects'}), how they collaborated with cross-functional teams, or tools they used.`;
+        mandatorySpeakerGuidance = `Vikram Malhotra (VP Engineering / Hiring Manager) or Priya Mehta (Product)`;
+      } else if (project2) {
+        currentInterviewPhase = `SECTION 2: SECOND PROJECT ON RESUME (${project2})`;
+        targetSectionGoal = `⚠️ MANDATORY PIVOT AWAY FROM ${project1}! Pivot to candidate's second project "${project2}" (${notableProjects[1]?.description || ''}). Ask about their technical choices, data pipeline, or why they built it.`;
+        mandatorySpeakerGuidance = `Rohan Sharma (Technical) or Priya Mehta (Product)`;
+      } else {
+        currentInterviewPhase = `SECTION 2: CORE TECH STACK & ARCHITECTURAL SKILLS`;
+        targetSectionGoal = `⚠️ MANDATORY PIVOT AWAY FROM ${project1}! Probe their stated skills in (${skillsList.slice(0, 4).join(', ') || 'backend architecture'}). Ask how they design scalable REST/async APIs and handle database query optimization.`;
+        mandatorySpeakerGuidance = `Rohan Sharma (Technical Architect) or Vikram Malhotra (VP Engineering)`;
+      }
+    } else if (aiTurnsCount === 3) {
+      if (project2 && pastCompany) {
+        currentInterviewPhase = `SECTION 3: SECOND NOTABLE PROJECT ON RESUME (${project2})`;
+        targetSectionGoal = `⚠️ PIVOT TO SECOND PROJECT "${project2}"! Probe how "${project2}" differs from their other work, how they structured the data pipeline or user authentication, and what trade-offs they accepted.`;
+        mandatorySpeakerGuidance = `Priya Mehta (Principal PM) or Rohan Sharma (Technical)`;
+      } else {
+        currentInterviewPhase = `SECTION 3: COMPUTER SCIENCE FUNDAMENTALS & ARCHITECTURAL TRADEOFFS`;
+        targetSectionGoal = `Explore fundamental CS and engineering judgment: database indexing vs write latency, caching strategies (Redis TTL vs Write-through), or message queues (Kafka vs RabbitMQ).`;
+        mandatorySpeakerGuidance = `Rohan Sharma (Technical) or Vikram Malhotra (VP Engineering)`;
+      }
+    } else if (aiTurnsCount === 4 || aiTurnsCount === 5) {
+      currentInterviewPhase = `SECTION 4: PRODUCT ROI, BUSINESS IMPACT & CUSTOMER SLAs`;
+      targetSectionGoal = `⚠️ PIVOT TO PRODUCT & CUSTOMER IMPACT! Priya Mehta (Principal PM) or Neha Kapoor (Enterprise Customer) MUST take the floor! Probe how technical decisions impact user conversion, client SLA downtime penalties, customer trust during outages, or business prioritization.`;
+      mandatorySpeakerGuidance = `Priya Mehta (Principal PM) or Neha Kapoor (Enterprise Customer)`;
+    } else if (aiTurnsCount === 6 || aiTurnsCount === 7) {
+      currentInterviewPhase = `SECTION 5: BEHAVIORAL, LEADERSHIP & CONFLICT RESOLUTION (STAR)`;
+      targetSectionGoal = `⚠️ PIVOT TO BEHAVIORAL & LEADERSHIP! Dr. Meera Rao (Org Psychologist) or Vikram Malhotra (VP Engineering) MUST take the floor! Ask a structured STAR behavioral question (e.g. resolving a major disagreement over tech debt vs shipping features, handling constructive code review pushback, or learning from an engineering mistake).`;
+      mandatorySpeakerGuidance = `Dr. Meera Rao (Lead Psychologist) or Vikram Malhotra (VP Engineering)`;
+    } else {
+      currentInterviewPhase = `SECTION 6: COMMITTEE SYNTHESIS & CANDIDATE QUESTIONS`;
+      targetSectionGoal = `Synthesize candidate's demonstrated signals across all resume sections, acknowledge their strengths, and invite the candidate to ask any questions to the panel before final scoring.`;
+      mandatorySpeakerGuidance = `Vikram Malhotra (VP Engineering / Committee Chair)`;
+    }
+
+    const isClarificationRequest = /rephrase|repeat|clarify|what do you mean|didn't understand|could you explain|can you explain|what is meant|reword|pardon|say that again/i.test(lastCandidateSpeech || '');
 
     const recentTranscript = transcript
       .slice(-14)
       .map((t: any) => `[${t.speakerRole.toUpperCase()} - ${t.speakerName}]: ${t.content}`)
       .join('\n');
 
-    const isClarificationRequest = /rephrase|repeat|clarify|what do you mean|didn't understand|could you explain|can you explain|what is meant|reword|pardon|say that again/i.test(lastCandidateSpeech || '');
-
     const prompt = `
-You are the Orchestration, Persona & Adaptive Probing Engine for a Collaborative Multi-Role AI Interview Panel.
-The candidate is participating in an active, real-time voice interview with a panel of specialized interviewers.
+You are the central AI deliberation engine for an adaptive, multi-interviewer committee interview.
+The interview panel consists of ${activePanel.length} distinguished interviewers:
+${activePanel.map((p: any) => `- ID: "${p.id}", Name: "${p.name}", Role: "${p.role}", Title: "${p.title}"`).join('\n')}
+${isResumeFirstMode ? resumeAnchorBank : ''}
+=== ⚠️ MANDATORY 360° FULL RESUME EVALUATION & SECTION ROTATION (CRITICAL) ===
+CURRENT INTERVIEW TURN: Turn #${aiTurnsCount + 1}
+ACTIVE INTERVIEW SECTION: ${currentInterviewPhase}
+SECTION MANDATE & GOAL: ${targetSectionGoal}
+MANDATORY SPEAKER GUIDANCE: ${mandatorySpeakerGuidance}
 
-=== ACTIVE INTERVIEW PANEL PERSONALITIES ===
-${panelDescriptions}
+ALL RESUME SECTIONS TO COVER ACROSS THE INTERVIEW:
+1. Primary Project: "${project1}" (Probed: ${projectStats[0]?.mentions || 0} times)
+2. Work Experience: ${pastCompany ? `"${pastCompany}" as ${pastRole}` : 'Professional Experience & Internships'}
+3. Secondary Project: ${project2 ? `"${project2}" (${notableProjects[1]?.description || ''})` : 'Secondary Project / Core Stack'}
+4. Core Tech Stack: ${skillsList.slice(0, 6).join(', ') || 'Full-Stack & Systems'}
+5. Academic Foundation: ${educationDegree}
+6. Product ROI & Customer SLAs (Priya Mehta / Neha Kapoor)
+7. Behavioral & Leadership STAR (Dr. Meera Rao / Vikram Malhotra)
+
+STRICT PACING & ROTATION CONSTRAINTS:
+1. **FULL RESUME COVERAGE**: In a real executive interview, the panel MUST evaluate the candidate across their ENTIRE resume (Work History, Education, Skills, Secondary Project, Business Value, and Behavioral Leadership). NEVER spend more than 2 questions on a single project!
+2. **SMOOTH CONVERSATIONAL PIVOTS**: When pivoting between sections, use a natural handoff transition phrase, e.g.:
+   - "Thanks Rohan, that gives us strong signal on ${project1}. Shifting gears to your work experience at ${pastCompany || 'your past role'}..."
+   - "Great breakdown of the failover architecture. Moving beyond ${project1}, let's look at your second project, ${project2 || 'your other key engineering work'}..."
+   - "Appreciate that technical depth. From a product adoption and customer SLA perspective, Priya here..."
+3. **SPEAKER ROTATION (ANTI-MONOPOLY)**: The same interviewer ("${lastAISpeakerName}") MUST NOT take more than 2 consecutive turns! Rotate the floor to match ${mandatorySpeakerGuidance}!
 
 === CANDIDATE RESUME & BACKGROUND (SHARED CONTEXT) ===
 ${resumeSummary}
@@ -808,7 +1025,43 @@ ${questionHistorySummary}
 Title: ${scenario.title || 'System & Product Interview'}
 Context: ${scenario.context || 'General Interview'}
 Target Role: ${scenario.targetRole || 'Software Engineer'}
-Current Difficulty Level: ${sharedContext.currentDifficulty || 'Senior'}
+Current Difficulty Level: ${sharedContext.currentDifficulty || 'Intermediate'}
+${sharedContext.customRubric ? `
+=== CUSTOM ENTERPRISE HIRING RUBRIC & LEVELING MATRIX ===
+Company Hiring Bar: ${sharedContext.customRubric.companyName} (${sharedContext.customRubric.targetLevel})
+Panel Strictness Calibration: ${sharedContext.customRubric.strictnessRating}
+Custom Rubric Weights: ${JSON.stringify(sharedContext.customRubric.rubricWeights)}
+Mandatory Screening Competencies / Key Signals to Validate:
+${(sharedContext.customRubric.keySignals || []).map((s: string) => `  • [POSITIVE SIGNAL] ${s}`).join('\n')}
+Disqualifying Red Flags to Probe / Challenge:
+${(sharedContext.customRubric.redFlags || []).map((f: string) => `  • [RED FLAG] ${f}`).join('\n')}
+Curated Must-Ask Questions from Company Guide:
+${(sharedContext.customRubric.mandatoryQuestions || []).map((q: string) => `  • ${q}`).join('\n')}
+INSTRUCTION: Interviewers MUST evaluate and challenge the candidate strictly according to this ${sharedContext.customRubric.companyName} bar. If a mandatory question is relevant to the current conversation topic and hasn't been asked yet, prioritize weaving it in naturally!
+` : ''}
+
+=== DIFFICULTY TIER CALIBRATION INSTRUCTIONS (MANDATORY) ===
+You MUST strictly calibrate the complexity, depth, technical jargon, expectations, and phrasing of the interviewer's question to match the active Difficulty Level ("${sharedContext.currentDifficulty || 'Intermediate'}"):
+
+• FOUNDATIONAL (Junior / Early Career):
+  - Focus: Core language features, basic syntax, fundamental algorithms, introductory API usage, simple SQL/Git concepts.
+  - Questioning Style: Direct, encouraging, and clear. Ask fundamental questions (e.g., "How do you handle exceptions in your code?", "What is the difference between synchronous and asynchronous calls?").
+  - Expectations: Validate baseline competency. Do NOT ask about complex microservices, high concurrency, or distributed cache invalidation.
+
+• INTERMEDIATE (Mid-Level Engineer) [DEFAULT]:
+  - Focus: Practical production implementation, clean API design, database indexing, standard design patterns, error handling, unit testing, and component trade-offs.
+  - Questioning Style: Practical and scenario-focused (e.g., "How would you structure your API to handle race conditions during order cancellation?", "Why did you choose PostgreSQL over MongoDB for this project?").
+  - Expectations: Expect clean modular code, proper error handling, awareness of basic trade-offs, and practical debugging experience.
+
+• SENIOR (Senior Engineer / Tech Lead):
+  - Focus: High-scale distributed systems, p99 latency optimization, cache invalidation/stampedes, database sharding/replication, event-driven architectures (Kafka), failure semantics, and explicit business ROI.
+  - Questioning Style: Rigorous and probing. Introduce production bottlenecks (e.g. 80,000 req/sec, connection pool exhaustion) and challenge architectural trade-offs.
+  - Expectations: Require candidate to defend technical decisions with concrete metrics, failure isolation, and operational SLAs.
+
+• STAFF/PRINCIPAL (Staff/Principal Engineer & Architect):
+  - Focus: Multi-system architecture, organization-wide technical roadmap, zero-downtime migrations, multi-region fault tolerance, cross-functional organizational alignment, and long-term business trade-offs.
+  - Questioning Style: High ambiguity, strategic, and executive-level (e.g., "How do you align 5 autonomous engineering teams to deprecate a monolith without breaking customer SLAs?").
+  - Expectations: Evaluate influence without authority, architectural vision, strategic risk mitigation, and long-term business impact.
 
 === RUNNING PANEL SHARED CONTEXT ===
 Running Summary: ${sharedContext.runningSummary || 'Interview in progress.'}
@@ -816,6 +1069,17 @@ Identified Strengths: ${(sharedContext.demonstratedStrengths || []).join('; ') |
 Identified Weaknesses/Gaps: ${(sharedContext.identifiedWeaknesses || []).join('; ') || 'None yet'}
 Unresolved Probes/Threads: ${(sharedContext.unresolvedProbes || []).join('; ') || 'None yet'}
 Current Competency Scores (0-100): ${JSON.stringify(sharedContext.competencyScores || {})}
+${sharedContext.architectureDiagram && sharedContext.architectureDiagram.nodes?.length > 0 ? `
+=== CANDIDATE'S SHARED SYSTEM DESIGN WHITEBOARD ===
+The candidate has sketched and synced the following live architecture diagram on their whiteboard:
+Diagram Summary: ${sharedContext.architectureDiagram.diagramSummary || 'Custom System Architecture'}
+Nodes/Components:
+${sharedContext.architectureDiagram.nodes.map((n: any) => `  • [${n.type.toUpperCase()}] "${n.label}" (Tech: ${n.technology}${n.specs ? `, Specs: ${n.specs}` : ''})`).join('\n')}
+Data Flow Connections:
+${(sharedContext.architectureDiagram.edges || []).map((e: any) => `  • ${e.from} ──(${e.protocol || 'calls'} ${e.label || ''})──> ${e.to}`).join('\n')}
+${sharedContext.architectureDiagram.rawNotes ? `Candidate Notes: "${sharedContext.architectureDiagram.rawNotes}"` : ''}
+INSTRUCTION FOR TECHNICAL/ARCHITECTURAL QUESTIONS: If the candidate discusses architecture or references their diagram, the Technical Interviewer or VP of Engineering SHOULD directly cite specific components or connections from this whiteboard (e.g. "I see you're using Redis between your API Gateway and User Service...").
+` : ''}
 
 === RECENT INTERVIEW TRANSCRIPT ===
 ${recentTranscript}
@@ -850,15 +1114,32 @@ ${isClarificationRequest ? 'CRITICAL NOTE: The candidate is asking for CLARIFICA
 3. **Distinct Persona Fidelity**:
    - The selected interviewer MUST speak strictly in their unique tone, signature jargon, and questioning lens.
    - For example:
-     * Alex Vance (Technical): Uses deep systems jargon (idempotency, p99 jitter, Raft, split-brain, write-ahead logs, cache stampede).
-     * Maya Lin (Product Manager): Focuses on user conversion funnels, friction points, RICE prioritization, TTV, and product ROI.
-     * Marcus Reed (Hiring Manager): Focuses on team velocity, technical debt amortization, mentorship, and engineering pragmatism.
-     * Sarah Chen (Customer Director): Focuses on contractual SLAs, migration downtime, blast radius on client workflows, and customer trust.
-     * Dr. Elena Rostova (Behavioral): Focuses on STAR personal accountability, psychological safety, and growth mindset.
+     * Rohan Sharma (Technical): Uses deep systems jargon (idempotency, p99 jitter, Raft, split-brain, write-ahead logs, cache stampede).
+     * Priya Mehta (Product Manager): Focuses on user conversion funnels, friction points, RICE prioritization, TTV, and product ROI.
+     * Vikram Malhotra (Hiring Manager): Focuses on team velocity, technical debt amortization, mentorship, and engineering pragmatism.
+     * Neha Kapoor (Customer Director): Focuses on contractual SLAs, migration downtime, blast radius on client workflows, and customer trust.
+     * Dr. Meera Rao (Behavioral): Focuses on STAR personal accountability, psychological safety, and growth mindset.
 4. **Conversational Naturalness**:
    - The spoken dialogue MUST be concise and sound like real human speech (2 to 4 sentences).
-   - Acknowledge previous panel members or the candidate's specific words naturally (e.g., "Building on Alex's question about Kafka...", "You mentioned on your resume that at Stripe you handled 65k TPS...").
+   - Acknowledge previous panel members or the candidate's specific words naturally (e.g., "Building on Rohan's question about Kafka...", "You mentioned on your resume that at Stripe you handled 65k TPS...").
    - Always conclude with ONE clear, punchy, engaging question. No bullet points or robotic meta-text.
+
+5. **PS11 CROSS-INTERVIEWER DEBATES & ROLE TENSIONS (CRITICAL)**:
+   - When the candidate's answer reveals a clear cross-role trade-off (e.g., Tech vs Product, Engineering Complexity vs Delivery Timeline, High Scale vs Customer SLA/Cost, Maintenance vs Velocity), generate a **Cross-Interviewer Debate Exchange**:
+     * Set 'isDebateExchange': true
+     * Set 'debateDialogue' to an array of exactly 2 steps:
+       - Step 1: Speaker 1 (e.g. Rohan, Technical) briefly reacts/acknowledges the technical approach (1-2 sentences).
+       - Step 2: Speaker 2 (e.g. Priya, Product or Neha, Customer Director) challenges Speaker 1 directly on the trade-off and asks the candidate to resolve the conflict (2 sentences).
+     * Example:
+       - Step 1 (Rohan): "The multi-region Raft cluster and distributed WALs handle the fault tolerance criteria nicely."
+       - Step 2 (Priya): "Hold on Rohan — requiring a 5-node multi-region Raft cluster for this MVP is going to blow our quarterly delivery deadline by two months. Candidate, how would you phase this rollout to deliver customer value without taking on critical SLA risk?"
+   - When isDebateExchange is false (standard turn), set isDebateExchange: false and debateDialogue: [].
+
+6. **NON-VERBAL AMBIENT REACTIONS FOR INACTIVE PANELISTS**:
+   - For all active panel members who are currently IDLE/INACTIVE (not the main speaker), provide realistic ambient non-verbal cues:
+     * 'reactionType': 'nodding' | 'taking_notes' | 'skeptical' | 'intrigued' | 'concerned'
+     * 'label': Brief 2-4 word reason (e.g., "Noting Latency SLA", "Skeptical of Cost", "Agreeing on Stack", "SLA Risk Flagged")
+     * Map them into 'ambientReactions': { [interviewerId]: { "reactionType": "...", "label": "..." } }
 `;
 
     // Try Groq API first if GROQ_API_KEY is configured (sub-100ms Llama 3.3 70B inference)
@@ -868,7 +1149,7 @@ ${isClarificationRequest ? 'CRITICAL NOTE: The candidate is asking for CLARIFICA
         if (rawGroq && (rawGroq.nextSpeakerId || rawGroq.speech)) {
           const groqNormalized = normalizeTurnResponse(rawGroq, activePanel, scenario, sharedContext);
           // Prepend smooth handoff bridge if persona changed and wasn't mentioned
-          if (lastAISpeakerId && groqNormalized.nextSpeakerId !== lastAISpeakerId) {
+          if (lastAISpeakerId && groqNormalized.nextSpeakerId !== lastAISpeakerId && !groqNormalized.isDebateExchange) {
             const firstName = lastAISpeakerName.split(' ')[0];
             if (!groqNormalized.speech.toLowerCase().includes(firstName.toLowerCase())) {
               groqNormalized.speech = `Thanks ${firstName}, building on that point. ${groqNormalized.speech}`;
@@ -896,6 +1177,26 @@ ${isClarificationRequest ? 'CRITICAL NOTE: The candidate is asking for CLARIFICA
             speech: { type: Type.STRING, description: 'The exact conversational spoken response (2-4 natural sentences)' },
             internalThought: { type: Type.STRING, description: 'Backstage internal deliberation thought of the panel' },
             turnTakingReason: { type: Type.STRING, description: 'Brief rationale for why this interviewer took the turn' },
+            isDebateExchange: { type: Type.BOOLEAN, description: 'True if two interviewers disagree/debate in front of candidate' },
+            debateDialogue: {
+              type: Type.ARRAY,
+              description: 'When isDebateExchange is true, array of 2 sequential dialogue turns (Speaker 1 comment, Speaker 2 counter/challenge)',
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  speakerId: { type: Type.STRING },
+                  speakerName: { type: Type.STRING },
+                  speakerRole: { type: Type.STRING },
+                  speech: { type: Type.STRING },
+                  internalThought: { type: Type.STRING },
+                },
+                required: ['speakerId', 'speakerName', 'speakerRole', 'speech'],
+              },
+            },
+            ambientReactions: {
+              type: Type.OBJECT,
+              description: 'Map of inactive panelist IDs to ambient non-verbal reaction states (nodding, taking_notes, skeptical, intrigued, concerned)',
+            },
             questionTopic: { type: Type.STRING, description: 'Short topic title of the question (e.g. Cache Invalidation & Stale Reads)' },
             targetCompetency: { type: Type.STRING, description: 'Technical Architecture, Business Impact, Leadership, etc.' },
             adaptiveStrategyApplied: {
@@ -976,7 +1277,7 @@ ${isClarificationRequest ? 'CRITICAL NOTE: The candidate is asking for CLARIFICA
     const parsed = normalizeTurnResponse(parsedRaw, activePanel, scenario, sharedContext);
 
     // Prepend smooth handoff bridge if persona changed and wasn't mentioned
-    if (parsed.nextSpeakerId && lastAISpeakerId && parsed.nextSpeakerId !== lastAISpeakerId) {
+    if (parsed.nextSpeakerId && lastAISpeakerId && parsed.nextSpeakerId !== lastAISpeakerId && !parsed.isDebateExchange) {
       const speechText = parsed.speech || '';
       const firstName = lastAISpeakerName.split(' ')[0];
       if (!speechText.toLowerCase().includes(firstName.toLowerCase())) {
@@ -998,7 +1299,7 @@ function generateFallbackTurn(lastCandidateSpeech: string, activePanel: any[], s
     ? activePanel[Math.floor(Math.random() * activePanel.length)]
     : {
         id: 'alex-vance',
-        name: 'Alex Vance',
+        name: 'Rohan Sharma',
         role: 'technical',
         title: 'Lead Systems Architect'
       };
@@ -1074,6 +1375,15 @@ Panel Members: ${activePanel.map((p: any) => `${p.name} (${p.title})`).join(', '
 
 === SHARED PANEL CONTEXT & DETECTED FLAGS ===
 ${JSON.stringify(sharedContext, null, 2)}
+${sharedContext.customRubric ? `
+=== CUSTOM COMPANY HIRING BAR & LEVELING RUBRIC ===
+Calibrated for: ${sharedContext.customRubric.companyName} (${sharedContext.customRubric.targetLevel})
+Strictness Bar: ${sharedContext.customRubric.strictnessRating}
+Custom Competency Weights: ${JSON.stringify(sharedContext.customRubric.rubricWeights)}
+Key Signals Evaluated: ${(sharedContext.customRubric.keySignals || []).join('; ')}
+Disqualifying Red Flags: ${(sharedContext.customRubric.redFlags || []).join('; ')}
+INSTRUCTION: Ground the final hiring recommendation ("Strong Hire" vs "No Hire") and calibration rationale directly against this ${sharedContext.customRubric.companyName} standard!
+` : ''}
 
 === COMPLETE TIMESTAMPED INTERVIEW TRANSCRIPT ===
 ${fullTranscriptText}
@@ -1332,6 +1642,7 @@ app.post('/api/agora/start-agent', async (req, res) => {
       interviewerName = 'AI Interviewer',
       systemPrompt = '',
       voiceName = 'en-US-AvaMultilingualNeural',
+      heygenAvatarId,
     } = req.body;
 
     if (!channelName) {
@@ -1353,60 +1664,138 @@ app.post('/api/agora/start-agent', async (req, res) => {
     // Attempt Agora Conversational AI REST API if credentials available
     if (customerKey && customerSecret) {
       const credentials = Buffer.from(`${customerKey}:${customerSecret}`).toString('base64');
-      const agoraApiUrl = `https://api.agora.io/api/conversational-ai/v2/projects/${appId}/agents/join`;
+      
+      // Potential candidate URLs according to Agora API documentation
+      const candidateUrls = [
+        `https://api.agora.io/v1/projects/${appId}/fls/v1/join`,
+        `https://api.agora.io/api/conversational-ai-agent/v2/projects/${appId}/join`,
+        `https://api.agora.io/v1/projects/${appId}/fls/v2/join`,
+        `https://api.agora.io/api/conversational-ai/v1/projects/${appId}/join`,
+        `https://api.agora.io/api/conversational-ai/v1/projects/${appId}/agents/join`,
+        `https://api.agora.io/v1/projects/${appId}/conversational-ai/agents/join`,
+        `https://api.sd-rtn.com/v1/projects/${appId}/fls/v1/join`,
+        `https://api.agora.io/v2/projects/${appId}/conversational-ai/agents/join`,
+      ];
 
-      const agentPayload = {
-        name: `vocalis-interviewer-${Date.now()}`,
+      // Determine TTS vendor based on environment or fallback to Agora-managed / Microsoft / Elevenlabs
+      let ttsVendor = process.env.AGORA_TTS_VENDOR || 'minimax';
+      let ttsParams: any = {};
+
+      if (process.env.ELEVENLABS_API_KEY) {
+        ttsVendor = 'elevenlabs';
+        ttsParams = {
+          key: process.env.ELEVENLABS_API_KEY,
+          voice_id: '21m00Tcm4TlvDq8ikWAM',
+        };
+      } else if (process.env.OPENAI_API_KEY) {
+        ttsVendor = 'openai';
+        ttsParams = {
+          key: process.env.OPENAI_API_KEY,
+          model: 'tts-1',
+          voice: 'alloy',
+        };
+      } else if (process.env.AZURE_TTS_KEY) {
+        ttsVendor = 'microsoft';
+        ttsParams = {
+          key: process.env.AZURE_TTS_KEY,
+          region: process.env.AZURE_TTS_REGION || 'eastus',
+          voice_name: voiceName || 'en-US-JennyNeural',
+        };
+      } else {
+        // Default Agora-managed MiniMax TTS
+        ttsVendor = 'minimax';
+        ttsParams = {
+          voice_id: 'male-qn-qingse',
+        };
+      }
+
+      const activeAvatarId = heygenAvatarId || process.env.HEYGEN_AVATAR_ID;
+      const hasHeygenKey = Boolean(process.env.HEYGEN_API_KEY);
+
+      // Format 1: Properties payload with Agora-managed options (STT: Deepgram, LLM: OpenAI, TTS: MiniMax)
+      const payloadProperties: any = {
+        name: `agent-${Date.now()}`,
         properties: {
           channel: channelName,
           token: agentToken,
           agent_rtc_uid: String(uid),
-          remote_rtc_uids: ['*'], // listen to all users in channel
+          remote_rtc_uids: ['*'],
           enable_string_uid: false,
           idle_timeout: 120,
         },
+        asr: { vendor: 'deepgram', language: 'en-US' },
+        tts: { vendor: ttsVendor, params: ttsParams },
+        llm: {
+          vendor: 'openai',
+          system_messages: [
+            { role: 'system', content: systemPrompt || `You are ${interviewerName}, an adaptive AI interviewer.` },
+          ],
+          greeting_message: `Hello! I am ${interviewerName}. Let us begin the interview.`,
+          failure_message: 'I did not catch that. Could you please clarify?',
+          max_history: 20,
+        },
+        vad: { silence_duration_ms: 480, speech_duration_ms: 10 },
+      };
+
+      if (hasHeygenKey && activeAvatarId) {
+        payloadProperties.avatar = {
+          enable: true,
+          vendor: process.env.AGORA_AVATAR_VENDOR || 'heygen',
+          params: {
+            api_key: process.env.HEYGEN_API_KEY,
+            avatar_id: activeAvatarId,
+            quality: 'medium',
+          },
+        };
+      }
+
+      // Format 2: Webhook-routed payload if webhook URL is specified
+      const payloadWebhook: any = {
+        ...payloadProperties,
+        name: `agent-wh-${Date.now()}`,
         llm: {
           url: `${appUrl}/api/agora/llm-webhook`,
           api_key: 'vocalis-internal',
           system_messages: [
-            { role: 'system', content: systemPrompt || `You are ${interviewerName}, an AI interviewer. Ask adaptive follow-up questions based on candidate responses.` },
+            { role: 'system', content: systemPrompt || `You are ${interviewerName}, an adaptive AI interviewer.` },
           ],
-          greeting_message: `Hello, I am ${interviewerName}. Let us begin the interview.`,
-          failure_message: 'I am having trouble processing that. Could you please repeat?',
+          greeting_message: `Hello! I am ${interviewerName}. Let us begin the interview.`,
+          failure_message: 'I did not catch that. Could you please clarify?',
           max_history: 20,
-          params: { model: 'gemini-2.5-flash' },
         },
-        tts: {
-          vendor: 'microsoft',
-          params: {
-            key: process.env.AZURE_TTS_KEY || '',
-            region: process.env.AZURE_TTS_REGION || 'eastus',
-            voice_name: voiceName,
-            rate: '0%',
-            volume: '0%',
-          },
-        },
-        vad: { silence_duration_ms: 480, speech_duration_ms: 10 },
-        asr: { language: 'en-US' },
       };
 
-      const agoraRes = await fetch(agoraApiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Basic ${credentials}`,
-        },
-        body: JSON.stringify(agentPayload),
-      });
+      const payloadsToTry = [payloadProperties, payloadWebhook];
 
-      const agoraData = await agoraRes.json().catch(() => ({}));
+      console.log(`[Agora] Attempting Conversational AI Agent start (Avatar ID: ${activeAvatarId})...`);
 
-      if (!agoraRes.ok) {
-        console.warn('[Agora] Conversational AI agent start failed:', agoraData);
-        // Fall through to token-only mode
-      } else {
-        console.log('[Agora] Conversational AI agent started:', agoraData?.agent_id || 'ok');
-        return res.json({ success: true, agentId: agoraData?.agent_id, token: agentToken, mode: 'conversational-ai' });
+      for (const targetUrl of candidateUrls) {
+        for (const payload of payloadsToTry) {
+          try {
+            console.log(`[Agora] Trying endpoint: ${targetUrl}`);
+            const agoraRes = await fetch(targetUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Basic ${credentials}`,
+              },
+              body: JSON.stringify(payload),
+            });
+
+            const agoraText = await agoraRes.text().catch(() => '');
+            let agoraData: any = {};
+            try { agoraData = JSON.parse(agoraText); } catch (_) {}
+
+            console.log(`[Agora] Response from ${targetUrl}: HTTP ${agoraRes.status} -> ${agoraText.slice(0, 300)}`);
+
+            if (agoraRes.ok) {
+              console.log('[Agora] Conversational AI Agent STARTED SUCCESSFULLY! Endpoint:', targetUrl, 'Agent ID:', agoraData?.agent_id || agoraData?.id || 'ok');
+              return res.json({ success: true, agentId: agoraData?.agent_id || agoraData?.id, token: agentToken, mode: 'conversational-ai' });
+            }
+          } catch (err: any) {
+            console.warn('[Agora] Attempt failed for URL:', targetUrl, err.message);
+          }
+        }
       }
     }
 
@@ -1490,10 +1879,132 @@ app.post('/api/agora/stop-agent', async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// LIVEAVATAR REAL-TIME VIDEO STREAMING LAYER
+// Uses LiveAvatar LITE mode: we control STT/LLM/TTS, LiveAvatar renders video
+// Docs: https://docs.liveavatar.com/docs/lite-mode/overview.md
+// ─────────────────────────────────────────────────────────────────────────────
+
+// 5. Create LiveAvatar LITE Session Token + Start Session
+app.post('/api/liveavatar/start-session', async (req, res) => {
+  try {
+    const liveAvatarKey = process.env.LIVE_AVATAR_API_KEY;
+    if (!liveAvatarKey) {
+      return res.status(500).json({ success: false, error: 'LIVE_AVATAR_API_KEY not configured.' });
+    }
+
+    const { avatarId, isSandbox = true } = req.body;
+
+    let resolvedAvatarId = avatarId;
+
+    // If no avatarId given, find a sandbox-compatible public avatar automatically
+    if (!resolvedAvatarId) {
+      const avatarsRes = await fetch('https://api.liveavatar.com/v1/avatars/public?limit=100', {
+        headers: { 'X-API-KEY': liveAvatarKey }
+      });
+      const avatarsData = await avatarsRes.json();
+      const publicAvatars: any[] = avatarsData.data?.results || [];
+
+      for (const av of publicAvatars) {
+        const tokenTestRes = await fetch('https://api.liveavatar.com/v1/sessions/token', {
+          method: 'POST',
+          headers: { 'X-API-KEY': liveAvatarKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: 'LITE', avatar_id: av.id, is_sandbox: isSandbox })
+        });
+        if (tokenTestRes.ok) {
+          resolvedAvatarId = av.id;
+          console.log(`[LiveAvatar] Using sandbox-compatible avatar: "${av.name}" (${av.id})`);
+          break;
+        }
+      }
+    }
+
+    if (!resolvedAvatarId) {
+      return res.status(404).json({ success: false, error: 'No sandbox-compatible avatar found. Try with is_sandbox: false.' });
+    }
+
+    // Create session token
+    const tokenRes = await fetch('https://api.liveavatar.com/v1/sessions/token', {
+      method: 'POST',
+      headers: { 'X-API-KEY': liveAvatarKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'LITE', avatar_id: resolvedAvatarId, is_sandbox: isSandbox })
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenRes.ok || !tokenData.data?.session_token) {
+      return res.status(500).json({ success: false, error: 'Failed to create session token.', details: tokenData });
+    }
+
+    const { session_id, session_token } = tokenData.data;
+    console.log(`[LiveAvatar] Session token created: ${session_id}`);
+
+    // Start the session
+    const startRes = await fetch('https://api.liveavatar.com/v1/sessions/start', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${session_token}`, 'Content-Type': 'application/json' }
+    });
+    const startData = await startRes.json();
+    if (!startRes.ok || !startData.data?.livekit_url) {
+      return res.status(500).json({ success: false, error: 'Failed to start LiveAvatar session.', details: startData });
+    }
+
+    const { livekit_url, livekit_client_token, ws_url } = startData.data;
+    console.log(`[LiveAvatar] Session STARTED! LiveKit: ${livekit_url} | WS: ${ws_url}`);
+
+    res.json({
+      success: true,
+      sessionId: session_id,
+      sessionToken: session_token,
+      livekitUrl: livekit_url,
+      livekitClientToken: livekit_client_token,
+      wsUrl: ws_url,
+      avatarId: resolvedAvatarId,
+    });
+  } catch (err: any) {
+    console.error('[LiveAvatar] start-session error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 6. Stop LiveAvatar Session
+app.post('/api/liveavatar/stop-session', async (req, res) => {
+  try {
+    const { sessionId, sessionToken } = req.body;
+    if (sessionId && sessionToken) {
+      await fetch(`https://api.liveavatar.com/v1/sessions/${sessionId}/stop`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${sessionToken}` }
+      }).catch((e: any) => console.warn('[LiveAvatar] Stop warning:', e.message));
+      console.log(`[LiveAvatar] Session ${sessionId} stopped.`);
+    }
+    res.json({ success: true });
+  } catch (_) {
+    res.json({ success: true });
+  }
+});
+
+// 7. List LiveAvatar Public Avatars
+app.get('/api/liveavatar/avatars', async (_req, res) => {
+  try {
+    const liveAvatarKey = process.env.LIVE_AVATAR_API_KEY;
+    if (!liveAvatarKey) return res.status(500).json({ success: false, error: 'LIVE_AVATAR_API_KEY not configured.' });
+    const r = await fetch('https://api.liveavatar.com/v1/avatars/public?limit=100', {
+      headers: { 'X-API-KEY': liveAvatarKey }
+    });
+    const data = await r.json();
+    res.json({ success: true, avatars: data.data?.results || [] });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 async function startServer() {
+  const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Adaptive Voice Interview Platform running on http://localhost:${PORT}`);
+  });
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: { middlewareMode: true, hmr: { server } },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -1504,10 +2015,6 @@ async function startServer() {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
-
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Adaptive Voice Interview Platform running on http://0.0.0.0:${PORT}`);
-  });
 }
 
 startServer();

@@ -14,6 +14,7 @@ import {
   Target,
   Brain,
   FileText,
+  GitFork,
 } from 'lucide-react';
 
 interface TranscriptViewProps {
@@ -21,12 +22,14 @@ interface TranscriptViewProps {
   isProcessing: boolean;
   activeInterviewerName?: string;
   isFocusMode?: boolean;
+  onForkTurn?: (turnIndex: number) => void;
 }
 
 export const TranscriptView: React.FC<TranscriptViewProps> = ({
   transcript,
   isProcessing,
   isFocusMode = false,
+  onForkTurn,
 }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [expandedThoughts, setExpandedThoughts] = useState<Record<string, boolean>>({});
@@ -181,6 +184,11 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({
                     <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider bg-white px-1.5 py-0.2 rounded border border-slate-200">
                       {msg.speakerRole.replace('_', ' ')}
                     </span>
+                    {msg.isDebateTurn && (
+                      <span className="text-[9px] bg-amber-50 text-amber-800 px-1.5 py-0.2 rounded border border-amber-300 font-bold uppercase tracking-wider flex items-center gap-1">
+                        <Zap className="w-2.5 h-2.5 text-amber-600" /> ⚡ Committee Debate
+                      </span>
+                    )}
                     {msg.interrupted && (
                       <span className="text-[9px] bg-amber-100 text-amber-800 px-1 py-0.2 rounded border border-amber-200 font-bold uppercase tracking-wider">
                         Interrupted
@@ -198,6 +206,18 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({
                       <Clock className="w-3 h-3" />
                       {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                     </span>
+
+                    {onForkTurn && (
+                      <button
+                        type="button"
+                        onClick={() => onForkTurn(index)}
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 hover:text-indigo-900 border border-indigo-200 text-[9px] font-bold transition cursor-pointer ml-1"
+                        title="Fork & Retry from this turn using the Time-Machine"
+                      >
+                        <GitFork className="w-2.5 h-2.5" />
+                        <span>Fork Turn</span>
+                      </button>
+                    )}
                   </div>
                 </div>
 

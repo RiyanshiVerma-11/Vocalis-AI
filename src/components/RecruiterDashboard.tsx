@@ -27,11 +27,13 @@ import {
   X,
   Quote,
 } from 'lucide-react';
-import { InterviewScenario, Interviewer, CandidateResume, DifficultyLevel } from '../types';
+import { InterviewScenario, Interviewer, CandidateResume, DifficultyLevel, CustomCompanyRubric } from '../types';
 import { ALL_INTERVIEWERS } from '../data/interviewers';
-import { renderAvatarIcon, getAvatarGradientClass } from '../utils/avatarUtils';
+import { renderAvatarIcon, getAvatarGradientClass, InterviewerAvatar } from '../utils/avatarUtils';
 import { INTERVIEW_SCENARIOS } from '../data/scenarios';
 import { DEFAULT_RESUME, createDefaultCandidateResume } from '../data/resumes';
+import { RubricImporterModal } from './RubricImporterModal';
+import { ENTERPRISE_RUBRIC_TEMPLATES } from '../utils/rubricParser';
 
 interface RecruiterDashboardProps {
   onStartInterview: (config: {
@@ -41,6 +43,7 @@ interface RecruiterDashboardProps {
     targetRole: string;
     initialDifficulty: DifficultyLevel;
     candidateResume: CandidateResume;
+    customRubric?: CustomCompanyRubric;
   }) => void;
   onOpenResumeDrawer: () => void;
 }
@@ -52,6 +55,9 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({
   const [activeTab, setActiveTab] = useState<'requisitions' | 'candidates'>('requisitions');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedScorecardCandidate, setSelectedScorecardCandidate] = useState<any | null>(null);
+  const [isRubricModalOpen, setIsRubricModalOpen] = useState(false);
+  const [selectedEditingRubric, setSelectedEditingRubric] = useState<CustomCompanyRubric | null>(null);
+  const [customRubrics, setCustomRubrics] = useState<CustomCompanyRubric[]>(() => ENTERPRISE_RUBRIC_TEMPLATES);
 
   // Sample Evaluated Candidates Pipeline for Hiring Team
   const [candidatePipeline, setCandidatePipeline] = useState([
@@ -62,31 +68,31 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({
       date: 'Today, 2:15 PM',
       overallScore: 88,
       recommendation: 'Strong Hire',
-      panelUsed: [ALL_INTERVIEWERS[0], ALL_INTERVIEWERS[1], ALL_INTERVIEWERS[2]], // Alex, Maya, Marcus
+      panelUsed: [ALL_INTERVIEWERS[0], ALL_INTERVIEWERS[1], ALL_INTERVIEWERS[2]], // Rohan, Priya, Vikram
       keyStrengths: ['Distributed Cache Invalidation', 'p99 Latency SLAs', 'System Trade-offs'],
       quoteEvidence: '"We enforce write-through caching with Redis Pub/Sub invalidation channels for patient records..."',
       status: 'Evaluated',
     },
     {
       id: 'cand-2',
-      name: 'Elena Rostova',
+      name: 'Aanya Patel',
       role: 'Principal AI & RAG Engineer',
       date: 'Yesterday, 4:30 PM',
       overallScore: 92,
       recommendation: 'Strong Hire',
-      panelUsed: [ALL_INTERVIEWERS[0], ALL_INTERVIEWERS[4], ALL_INTERVIEWERS[2]], // Alex, Dr. Elena, Marcus
+      panelUsed: [ALL_INTERVIEWERS[0], ALL_INTERVIEWERS[4], ALL_INTERVIEWERS[2]], // Rohan, Dr. Meera, Vikram
       keyStrengths: ['Vector Embedding Latency', 'Multi-Agent State Sync', 'RAG Context Compression'],
       quoteEvidence: '"Context window compression is done via semantic vector pruning before sending prompts to Llama..."',
       status: 'Evaluated',
     },
     {
       id: 'cand-3',
-      name: 'Marcus Vance',
+      name: 'Aryan Shah',
       role: 'Staff Full-Stack Tech Lead',
       date: 'Aug 28, 2026',
       overallScore: 71,
       recommendation: 'Leaning Hire',
-      panelUsed: [ALL_INTERVIEWERS[1], ALL_INTERVIEWERS[2], ALL_INTERVIEWERS[3]], // Maya, Marcus, Sarah
+      panelUsed: [ALL_INTERVIEWERS[1], ALL_INTERVIEWERS[2], ALL_INTERVIEWERS[3]], // Priya, Vikram, Neha
       keyStrengths: ['User Conversion SLAs', 'API Design'],
       quoteEvidence: '"We migrated to GraphQL micro-services, though cache TTL invalidation caused temporary stale reads..."',
       status: 'Under Review',
@@ -126,6 +132,37 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({
       c.role.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const handleApplyCustomRubric = (newRubric: CustomCompanyRubric, launchImmediately?: boolean) => {
+    setCustomRubrics((prev) => {
+      const exists = prev.some((r) => r.id === newRubric.id || r.companyName === newRubric.companyName);
+      if (exists) {
+        return prev.map((r) => (r.id === newRubric.id || r.companyName === newRubric.companyName ? newRubric : r));
+      }
+      return [newRubric, ...prev];
+    });
+
+    if (launchImmediately) {
+      const defaultDiff: DifficultyLevel = newRubric.strictnessRating === 'Exacting' ? 'Staff/Principal' : 'Senior';
+      onStartInterview({
+        scenario: {
+          ...INTERVIEW_SCENARIOS[0],
+          id: `custom-req-${newRubric.id}`,
+          title: `${newRubric.companyName} - ${newRubric.targetLevel}`,
+          targetRole: newRubric.targetLevel,
+          context: `Target Level: ${newRubric.targetLevel} at ${newRubric.companyName}. Evaluation strictly calibrated to custom rubric.`,
+          customConstraints: `Strictness: ${newRubric.strictnessRating}. Key signals: ${(newRubric.keySignals || []).join('; ')}`,
+          customRubric: newRubric,
+        },
+        activePanel: ALL_INTERVIEWERS.slice(0, 3),
+        candidateName: 'Candidate',
+        targetRole: newRubric.targetLevel,
+        initialDifficulty: defaultDiff,
+        candidateResume: createDefaultCandidateResume('Candidate', newRubric.targetLevel),
+        customRubric: newRubric,
+      });
+    }
+  };
+
   return (
     <div className="w-full max-w-[1920px] mx-auto py-4 px-4 sm:px-6 lg:px-8 space-y-4 text-slate-900 font-sans">
       {/* Recruiter Product Header Banner */}
@@ -147,7 +184,19 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({
             </p>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedEditingRubric(null);
+                setIsRubricModalOpen(true);
+              }}
+              className="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md shadow-indigo-600/30 transition cursor-pointer flex items-center gap-1.5"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>📄 Upload Rubric / JD (PDF)</span>
+            </button>
+
             <button
               type="button"
               onClick={onOpenResumeDrawer}
@@ -159,11 +208,18 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({
 
             <button
               type="button"
-              onClick={() => onStartInterview(INTERVIEW_SCENARIOS[0], ALL_INTERVIEWERS.slice(0, 3))}
-              className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs shadow-md shadow-indigo-600/30 transition cursor-pointer flex items-center gap-1.5"
+              onClick={() => onStartInterview({
+                scenario: INTERVIEW_SCENARIOS[0],
+                activePanel: ALL_INTERVIEWERS.slice(0, 3),
+                candidateName: 'Candidate',
+                targetRole: 'Senior Distributed Systems Architect',
+                initialDifficulty: 'Senior',
+                candidateResume: createDefaultCandidateResume('Candidate', 'Senior Distributed Systems Architect'),
+              })}
+              className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-extrabold text-xs border border-slate-700 transition cursor-pointer flex items-center gap-1.5"
             >
-              <Play className="w-3.5 h-3.5" />
-              <span>Launch Live Screen</span>
+              <Play className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Launch Standard Screen</span>
             </button>
           </div>
         </div>
@@ -293,23 +349,95 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({
       {/* TAB 1: JOB REQUISITIONS & DYNAMIC AI PANEL CONFIGURATION */}
       {activeTab === 'requisitions' && (
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
-              <h3 className="text-base font-extrabold text-slate-900">Active Requisitions & AI Committee Rules</h3>
-              <p className="text-xs text-slate-500">Configure AI-suggested committee panels per job opening.</p>
+              <h3 className="text-base font-extrabold text-slate-900">Active Job Requisitions & Leveling Rubrics</h3>
+              <p className="text-xs text-slate-500">Auto-calibrated AI committee panels and strictness bars per opening.</p>
             </div>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedEditingRubric(null);
+                setIsRubricModalOpen(true);
+              }}
+              className="px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs border border-indigo-200 transition cursor-pointer flex items-center gap-1.5 self-start sm:self-auto"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Import Custom Rubric PDF / Matrix</span>
+            </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {INTERVIEW_SCENARIOS.slice(0, 3).map((sc, idx) => (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* Render Custom / Imported Rubrics first */}
+            {customRubrics.map((cr, idx) => (
+              <div
+                key={cr.id}
+                className="bg-white p-4 rounded-xl border border-indigo-200/80 space-y-3 hover:border-indigo-500 transition flex flex-col justify-between shadow-xs hover:shadow-md ring-1 ring-indigo-500/10 relative overflow-hidden"
+              >
+                <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/5 rounded-full blur-xl pointer-events-none" />
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 font-mono font-bold uppercase">
+                      🏢 {cr.companyName} Bar
+                    </span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                      cr.strictnessRating === 'Exacting'
+                        ? 'bg-rose-50 text-rose-700 border-rose-200'
+                        : cr.strictnessRating === 'Strict'
+                        ? 'bg-amber-50 text-amber-700 border-amber-200'
+                        : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    }`}>
+                      {cr.strictnessRating} Standard
+                    </span>
+                  </div>
+
+                  <h4 className="text-sm font-bold text-slate-900">{cr.targetLevel}</h4>
+                  <p className="text-[11px] text-slate-600 line-clamp-2">
+                    Calibrated weights: Arch {cr.rubricWeights.technicalArchitecture}%, Problem Solving {cr.rubricWeights.problemSolvingAndAgility}%, Leadership {cr.rubricWeights.leadershipAndOwnership}%.
+                  </p>
+
+                  <div className="pt-2 border-t border-slate-100 space-y-1 text-[10px]">
+                    <div className="flex items-center justify-between text-slate-500 font-medium">
+                      <span>Key Signals: {cr.keySignals?.length || 0}</span>
+                      <span>Must-Ask Qs: {cr.mandatoryQuestions?.length || 0}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedEditingRubric(cr);
+                      setIsRubricModalOpen(true);
+                    }}
+                    className="flex-1 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer border border-slate-200 text-center"
+                  >
+                    Edit / Inspect
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleApplyCustomRubric(cr, true)}
+                    className="flex-1 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs transition cursor-pointer shadow-xs flex items-center justify-center gap-1"
+                  >
+                    <Play className="w-3 h-3" />
+                    <span>Launch Screen</span>
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            {/* Standard Scenarios */}
+            {INTERVIEW_SCENARIOS.slice(0, 2).map((sc, idx) => (
               <div
                 key={sc.id}
                 className="bg-white p-4 rounded-xl border border-slate-200 space-y-3 hover:border-indigo-500/50 transition flex flex-col justify-between shadow-xs hover:shadow-sm"
               >
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-[9px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 font-mono font-bold uppercase">
-                      Req #{101 + idx} • {sc.targetRole}
+                    <span className="text-[9px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 font-mono font-bold uppercase">
+                      Standard Req #{101 + idx}
                     </span>
                     <span className="text-[11px] font-bold text-emerald-600 flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -319,22 +447,6 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({
 
                   <h4 className="text-sm font-bold text-slate-900">{sc.title}</h4>
                   <p className="text-[11px] text-slate-600 leading-relaxed line-clamp-2">{sc.description}</p>
-
-                  <div className="pt-2 border-t border-slate-100 space-y-1">
-                    <span className="text-[9px] font-bold text-slate-400 uppercase">Assigned AI Committee Panel</span>
-                    <div className="flex items-center gap-1.5">
-                      {ALL_INTERVIEWERS.slice(0, 3).map((interviewer) => (
-                        <div
-                          key={interviewer.id}
-                          className={`w-6 h-6 rounded-md text-white font-bold text-[10px] flex items-center justify-center shadow-xs ${getAvatarGradientClass(interviewer.avatarColor)}`}
-                          title={`${interviewer.name} (${interviewer.title})`}
-                        >
-                          {renderAvatarIcon(interviewer.avatarIcon, "w-3.5 h-3.5 text-white")}
-                        </div>
-                      ))}
-                      <span className="text-[11px] text-slate-500 font-mono font-semibold ml-1">3 Specialists</span>
-                    </div>
-                  </div>
                 </div>
 
                 <button
@@ -349,7 +461,7 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({
                       candidateResume: createDefaultCandidateResume('Candidate', sc.targetRole),
                     })
                   }
-                  className="w-full py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs transition cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
+                  className="w-full py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
                 >
                   <Play className="w-3.5 h-3.5" />
                   <span>Launch Candidate Round</span>
@@ -536,9 +648,12 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {selectedScorecardCandidate.panelUsed.map((interviewer: any) => (
                     <div key={interviewer.id} className="p-3 bg-white rounded-xl border border-slate-200 flex items-center gap-2.5 shadow-xs">
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${getAvatarGradientClass(interviewer.avatarColor)}`}>
-                        {renderAvatarIcon(interviewer.avatarIcon, "w-4 h-4 text-white")}
-                      </div>
+                      <InterviewerAvatar
+                        avatarIcon={interviewer.avatarIcon}
+                        avatarColor={interviewer.avatarColor}
+                        name={interviewer.name}
+                        className="w-8 h-8 rounded-lg border border-slate-200"
+                      />
                       <div className="min-w-0">
                         <p className="text-xs font-bold text-slate-900 truncate">{interviewer.name}</p>
                         <p className="text-[10px] text-indigo-600 font-semibold truncate">{interviewer.title}</p>
@@ -632,6 +747,14 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({
           </div>
         </div>
       )}
+
+      {/* 1-Click Enterprise Rubric / JD PDF Importer Modal */}
+      <RubricImporterModal
+        isOpen={isRubricModalOpen}
+        onClose={() => setIsRubricModalOpen(false)}
+        initialRubric={selectedEditingRubric}
+        onApplyRubric={handleApplyCustomRubric}
+      />
     </div>
   );
 };

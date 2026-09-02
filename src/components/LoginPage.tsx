@@ -681,7 +681,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                         <Building2 className="w-3 h-3" />
                         <span>Hiring Team & Recruiter</span>
                       </span>
-                      <span className="text-[9px] text-slate-400 font-mono">Sarah Chen</span>
+                      <span className="text-[9px] text-slate-400 font-mono">Neha Kapoor</span>
                     </div>
                     <p className="text-[11px] text-slate-200 font-semibold truncate">recruiter@vocalis.ai</p>
                     <p className="text-[10px] text-slate-400 leading-normal">
@@ -691,11 +691,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       type="button"
                       onClick={() =>
                         handleDemoLogin({
-                          name: 'Sarah Chen',
+                          name: 'Neha Kapoor',
                           email: 'recruiter@vocalis.ai',
                           role: 'recruiter',
                           targetTitle: 'Lead Technical Recruiter & Chair',
-                          initials: 'SC',
+                          initials: 'NK',
                         })
                       }
                       className="w-full py-1.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-[11px] rounded-lg shadow-sm transition flex items-center justify-center gap-1 cursor-pointer"

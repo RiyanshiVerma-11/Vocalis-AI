@@ -20,6 +20,8 @@ import {
   UploadCloud,
   Edit3,
   User as UserIcon,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
 interface ScenarioSelectorProps {
@@ -54,14 +56,24 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
     currentCandidateResume ||
     (currentCandidateName ? createDefaultCandidateResume(currentCandidateName) : RESUME_PRESETS[0]);
 
+  const isDemoUser = !!(currentUser?.isDemo || currentUser?.email?.endsWith('@vocalis.ai'));
+
   const [selectedScenarioId, setSelectedScenarioId] = useState<string>(INTERVIEW_SCENARIOS[0].id);
   const [trackMode, setTrackMode] = useState<'preset' | 'custom'>('preset');
   const [selectedResumeId, setSelectedResumeId] = useState<string>(defaultResumeObj.id);
   const [candidateName, setCandidateName] = useState<string>(defaultResumeObj.fullName);
   const [targetRole, setTargetRole] = useState<string>(defaultResumeObj.headline || 'Senior / Staff Software Engineer');
-  const [selectedDifficulty, setSelectedDifficulty] = useState<DifficultyLevel>('Senior');
+  const [selectedDifficulty, setSelectedDifficulty] = useState<DifficultyLevel>('Intermediate');
   const [panelStrictness, setPanelStrictness] = useState<'Supportive' | 'Balanced' | 'Strict' | 'Relentless Bar Raiser'>('Balanced');
   const [customTradeOffConstraints, setCustomTradeOffConstraints] = useState<string>('');
+
+  // Collapsible dropdown map for scenario panel dynamics
+  const [expandedDynamicsMap, setExpandedDynamicsMap] = useState<Record<string, boolean>>({});
+
+  const toggleDynamics = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setExpandedDynamicsMap((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
 
   useEffect(() => {
     if (currentCandidateResume) {
@@ -93,6 +105,7 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
   const [customDescription, setCustomDescription] = useState<string>('');
   const [customResume, setCustomResume] = useState<CandidateResume | null>(null);
   const [pastedText, setPastedText] = useState<string>('');
+  const [resumeGateError, setResumeGateError] = useState<string | null>(null);
 
   const handleRubricPresetChange = (preset: 'balanced' | 'tech_heavy' | 'product_heavy' | 'leadership_heavy') => {
     setRubricPreset(preset);
@@ -193,7 +206,24 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
     }
   };
 
+  // A resume is considered "real" if it has at least one project, work experience, or non-default summary
+  const isResumeLoaded = (
+    (currentResume.notableProjects?.length ?? 0) > 0 ||
+    (currentResume.workExperience?.length ?? 0) > 0 ||
+    (currentResume.education?.length ?? 0) > 0
+  ) && currentResume.id !== 'resume-jordan-distributed' && currentResume.id !== 'resume-alex-fullstack';
+
+  const isTailoredScenario = currentScenario.id === 'candidate-personalized-interview';
+
   const handleStart = () => {
+    // Gate: tailored scenario needs a real pasted resume, not a preset
+    if (isTailoredScenario && !isResumeLoaded && !isDemoUser) {
+      setResumeGateError('⚠️ Please paste and parse your resume (Step 1) before launching the Tailored Interview. All questions will be sourced from your actual resume.');
+      document.getElementById('step1-resume-section')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    setResumeGateError(null);
+
     const candidateProfile: CandidateResume = {
       ...currentResume,
       fullName: candidateName.trim() || currentResume.fullName,
@@ -233,7 +263,7 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
   const presetScenarios = INTERVIEW_SCENARIOS.filter((s) => s.id !== 'custom-freeform');
 
   return (
-    <div id="scenario-selector-screen" className="w-full max-w-[1920px] mx-auto py-4 px-4 sm:px-6 lg:px-8 space-y-4">
+    <div id="scenario-selector-screen" className="w-full py-2 px-1 sm:px-2 space-y-3">
       {/* SaaS Product Onboarding Bar */}
       <div className="bg-slate-900 rounded-xl border border-slate-800 p-5 text-white shadow-lg relative overflow-hidden">
         <div className="absolute -right-16 -top-16 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -244,88 +274,88 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
               <Zap className="w-3 h-3" />
               <span>Candidate Practice Studio Workspace</span>
             </div>
-            <h1 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
+            <h1 className="text-base sm:text-lg font-bold text-white tracking-tight">
               AI Voice Interview Studio
             </h1>
-            <p className="text-slate-400 text-[11px]">
+            <p className="text-slate-400 text-[10px]">
               Autonomous multi-role AI interview panel with adaptive probing, shared context, and live calibration.
             </p>
           </div>
 
-          <div className="flex items-center gap-2 bg-slate-950/80 px-3 py-1.5 rounded-lg border border-slate-800 text-[11px] text-slate-300 shrink-0">
+          <div className="flex items-center gap-2 bg-slate-950/80 px-2.5 py-1 rounded-lg border border-slate-800 text-[10px] text-slate-300 shrink-0">
             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span className="font-mono font-bold">Sub-100ms Voice Engine</span>
           </div>
         </div>
 
         {/* Feature Capabilities Badge Strip */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
-          <div className="p-2 rounded-lg bg-slate-950/60 border border-slate-800 flex items-center gap-2 text-[11px] text-slate-300">
-            <Sparkles className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+          <div className="p-1.5 rounded-lg bg-slate-950/60 border border-slate-800 flex items-center gap-1.5 text-[10px] text-slate-300">
+            <Sparkles className="w-3 h-3 text-indigo-400 shrink-0" />
             <span className="truncate">5 Specialized AI Roles</span>
           </div>
-          <div className="p-2 rounded-lg bg-slate-950/60 border border-slate-800 flex items-center gap-2 text-[11px] text-slate-300">
-            <Zap className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+          <div className="p-1.5 rounded-lg bg-slate-950/60 border border-slate-800 flex items-center gap-1.5 text-[10px] text-slate-300">
+            <Zap className="w-3 h-3 text-emerald-400 shrink-0" />
             <span className="truncate">Real-Time Interruptible Voice</span>
           </div>
-          <div className="p-2 rounded-lg bg-slate-950/60 border border-slate-800 flex items-center gap-2 text-[11px] text-slate-300">
-            <CheckCircle2 className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+          <div className="p-1.5 rounded-lg bg-slate-950/60 border border-slate-800 flex items-center gap-1.5 text-[10px] text-slate-300">
+            <CheckCircle2 className="w-3 h-3 text-purple-400 shrink-0" />
             <span className="truncate">Shared Candidate Context</span>
           </div>
-          <div className="p-2 rounded-lg bg-slate-950/60 border border-slate-800 flex items-center gap-2 text-[11px] text-slate-300">
-            <FileText className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+          <div className="p-1.5 rounded-lg bg-slate-950/60 border border-slate-800 flex items-center gap-1.5 text-[10px] text-slate-300">
+            <FileText className="w-3 h-3 text-amber-400 shrink-0" />
             <span className="truncate">Evidence Transcript Citations</span>
           </div>
         </div>
 
         {/* 3 Step Visual Flow Header */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
-          <div className={`flex items-center gap-2.5 p-2.5 rounded-lg border transition ${
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+          <div className={`flex items-center gap-2 p-2 rounded-lg border transition ${
             currentResume.fullName ? 'bg-indigo-950/60 border-indigo-500/50 text-white' : 'bg-slate-950/60 border-slate-800 text-slate-400'
           }`}>
-            <div className="w-6 h-6 rounded-md bg-indigo-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
+            <div className="w-5 h-5 rounded-md bg-indigo-600 text-white font-bold text-[10px] flex items-center justify-center shrink-0">
               1
             </div>
             <div>
-              <p className="text-[11px] font-bold text-white">Step 1: Your Resume</p>
-              <p className="text-[10px] text-slate-300 truncate">
+              <p className="text-[10px] font-bold text-white">Step 1: Your Resume</p>
+              <p className="text-[9px] text-slate-300 truncate">
                 {currentResume.fullName ? `Active: ${currentResume.fullName}` : 'Paste resume text'}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5 p-2.5 rounded-lg bg-slate-950/60 border border-slate-800">
-            <div className="w-6 h-6 rounded-md bg-indigo-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
+          <div className="flex items-center gap-2 p-2 rounded-lg bg-slate-950/60 border border-slate-800">
+            <div className="w-5 h-5 rounded-md bg-indigo-600 text-white font-bold text-[10px] flex items-center justify-center shrink-0">
               2
             </div>
             <div>
-              <p className="text-[11px] font-bold text-white">Step 2: Job / Track</p>
-              <p className="text-[10px] text-slate-300 truncate">
+              <p className="text-[10px] font-bold text-white">Step 2: Job / Track</p>
+              <p className="text-[9px] text-slate-300 truncate">
                 {trackMode === 'custom' ? 'Custom Company JD' : currentScenario.title}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5 p-2.5 rounded-lg bg-slate-950/60 border border-slate-800">
-            <div className="w-6 h-6 rounded-md bg-emerald-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
+          <div className="flex items-center gap-2 p-2 rounded-lg bg-slate-950/60 border border-slate-800">
+            <div className="w-5 h-5 rounded-md bg-emerald-600 text-white font-bold text-[10px] flex items-center justify-center shrink-0">
               3
             </div>
             <div>
-              <p className="text-[11px] font-bold text-white">Step 3: Launch Panel</p>
-              <p className="text-[10px] text-slate-400">Interactive Voice Room</p>
+              <p className="text-[10px] font-bold text-white">Step 3: Launch Panel</p>
+              <p className="text-[9px] text-slate-400">Interactive Voice Room</p>
             </div>
           </div>
         </div>
       </div>
 
       {/* STEP 1: Submit & Parse Resume */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-sm space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+      <div id="step1-resume-section" className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs space-y-3">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
           <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-lg bg-indigo-600 text-white text-xs font-black flex items-center justify-center">
+            <span className="w-5 h-5 rounded-md bg-indigo-600 text-white text-[10px] font-black flex items-center justify-center">
               1
             </span>
-            <h2 className="text-sm sm:text-base font-extrabold text-slate-900">
+            <h2 className="text-xs sm:text-sm font-bold text-slate-900">
               Step 1: Submit Your Candidate Resume
             </h2>
           </div>
@@ -391,9 +421,14 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
                       <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                       <span>{resumeStatusMsg}</span>
                     </div>
-                  ) : (
+                  ) : isDemoUser ? (
                     <span className="text-[11px] text-slate-500">
                       Or choose a sample preset ➔
+                    </span>
+                  ) : (
+                    <span className="text-[11px] text-indigo-600 font-semibold flex items-center gap-1">
+                      <Edit3 className="w-3 h-3 text-indigo-500" />
+                      <span>Paste your resume to generate profile ➔</span>
                     </span>
                   )}
                 </div>
@@ -431,7 +466,7 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
             </div>
 
             <div className="pt-1 space-y-1">
-                {(currentUser?.isDemo || currentUser?.email?.endsWith('@vocalis.ai')) ? (
+                {isDemoUser ? (
                   <>
                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                       Demo Profiles:
@@ -476,14 +511,17 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
                     </div>
                   </>
                 ) : (
-                  <div className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-[11px] text-slate-600 space-y-0.5">
-                    <p className="font-bold text-slate-800 flex items-center gap-1">
-                      <UserIcon className="w-3 h-3 text-indigo-600" />
-                      Your Active Profile
+                  <div className="p-2.5 bg-indigo-50/70 border border-indigo-200/80 rounded-xl text-[11px] text-slate-700 space-y-1">
+                    <p className="font-extrabold text-slate-800 flex items-center gap-1.5 text-xs">
+                      <UserIcon className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Your Active Candidate Profile</span>
                     </p>
-                    <p className="text-indigo-700 font-semibold">{currentResume.fullName}</p>
-                    <p className="text-slate-500 line-clamp-1 text-[10px]">{currentResume.headline}</p>
-                    <p className="text-[10px] text-slate-400 italic pt-1">Paste your resume on the left to personalise questions.</p>
+                    <p className="text-indigo-900 font-bold text-xs">{currentResume.fullName}</p>
+                    <p className="text-slate-600 line-clamp-1 text-[11px] font-medium">{currentResume.headline}</p>
+                    <p className="text-[10px] text-indigo-700 font-semibold pt-1 border-t border-indigo-100/80 flex items-center gap-1">
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                      <span>Please paste your own resume on the left to personalize your interview panel.</span>
+                    </p>
                   </div>
                 )}
             </div>
@@ -492,13 +530,13 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
       </div>
 
       {/* STEP 2: Job Role / Track Selection (Segmented Toggle) */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-sm space-y-4">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+      <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs space-y-3">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-100 pb-2.5">
           <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-lg bg-indigo-600 text-white text-xs font-black flex items-center justify-center">
+            <span className="w-5 h-5 rounded-md bg-indigo-600 text-white text-[10px] font-black flex items-center justify-center">
               2
             </span>
-            <h2 className="text-sm sm:text-base font-extrabold text-slate-900">
+            <h2 className="text-xs sm:text-sm font-bold text-slate-900">
               Step 2: Target Role & Practice Track
             </h2>
           </div>
@@ -532,45 +570,104 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
           </div>
         </div>
 
-        {/* MODE A: Practice Track Cards */}
+        {/* MODE A: Practice Track Cards (5 Columns Landscape Grid) */}
         {trackMode === 'preset' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4 animate-in fade-in duration-200">
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3 animate-in fade-in duration-200">
             {presetScenarios.map((sc) => {
               const isSelected = selectedScenarioId === sc.id;
+              const isExpanded = expandedDynamicsMap[sc.id];
+
               return (
                 <div
                   key={sc.id}
                   id={`scenario-card-${sc.id}`}
                   onClick={() => handleScenarioChange(sc)}
-                  className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between ${
+                  className={`relative p-3.5 rounded-2xl border transition-all duration-200 cursor-pointer flex flex-col justify-between group ${
                     isSelected
-                      ? 'bg-indigo-50/60 border-2 border-indigo-600 ring-2 ring-indigo-500/10 shadow-sm'
-                      : 'bg-slate-50/60 border-slate-200 hover:border-slate-300 hover:bg-white'
+                      ? 'bg-gradient-to-b from-indigo-50/90 via-white to-white border-2 border-indigo-600 shadow-md ring-2 ring-indigo-500/10 scale-[1.01]'
+                      : 'bg-white border-slate-200 hover:border-indigo-300 hover:shadow-md hover:bg-slate-50/50'
                   }`}
                 >
+                  {/* Active Selected Badge Banner */}
+                  {isSelected && (
+                    <div className="absolute -top-2.5 right-3 px-2 py-0.2 rounded-full bg-indigo-600 text-white text-[8px] font-extrabold uppercase tracking-wider shadow-xs flex items-center gap-1 border border-indigo-400">
+                      <CheckCircle2 className="w-2.5 h-2.5 text-white" />
+                      <span>Active Track</span>
+                    </div>
+                  )}
+
                   <div className="space-y-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
-                        {sc.category}
+                    {/* Header Badges */}
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-200/80 truncate">
+                        <Sparkles className="w-2.5 h-2.5 text-indigo-600 shrink-0" />
+                        <span className="truncate">{sc.category}</span>
                       </span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-white text-slate-700 font-mono font-bold border border-slate-200">
+
+                      <span
+                        className={`text-[9px] px-1.5 py-0.5 rounded-md font-mono font-bold border shrink-0 ${
+                          sc.difficulty === 'Staff/Principal'
+                            ? 'bg-amber-50 text-amber-800 border-amber-300'
+                            : 'bg-purple-50 text-purple-800 border-purple-200'
+                        }`}
+                      >
                         {sc.difficulty}
                       </span>
                     </div>
 
-                    <h3 className="text-sm font-extrabold text-slate-900 flex items-center justify-between">
-                      <span>{sc.title}</span>
-                      {isSelected && <CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0" />}
+                    {/* Card Title Heading */}
+                    <h3 className="text-xs font-extrabold text-slate-900 leading-snug group-hover:text-indigo-600 transition-colors line-clamp-2">
+                      {sc.title}
                     </h3>
-
-                    <p className="text-xs text-slate-600 leading-relaxed">
-                      {sc.description}
-                    </p>
+                    {sc.id === 'candidate-personalized-interview' && (
+                      <div className="flex items-center gap-1 mt-1">
+                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase tracking-wider border ${
+                          isResumeLoaded || isDemoUser
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                            : 'bg-amber-50 text-amber-700 border-amber-300'
+                        }`}>
+                          <FileText className="w-2.5 h-2.5 shrink-0" />
+                          {isResumeLoaded || isDemoUser ? '✓ Your Resume Loaded' : 'Paste Resume Required'}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
-                  <div className="mt-3 bg-white p-2.5 rounded-xl text-[11px] text-slate-700 border border-slate-200">
-                    <strong className="text-indigo-700 block mb-0.5">Panel Dynamics:</strong>
-                    <span className="text-slate-600 leading-tight">{sc.exampleDynamics}</span>
+                  {/* Dropdown Toggle Button */}
+                  <div className="mt-3 pt-2 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={(e) => toggleDynamics(e, sc.id)}
+                      className="w-full flex items-center justify-between text-[10px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50/70 hover:bg-indigo-100 px-2 py-1 rounded-lg border border-indigo-200/80 transition cursor-pointer"
+                    >
+                      <span>{isExpanded ? 'Hide Details' : 'Details & Strategy'}</span>
+                      {isExpanded ? (
+                        <ChevronUp className="w-3 h-3 text-indigo-600 shrink-0" />
+                      ) : (
+                        <ChevronDown className="w-3 h-3 text-indigo-600 shrink-0" />
+                      )}
+                    </button>
+
+                    {/* Expanded Content Dropdown */}
+                    {isExpanded && (
+                      <div className="mt-2 space-y-2 text-[10px] animate-in fade-in duration-150">
+                        {/* Description */}
+                        <p className="text-slate-600 leading-relaxed font-normal bg-slate-50 p-2 rounded-lg border border-slate-200">
+                          {sc.description}
+                        </p>
+
+                        {/* Probing Strategy Box */}
+                        <div className="bg-slate-900 text-slate-200 p-2.5 rounded-xl border border-slate-800 shadow-xs">
+                          <div className="flex items-center gap-1 text-indigo-400 font-bold mb-1 uppercase text-[8px] tracking-wider">
+                            <Users className="w-3 h-3 text-indigo-400 shrink-0" />
+                            <span>Panel Strategy</span>
+                          </div>
+                          <p className="text-slate-300 leading-relaxed font-sans">
+                            {sc.exampleDynamics}
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -611,13 +708,13 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
       </div>
 
       {/* STEP 3: Calibration & Launch AI Room */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-sm space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+      <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs space-y-3">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
           <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-lg bg-indigo-600 text-white text-xs font-black flex items-center justify-center">
+            <span className="w-5 h-5 rounded-md bg-indigo-600 text-white text-[10px] font-black flex items-center justify-center">
               3
             </span>
-            <h2 className="text-sm sm:text-base font-extrabold text-slate-900">
+            <h2 className="text-xs sm:text-sm font-bold text-slate-900">
               Step 3: Calibrate Panel & Launch Interview Room
             </h2>
           </div>
@@ -641,13 +738,20 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
                       key={diff}
                       type="button"
                       onClick={() => setSelectedDifficulty(diff)}
-                      className={`text-xs py-2 px-3 rounded-xl font-bold border transition cursor-pointer ${
+                      className={`text-xs py-2 px-3 rounded-xl font-bold border transition cursor-pointer flex items-center justify-between ${
                         selectedDifficulty === diff
                           ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
                           : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                       }`}
                     >
-                      {diff}
+                      <span>{diff}</span>
+                      {diff === 'Intermediate' && (
+                        <span className={`text-[9px] px-1.5 py-0.2 rounded uppercase font-black ${
+                          selectedDifficulty === diff ? 'bg-indigo-700 text-indigo-100' : 'bg-indigo-100 text-indigo-700'
+                        }`}>
+                          Default
+                        </span>
+                      )}
                     </button>
                   )
                 )}
@@ -781,16 +885,42 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
               </div>
             </div>
 
+            {/* Resume Gate Warning Banner */}
+            {resumeGateError && (
+              <div className="flex items-start gap-2.5 p-3 bg-amber-50 border border-amber-300 rounded-xl animate-in fade-in text-xs">
+                <span className="text-amber-600 text-base leading-none mt-0.5">⚠️</span>
+                <div>
+                  <p className="font-extrabold text-amber-900">Resume Required</p>
+                  <p className="text-amber-800 font-medium mt-0.5 leading-relaxed">{resumeGateError.replace('⚠️ ', '')}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Tailored Scenario Info Banner (when no resume loaded) */}
+            {isTailoredScenario && !isResumeLoaded && !isDemoUser && (
+              <div className="flex items-start gap-2.5 p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-[11px]">
+                <Sparkles className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                <div className="text-indigo-900">
+                  <p className="font-extrabold text-xs">Resume-Only Interview Mode Active</p>
+                  <p className="text-indigo-700 mt-0.5 leading-relaxed">This track asks questions <strong>exclusively from your resume</strong>. Please paste &amp; parse your resume in Step 1 first — it works for any resume, not just this example.</p>
+                </div>
+              </div>
+            )}
+
             {/* Final Launch CTA Button */}
             <button
               id="btn-launch-interview"
               type="button"
               onClick={handleStart}
-              className="w-full bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-extrabold py-4 px-5 rounded-xl shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-3 transition-all duration-200 cursor-pointer text-sm sm:text-base tracking-wide"
+              className={`w-full font-extrabold py-4 px-5 rounded-xl shadow-lg flex items-center justify-center gap-3 transition-all duration-200 cursor-pointer text-sm sm:text-base tracking-wide ${
+                isTailoredScenario && !isResumeLoaded && !isDemoUser
+                  ? 'bg-slate-300 text-slate-500 shadow-none cursor-not-allowed'
+                  : 'bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white shadow-indigo-600/20'
+              }`}
             >
-              <Play className="w-5 h-5 fill-white" />
-              <span>🚀 Launch Real-Time Voice Interview Room</span>
-              <ArrowRight className="w-5 h-5 text-indigo-200" />
+              <Play className="w-5 h-5 fill-current" />
+              <span>{isTailoredScenario && !isResumeLoaded && !isDemoUser ? '📋 Paste Resume to Enable Launch' : '🚀 Launch Real-Time Voice Interview Room'}</span>
+              <ArrowRight className="w-5 h-5 opacity-80" />
             </button>
           </div>
         </div>

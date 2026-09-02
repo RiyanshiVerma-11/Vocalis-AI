@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Mic, MicOff, Send, Hand, Sparkles, Volume2, AudioLines, Pause, Play, Clock, X } from 'lucide-react';
+import { Mic, MicOff, Send, Hand, Sparkles, Volume2, AudioLines, Pause, Play, Clock, X, BrainCircuit, ShieldCheck, MessageSquareQuote } from 'lucide-react';
 
 interface VoiceControllerProps {
   isListening: boolean;
@@ -15,6 +15,9 @@ interface VoiceControllerProps {
   onChangeSilenceTimeout?: (ms: number) => void;
   isFloorHeld?: boolean;
   onToggleHoldFloor?: () => void;
+  thoughtGraceActive?: boolean;
+  thoughtGraceReason?: string;
+  backchannelDetectedPhrase?: string | null;
 }
 
 export const VoiceController: React.FC<VoiceControllerProps> = ({
@@ -31,6 +34,9 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
   onChangeSilenceTimeout,
   isFloorHeld = false,
   onToggleHoldFloor,
+  thoughtGraceActive = false,
+  thoughtGraceReason = '',
+  backchannelDetectedPhrase = null,
 }) => {
   const [textInput, setTextInput] = useState('');
 
@@ -125,7 +131,7 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
         <div className="flex items-center gap-2">
           {/* Silence Tolerance Selector */}
           {onChangeSilenceTimeout && (
-            <div className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-xl border border-slate-200 text-[11px]">
+            <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-xl border border-slate-200 text-[11px]">
               <Clock className="w-3 h-3 text-slate-500" />
               <span className="font-medium text-slate-600 hidden sm:inline">Pause:</span>
               <select
@@ -133,11 +139,12 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
                 value={silenceTimeoutMs}
                 onChange={(e) => onChangeSilenceTimeout(Number(e.target.value))}
                 className="bg-transparent font-semibold text-slate-800 outline-none cursor-pointer text-[11px]"
+                title="Choose when your speech auto-submits. Select Manual Send Only to never get cut off."
               >
-                <option value={3000}>⚡ 3s Fast</option>
-                <option value={4000}>☕ 4s Relaxed</option>
-                <option value={6000}>🧘 6s Deep</option>
-                <option value={-1}>🛑 Manual Only</option>
+                <option value={-1}>🛑 Manual Send (No Cutoff)</option>
+                <option value={10000}>🧘 10s Generous</option>
+                <option value={8000}>☕ 8s Relaxed</option>
+                <option value={5000}>⚡ 5s Quick</option>
               </select>
             </div>
           )}
@@ -179,10 +186,27 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
           <button
             type="button"
             onClick={onToggleHoldFloor}
-            className="text-purple-700 underline font-bold hover:text-purple-900 text-xs"
+            className="text-purple-700 underline font-bold hover:text-purple-900 text-xs cursor-pointer"
           >
             Release Floor
           </button>
+        </div>
+      )}
+
+      {/* Semantic Thought Grace Window Active Banner */}
+      {thoughtGraceActive && !isFloorHeld && (
+        <div className="bg-teal-50 border border-teal-200 text-teal-900 text-[11px] px-3 py-1.5 rounded-xl flex items-center gap-2 animate-pulse">
+          <BrainCircuit className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+          <span className="font-semibold">🧠 Smart Thought Grace Active (+2.5s):</span>
+          <span className="text-teal-700 truncate">{thoughtGraceReason || 'Holding floor while you formulate architectural points...'}</span>
+        </div>
+      )}
+
+      {/* Backchannel Acknowledgment Pill */}
+      {backchannelDetectedPhrase && isAISpeaking && (
+        <div className="bg-indigo-50 border border-indigo-200 text-indigo-900 text-[11px] px-3 py-1 rounded-xl flex items-center gap-1.5 animate-fadeIn">
+          <MessageSquareQuote className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+          <span>Candidate active listening acknowledged: <em>"{backchannelDetectedPhrase}"</em> (Interviewer continuing smoothly)</span>
         </div>
       )}
 
@@ -222,11 +246,11 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
             disabled={!textInput.trim() || isProcessing}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
               textInput.trim() && !isProcessing
-                ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm'
+                ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm ring-2 ring-indigo-200'
                 : 'bg-slate-200 text-slate-400 cursor-not-allowed'
             }`}
           >
-            <span>{isProcessing ? 'Deliberating...' : 'Send'}</span>
+            <span>{isProcessing ? 'Deliberating...' : 'Send Answer'}</span>
             <Send className="w-3.5 h-3.5" />
           </button>
         </div>

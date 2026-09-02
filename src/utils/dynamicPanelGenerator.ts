@@ -66,7 +66,7 @@ Target Candidate: ${candidateResume.fullName} (${targetRole}).
 Key Skills/Projects: ${skillsString || 'AI Systems'}${mainProjects ? ` (Projects: ${mainProjects})` : ''}.
 SPEAKING STYLE: Deeply analytical, precise, mathematically rigorous AI systems expert.
 QUESTIONING STRATEGY:
-- Probe the candidate's exact AI/ML & systems mechanics. If they mention RAG, vector DBs, or multi-agent workflows (e.g. HospiSynAI or VoteWise AI), demand exact state synchronization rules, context window limits, and fallback strategies.
+- Probe the candidate's exact AI/ML & systems mechanics. If they mention RAG, vector DBs, or multi-agent workflows (e.g. ${mainProjects || 'their stated projects or systems'}), demand exact state synchronization rules, context window limits, and fallback strategies.
 - Cross-examine whether their stated experience matches real-world edge cases.`;
       } else if (isFrontend) {
         customTitle = 'Staff UI/UX Platform Architect';

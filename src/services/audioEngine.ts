@@ -210,9 +210,9 @@ export class AudioEngine {
         let interimTranscript = '';
         let finalChunk = '';
 
-        // If candidate speaks while AI is talking, trigger interruption immediately!
-        if (this.isSpeaking && onSpeechDetected) {
-          onSpeechDetected();
+        // Acoustic echo shield: ignore mic recognition while AI is speaking
+        if (this.isSpeaking) {
+          return;
         }
 
         for (let i = event.resultIndex; i < event.results.length; ++i) {

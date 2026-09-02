@@ -22,7 +22,7 @@
 ## 2. Proposed Solution
 
 ### Autonomous Multi-Role Committee Architecture
-1. **Autonomous Committee Deliberation & Turn-Taking:** Multiple specialized AI personas (Alex Vance, Maya Lin, Marcus Reed, Sarah Chen, Dr. Elena Rostova) deliberate backstage in milliseconds to choose who should ask the next question or challenge an answer.
+1. **Autonomous Committee Deliberation & Turn-Taking:** Multiple specialized AI personas (Rohan Sharma, Priya Mehta, Vikram Malhotra, Neha Kapoor, Dr. Meera Rao) deliberate backstage in milliseconds to choose who should ask the next question or challenge an answer.
 2. **Real-Time Shared Candidate Memory:** A centralized context bus stores candidate resume metrics, previous answers, unresolved technical probes, detected contradictions, and competency progression—preventing repetitive questions.
 3. **Dynamic Difficulty & Depth Calibration:** Automatically escalates to Staff/Principal-level distributed edge-case challenges when answers are strong, and provides structured scaffolding when candidates need guidance.
 4. **Sub-100ms Natural Voice & Real-Time Barge-In:** Built on Agora's low-latency streaming pipeline so candidates can interrupt or clarify at any millisecond.
@@ -61,11 +61,11 @@ Vocalis deeply integrates Agora's suite of real-time communication and conversat
                                   +-----------------------------------------+
                                   |    Multi-Agent Panel Orchestrator       |
                                   |  - Role Turn Arbitrator                 |
-                                  |  - Alex Vance (Lead Systems Architect)  |
-                                  |  - Maya Lin (Principal Product Manager) |
-                                  |  - Marcus Reed (VP of Engineering)      |
-                                  |  - Sarah Chen (Enterprise Client)       |
-                                  |  - Dr. Elena Rostova (Org Psychologist) |
+                                  |  - Rohan Sharma (Lead Systems Architect)|
+                                  |  - Priya Mehta (Principal Product Mgr)  |
+                                  |  - Vikram Malhotra (VP of Engineering)  |
+                                  |  - Neha Kapoor (Enterprise Client)      |
+                                  |  - Dr. Meera Rao (Org Psychologist)     |
                                   +-----------------------------------------+
                                                       ||
                                                       \/

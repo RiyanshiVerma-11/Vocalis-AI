@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   FileText,
   Briefcase,
@@ -13,10 +13,13 @@ import {
   Layers,
   ChevronRight,
   TrendingUp,
+  Upload,
+  RefreshCw,
 } from 'lucide-react';
 import { CandidateResume, QuestionHistoryItem, SharedCandidateContext } from '../types';
 import { RESUME_PRESETS } from '../data/resumes';
 import { parseResumeText, parseResumeTextAsync } from '../utils/resumeParser';
+import { extractTextFromFile } from '../utils/rubricParser';
 
 interface ResumeDrawerProps {
   isOpen: boolean;
@@ -45,6 +48,8 @@ export const ResumeDrawer: React.FC<ResumeDrawerProps> = ({
   const [rawPasteText, setRawPasteText] = useState('');
   const [showRawPaste, setShowRawPaste] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
+  const [parsingMsg, setParsingMsg] = useState('');
+  const resumeFileRef = useRef<HTMLInputElement>(null);
 
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
 
@@ -75,12 +80,31 @@ export const ResumeDrawer: React.FC<ResumeDrawerProps> = ({
   const handleApplyRawPaste = async () => {
     if (!rawPasteText.trim()) return;
     setIsParsing(true);
+    setParsingMsg('AI Parsing resume text & projects...');
     try {
       const parsed = await parseResumeTextAsync(rawPasteText, currentResume.fullName || 'Candidate');
       notifyChange(parsed);
       setShowRawPaste(false);
     } finally {
       setIsParsing(false);
+      setParsingMsg('');
+    }
+  };
+
+  const handleResumeFileUpload = async (file: File) => {
+    setIsParsing(true);
+    setParsingMsg(`Extracting text from ${file.name}...`);
+    try {
+      const text = await extractTextFromFile(file);
+      setParsingMsg('AI Parsing candidate background, skills & projects...');
+      const parsed = await parseResumeTextAsync(text, currentResume.fullName || 'Candidate');
+      notifyChange(parsed);
+      setShowRawPaste(false);
+    } catch (err: any) {
+      console.error('Resume upload error:', err);
+    } finally {
+      setIsParsing(false);
+      setParsingMsg('');
     }
   };
 
@@ -221,33 +245,64 @@ export const ResumeDrawer: React.FC<ResumeDrawerProps> = ({
                 </div>
               )}
 
-              {/* Paste Raw Text Section */}
+              {/* Upload File / Paste Raw Text Section */}
               {showRawPaste && (
-                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                  <label className="font-bold text-slate-800">
-                    Paste Candidate Resume or LinkedIn Bio:
-                  </label>
+                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="font-bold text-slate-800">
+                      Upload Resume Document or Paste Text:
+                    </label>
+                    <input
+                      ref={resumeFileRef}
+                      type="file"
+                      accept=".pdf,.txt,.docx,.md"
+                      className="hidden"
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files[0]) {
+                          handleResumeFileUpload(e.target.files[0]);
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => resumeFileRef.current?.click()}
+                      className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[11px] border border-indigo-200 transition cursor-pointer flex items-center gap-1"
+                    >
+                      <Upload className="w-3 h-3" />
+                      <span>Upload PDF / DOCX</span>
+                    </button>
+                  </div>
+
                   <textarea
                     rows={4}
                     value={rawPasteText}
                     onChange={(e) => setRawPasteText(e.target.value)}
-                    placeholder="Paste resume text, projects, company history, or target competencies here..."
+                    placeholder="Or paste resume text, projects, company history, or target competencies here..."
                     className="w-full bg-white p-2.5 rounded-lg border border-slate-200 text-xs text-slate-900 focus:border-indigo-600 outline-none"
                   />
-                  <div className="flex justify-end">
+
+                  {isParsing && (
+                    <div className="p-2.5 bg-indigo-50 border border-indigo-200 rounded-lg flex items-center gap-2 text-xs text-indigo-800 animate-pulse">
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-600 shrink-0" />
+                      <span>{parsingMsg || 'Processing document...'}</span>
+                    </div>
+                  )}
+
+                  <div className="flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowRawPaste(false)}
+                      className="px-3 py-1.5 rounded-lg text-slate-600 hover:bg-slate-200 text-xs font-bold transition cursor-pointer"
+                    >
+                      Cancel
+                    </button>
                     <button
                       onClick={handleApplyRawPaste}
-                      disabled={isParsing}
-                      className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold px-3 py-1.5 rounded-lg text-xs cursor-pointer flex items-center gap-1.5"
+                      disabled={isParsing || !rawPasteText.trim()}
+                      className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold px-3.5 py-1.5 rounded-lg text-xs cursor-pointer flex items-center gap-1.5 shadow-xs"
                     >
-                      {isParsing ? (
-                        <>
-                          <Sparkles className="w-3.5 h-3.5 animate-spin text-white" />
-                          <span>AI Parsing Resume...</span>
-                        </>
-                      ) : (
-                        <span>Update Candidate Profile</span>
-                      )}
+                      <Sparkles className="w-3.5 h-3.5 text-white" />
+                      <span>Parse Pasted Bio</span>
                     </button>
                   </div>
                 </div>

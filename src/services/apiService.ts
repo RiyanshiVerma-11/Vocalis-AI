@@ -7,6 +7,9 @@ import {
   AdaptiveStrategy,
   CandidateSentiment,
   AnswerDepth,
+  DebateDialogueStep,
+  AmbientPanelReaction,
+  PanelistReactionType,
 } from '../types';
 
 export interface TurnResponseData {
@@ -16,6 +19,9 @@ export interface TurnResponseData {
   speech: string;
   internalThought: string;
   turnTakingReason: string;
+  isDebateExchange?: boolean;
+  debateDialogue?: DebateDialogueStep[];
+  ambientReactions?: Record<string, { reactionType: PanelistReactionType; label: string }>;
   questionTopic?: string;
   targetCompetency?: string;
   adaptiveStrategyApplied?: AdaptiveStrategy;
@@ -160,6 +166,7 @@ export async function startAgoraAgent(params: {
   interviewerName?: string;
   systemPrompt?: string;
   voiceName?: string;
+  heygenAvatarId?: string;
 }): Promise<{ agentId?: string; token: string; mode: 'conversational-ai' | 'rtc-transport' } | null> {
   try {
     const response = await fetch('/api/agora/start-agent', {

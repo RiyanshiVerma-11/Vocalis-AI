@@ -1,6 +1,6 @@
 <div align="center">
 
-  ![Vocalis AI SaaS Header](vocalis_saas_hero.jpg)
+  ![Vocalis AI SaaS Header](docs/screenshots/vocalis_saas_hero.jpg)
 
   # 🎙️ Vocalis AI
   ### Enterprise Autonomous Multi-Role AI Voice Interview Platform
@@ -197,21 +197,21 @@ Vocalis AI deploys a balanced, 5-persona cross-functional panel. Each persona ma
 ```mermaid
 graph LR
     subgraph Panel ["Vocalis AI Interview Committee"]
-        Alex["Alex Vance<br/><b>Technical Architect</b><br/><i>Systems, Idempotency & Scale</i>"]
-        Maya["Maya Lin<br/><b>Principal PM</b><br/><i>UX, ROI & Conversion Impact</i>"]
-        Marcus["Marcus Reed<br/><b>VP of Engineering</b><br/><i>Delivery, Velocity & Debt</i>"]
-        Sarah["Sarah Chen<br/><b>Enterprise Director</b><br/><i>SLAs, Zero-Downtime & Security</i>"]
-        Elena["Dr. Elena Rostova<br/><b>Org Psychologist</b><br/><i>STAR EQ, Leadership & Culture</i>"]
+        Rohan["Rohan Sharma<br/><b>Technical Architect</b><br/><i>Systems, Idempotency & Scale</i>"]
+        Priya["Priya Mehta<br/><b>Principal PM</b><br/><i>UX, ROI & Conversion Impact</i>"]
+        Vikram["Vikram Malhotra<br/><b>VP of Engineering</b><br/><i>Delivery, Velocity & Debt</i>"]
+        Neha["Neha Kapoor<br/><b>Enterprise Director</b><br/><i>SLAs, Zero-Downtime & Security</i>"]
+        Meera["Dr. Meera Rao<br/><b>Org Psychologist</b><br/><i>STAR EQ, Leadership & Culture</i>"]
     end
 ```
 
 | Interviewer Persona | Role | Focus Area | Probing Strategy |
 | :--- | :--- | :--- | :--- |
-| **Alex Vance** | Technical Architect | Distributed Systems, Concurrency, Storage | Demands exact failure mechanics, idempotency keys, and partition recovery. |
-| **Maya Lin** | Principal PM | User Workflows, Product Impact, ROI, Metrics | Challenges pure backend plumbing; asks how tech decisions impact conversion. |
-| **Marcus Reed** | VP of Engineering | Team Velocity, Tech Debt, Leadership, Delivery | Evaluates pragmatic trade-offs, engineering deadlines, and team health. |
-| **Sarah Chen** | Enterprise Customer | SLAs, Zero-Downtime, Compliance, Security | Protects enterprise trust; challenges breaking API changes and downtime. |
-| **Dr. Elena Rostova** | Org Psychologist | STAR Framework, EQ, Conflict Resolution | Evaluates personal accountability vs team "we" claims and growth mindset. |
+| **Rohan Sharma** | Technical Architect | Distributed Systems, Concurrency, Storage | Demands exact failure mechanics, idempotency keys, and partition recovery. |
+| **Priya Mehta** | Principal PM | User Workflows, Product Impact, ROI, Metrics | Challenges pure backend plumbing; asks how tech decisions impact conversion. |
+| **Vikram Malhotra** | VP of Engineering | Team Velocity, Tech Debt, Leadership, Delivery | Evaluates pragmatic trade-offs, engineering deadlines, and team health. |
+| **Neha Kapoor** | Enterprise Customer | SLAs, Zero-Downtime, Compliance, Security | Protects enterprise trust; challenges breaking API changes and downtime. |
+| **Dr. Meera Rao** | Org Psychologist | STAR Framework, EQ, Conflict Resolution | Evaluates personal accountability vs team "we" claims and growth mindset. |
 
 ---
 
@@ -268,7 +268,7 @@ Content-Type: application/json
 
 {
   "transcript": [
-    { "speakerName": "Alex Vance", "speakerRole": "technical", "content": "Tell us about your payments mesh." }
+    { "speakerName": "Rohan Sharma", "speakerRole": "technical", "content": "Tell us about your payments mesh." }
   ],
   "sharedContext": { "currentDifficulty": "Senior", "candidateName": "Jordan Reed" },
   "userResponse": "I used Redis write-through cache with Pub/Sub invalidation."
@@ -277,7 +277,7 @@ Content-Type: application/json
 **Response:**
 ```json
 {
-  "nextSpeaker": { "id": "maya", "name": "Maya Lin", "role": "product" },
+  "nextSpeaker": { "id": "maya", "name": "Priya Mehta", "role": "product" },
   "turnTakingReason": "Technical answer complete; probing business ROI and customer conversion impact.",
   "internalThought": "Candidate gave strong Redis architecture details. Need PM input on checkout SLA impact.",
   "answerDepth": "Deep",

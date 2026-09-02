@@ -130,6 +130,28 @@ export const FinalAssessmentModal: React.FC<FinalAssessmentModalProps> = ({
             </div>
           </div>
 
+          {/* Custom Company Rubric Calibration Banner */}
+          {assessment.customRubricUsed && (
+            <div className="p-3.5 rounded-xl bg-indigo-50 border border-indigo-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs text-indigo-950">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold shrink-0">
+                  🏢
+                </div>
+                <div>
+                  <span className="font-extrabold text-indigo-900">
+                    Calibrated Against {assessment.customRubricUsed.companyName} Hiring Bar
+                  </span>
+                  <p className="text-[11px] text-indigo-700">
+                    Target Level: {assessment.customRubricUsed.targetLevel} • Strictness: {assessment.customRubricUsed.strictnessRating} Standard
+                  </p>
+                </div>
+              </div>
+              <span className="px-2.5 py-1 rounded-full bg-white text-indigo-800 border border-indigo-300 font-mono font-bold text-[10px] self-start sm:self-auto">
+                Verified Committee Bar-Raiser
+              </span>
+            </div>
+          )}
+
           {/* Executive Summary */}
           <div className="p-4 sm:p-5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
             <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500">

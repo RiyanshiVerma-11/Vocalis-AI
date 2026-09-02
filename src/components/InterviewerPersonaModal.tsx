@@ -1,7 +1,7 @@
 import React from 'react';
 import { X, Sparkles, Volume2, ShieldCheck, HelpCircle, BookOpen, Quote } from 'lucide-react';
 import { Interviewer } from '../types';
-import { renderAvatarIcon, getAvatarGradientClass } from '../utils/avatarUtils';
+import { renderAvatarIcon, getAvatarGradientClass, InterviewerAvatar } from '../utils/avatarUtils';
 
 interface InterviewerPersonaModalProps {
   interviewer: Interviewer | null;
@@ -28,11 +28,12 @@ export const InterviewerPersonaModal: React.FC<InterviewerPersonaModalProps> = (
         {/* Header */}
         <div className="p-5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div
-              className={`w-11 h-11 rounded-xl flex items-center justify-center text-white shadow-sm ${getAvatarGradientClass(interviewer.avatarColor)}`}
-            >
-              {renderAvatarIcon(interviewer.avatarIcon, "w-6 h-6 text-white")}
-            </div>
+            <InterviewerAvatar
+              avatarIcon={interviewer.avatarIcon}
+              avatarColor={interviewer.avatarColor}
+              name={interviewer.name}
+              className="w-12 h-12 rounded-xl border border-slate-200 shadow-sm"
+            />
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-extrabold text-slate-900">{interviewer.name}</h3>

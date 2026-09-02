@@ -1,5 +1,5 @@
 // VoiceIntro AI - Service Worker
-const CACHE_NAME = 'voiceintro-ai-v1';
+const CACHE_NAME = 'voiceintro-ai-v2';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',

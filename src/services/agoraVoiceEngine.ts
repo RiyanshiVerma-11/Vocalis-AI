@@ -20,11 +20,13 @@ import AgoraRTC, {
   IAgoraRTCRemoteUser,
   UID,
 } from 'agora-rtc-sdk-ng';
+import { boostTechnicalJargon, isBackchannelUtterance } from '../utils/jargonBooster';
 
 export interface AgoraVoiceCallbacks {
   onTranscript?: (text: string, isFinal: boolean) => void;
   onSpeakingStateChange?: (speaking: boolean) => void;
   onInterrupted?: () => void;
+  onBackchannelDetected?: (phrase: string) => void;
   onConnectionStateChange?: (state: string) => void;
   onVolume?: (vol: number) => void;
 }
@@ -103,13 +105,27 @@ export class AgoraVoiceEngine {
     try {
       this.client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
 
-      // When the remote AI agent publishes audio, subscribe and play
+      // When the remote AI agent publishes audio or video, subscribe and play
       this.client.on('user-published', async (user: IAgoraRTCRemoteUser, mediaType) => {
         if (mediaType === 'audio') {
           await this.client!.subscribe(user, 'audio');
           this.remoteAudioTrack = user.audioTrack as IRemoteAudioTrack;
           this.remoteAudioTrack.play();
           this._setSpeaking(true);
+        }
+        if (mediaType === 'video') {
+          await this.client!.subscribe(user, 'video');
+          const remoteVideoTrack = user.videoTrack;
+          // Find container by exact ID or by generic prefix
+          const container =
+            document.getElementById('agora-remote-agent-video') ||
+            document.querySelector('[id^="agora-remote-agent-video"]');
+          if (container) {
+            console.log('[AgoraVoiceEngine] Binding HeyGen/Agora live video track to container:', container.id);
+            remoteVideoTrack?.play(container as HTMLElement);
+          } else {
+            console.log('[AgoraVoiceEngine] Remote video track received from agent UID:', user.uid);
+          }
         }
       });
 
@@ -164,7 +180,7 @@ export class AgoraVoiceEngine {
   ): Promise<boolean> {
     this.callbacks.onTranscript = onTranscript;
 
-    // 1. Publish mic to Agora channel (for the server agent to hear)
+    // 1. Publish mic to Agora channel (non-blocking so failure doesn't prevent local speech recognition)
     if (this.isJoined && this.client) {
       try {
         if (!this.localMicTrack) {
@@ -172,78 +188,103 @@ export class AgoraVoiceEngine {
             AEC: true, // Acoustic Echo Cancellation
             ANS: true, // Automatic Noise Suppression
             AGC: true, // Automatic Gain Control
+          }).catch((err) => {
+            console.warn('[AgoraVoiceEngine] createMicrophoneAudioTrack failed:', err);
+            return null;
           });
         }
-        await this.client.publish([this.localMicTrack]);
+        if (this.localMicTrack) {
+          await this.client.publish([this.localMicTrack]).catch((err) => {
+            console.warn('[AgoraVoiceEngine] Publish mic track failed:', err);
+          });
+        }
       } catch (err) {
-        console.warn('[AgoraVoiceEngine] Failed to publish mic track:', err);
+        console.warn('[AgoraVoiceEngine] Non-critical Agora mic publish warning:', err);
       }
     }
 
     // 2. Web Speech API for real-time transcript display (client-side)
-    // The server Agora agent also does STT for LLM routing —
-    // this client-side STT is purely for the live transcript UI.
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) {
       console.warn('[AgoraVoiceEngine] Web Speech API not available — transcript display disabled.');
       this.isListening = true;
-      return true; // Still works via Agora; just no client-side transcript
+      return true;
     }
 
-    this.webSpeechRecognition = new SR();
-    this.webSpeechRecognition.continuous = true;
-    this.webSpeechRecognition.interimResults = true;
-    this.webSpeechRecognition.lang = 'en-US';
+    // Clean up any existing speech recognition instance cleanly before starting
+    if (this.webSpeechRecognition) {
+      try {
+        this.webSpeechRecognition.abort();
+      } catch (_) {}
+      this.webSpeechRecognition = null;
+    }
 
-    this.webSpeechRecognition.onresult = (event: any) => {
-      if (this.isSpeaking && onSpeechDetected) {
-        onSpeechDetected(); // Candidate interrupted AI
-      }
+    try {
+      this.webSpeechRecognition = new SR();
+      this.webSpeechRecognition.continuous = true;
+      this.webSpeechRecognition.interimResults = true;
+      this.webSpeechRecognition.lang = 'en-US';
 
-      let interimText = '';
-      let finalChunk = '';
+      this.webSpeechRecognition.onresult = (event: any) => {
+        let interimText = '';
+        let finalChunk = '';
 
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const chunk = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          finalChunk += (finalChunk ? ' ' : '') + chunk.trim();
-        } else {
-          interimText += chunk;
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const chunk = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalChunk += (finalChunk ? ' ' : '') + chunk.trim();
+          } else {
+            interimText += chunk;
+          }
         }
-      }
 
-      if (finalChunk) {
-        this.accumulatedSpeechBuffer = (this.accumulatedSpeechBuffer + ' ' + finalChunk).trim();
-      }
-
-      const fullSpeech = (
-        this.accumulatedSpeechBuffer + (interimText ? ' ' + interimText : '')
-      ).trim();
-
-      if (fullSpeech) {
-        onTranscript(fullSpeech, Boolean(finalChunk));
-      }
-    };
-
-    this.webSpeechRecognition.onerror = (e: any) => {
-      if (e.error !== 'no-speech') {
-        console.warn('[AgoraVoiceEngine] Speech recognition error:', e.error);
-      }
-    };
-
-    this.webSpeechRecognition.onend = () => {
-      if (this.isListening) {
-        try {
-          this.webSpeechRecognition?.start();
-        } catch (_) {
-          // Already restarting
+        // CRITICAL ACOUSTIC ECHO SHIELD:
+        // When the AI interviewer is actively speaking through computer speakers,
+        // ignore all microphone input to prevent recording the interviewer's own voice
+        // and accidentally auto-submitting the interviewer's question as candidate speech!
+        if (this.isSpeaking) {
+          return;
         }
-      }
-    };
 
-    this.webSpeechRecognition.start();
-    this.isListening = true;
-    return true;
+        if (finalChunk) {
+          this.accumulatedSpeechBuffer = (this.accumulatedSpeechBuffer + ' ' + finalChunk).trim();
+        }
+
+        const fullSpeech = (
+          this.accumulatedSpeechBuffer + (interimText ? ' ' + interimText : '')
+        ).trim();
+
+        if (fullSpeech) {
+          // Boost technical jargon (WAL, Raft, gRPC, p99, etc.)
+          const boostedSpeech = boostTechnicalJargon(fullSpeech);
+          onTranscript(boostedSpeech, Boolean(finalChunk));
+        }
+      };
+
+      this.webSpeechRecognition.onerror = (e: any) => {
+        if (e.error !== 'no-speech') {
+          console.warn('[AgoraVoiceEngine] Speech recognition event:', e.error);
+        }
+      };
+
+      this.webSpeechRecognition.onend = () => {
+        if (this.isListening) {
+          try {
+            this.webSpeechRecognition?.start();
+          } catch (_) {
+            // Already restarting or busy
+          }
+        }
+      };
+
+      this.webSpeechRecognition.start();
+      this.isListening = true;
+      return true;
+    } catch (err) {
+      console.warn('[AgoraVoiceEngine] Speech recognition start caught error:', err);
+      this.isListening = true;
+      return true;
+    }
   }
 
   // ─── Stop microphone ─────────────────────────────────────
@@ -304,7 +345,28 @@ export class AgoraVoiceEngine {
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      let stream: MediaStream | null = null;
+      let ownStream = false;
+
+      if (this.localMicTrack) {
+        const track = this.localMicTrack.getMediaStreamTrack();
+        if (track && track.readyState === 'live') {
+          stream = new MediaStream([track]);
+        }
+      }
+
+      if (!stream) {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch((err) => {
+          console.warn('[AgoraVoiceEngine] Visualizer getUserMedia fallback skipped:', err);
+          return null;
+        });
+        ownStream = true;
+      }
+
+      if (!stream) {
+        return () => {};
+      }
+
       const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
       const ctx = new AudioCtxClass();
       const source = ctx.createMediaStreamSource(stream);
@@ -328,7 +390,9 @@ export class AgoraVoiceEngine {
           cancelAnimationFrame(this.volAnimFrameId);
           this.volAnimFrameId = null;
         }
-        stream.getTracks().forEach((t) => t.stop());
+        if (ownStream && stream) {
+          stream.getTracks().forEach((t) => t.stop());
+        }
         if (ctx.state !== 'closed') {
           ctx.close().catch(() => {});
         }
@@ -337,7 +401,7 @@ export class AgoraVoiceEngine {
       this.currentMicVisualizerCleanup = cleanupFn;
       return cleanupFn;
     } catch (err) {
-      console.warn('[AgoraVoiceEngine] Mic visualizer failed:', err);
+      console.warn('[AgoraVoiceEngine] Mic visualizer initialization warning:', err);
       return () => {};
     }
   }
@@ -403,6 +467,7 @@ export class AgoraVoiceEngine {
   // ─── Private helpers ─────────────────────────────────────
   private _setSpeaking(val: boolean) {
     this.isSpeaking = val;
+    this.clearSpeechBuffer();
     this.callbacks.onSpeakingStateChange?.(val);
   }
 }

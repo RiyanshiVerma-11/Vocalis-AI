@@ -36,7 +36,7 @@ import {
 import { FAQSection } from './FAQSection';
 import { ALL_INTERVIEWERS } from '../data/interviewers';
 import { INTERVIEW_SCENARIOS } from '../data/scenarios';
-import { renderAvatarIcon, getAvatarGradientClass } from '../utils/avatarUtils';
+import { renderAvatarIcon, getAvatarGradientClass, InterviewerAvatar } from '../utils/avatarUtils';
 
 interface LandingPageProps {
   onOpenStudio: () => void;
@@ -78,7 +78,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       company: 'FinTech Scale-Up',
       rating: 5,
       badge: 'Verified Hiring Manager',
-      quote: "The multi-role committee handoff is unlike anything I've seen in hiring software. Having Alex Vance probe our distributed cache architecture while Maya Lin challenges business SLAs feels exactly like a real Staff Engineer bar raiser panel!",
+      quote: "The multi-role committee handoff is unlike anything I've seen in hiring software. Having Rohan Sharma probe our distributed cache architecture while Priya Mehta challenges business SLAs feels exactly like a real Staff Engineer bar raiser panel!",
       date: 'Aug 2026',
     },
     {
@@ -88,7 +88,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       company: 'Tech Scale-Up',
       rating: 5,
       badge: 'Verified Candidate',
-      quote: "The sub-100ms real-time barge-in and sub-second Groq inference made the voice conversation feel completely natural. When I interrupted Alex to clarify my Redis TTL invalidation strategy, the panel smoothly acknowledged my point and adapted!",
+      quote: "The sub-100ms real-time barge-in and sub-second Groq inference made the voice conversation feel completely natural. When I interrupted Rohan to clarify my Redis TTL invalidation strategy, the panel smoothly acknowledged my point and adapted!",
       date: 'Aug 2026',
     },
     {
@@ -119,24 +119,24 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   const [activeSimTurn, setActiveSimTurn] = useState<number>(0);
   const simTurns = [
     {
-      speaker: ALL_INTERVIEWERS[0], // Alex Vance (Lead Architect)
+      speaker: ALL_INTERVIEWERS[0], // Rohan Sharma (Lead Architect)
       speech: "Candidate mentioned using Redis with PostgreSQL for peak load. What exact cache invalidation strategy do you enforce when patient records are updated concurrently?",
       thought: "Candidate demonstrated surface understanding. Deep probing required on cache consistency & stale read semantics.",
-      reason: "Alex Vance (Lead Architect) probed technical architecture depth.",
+      reason: "Rohan Sharma (Lead Architect) probed technical architecture depth.",
       strategy: "Deep Probe",
     },
     {
-      speaker: ALL_INTERVIEWERS[1], // Maya Lin (Product Manager)
-      speech: "Building on Alex's point on cache invalidation: how does temporary stale data impact clinical workflow SLAs and user trust? What is your customer fallback?",
-      thought: "Alex established technical stack. Switching perspective to product SLA and user empathy impact.",
-      reason: "Maya Lin (VP Product) executed cross-role handoff to probe business impact.",
+      speaker: ALL_INTERVIEWERS[1], // Priya Mehta (Product Manager)
+      speech: "Building on Rohan's point on cache invalidation: how does temporary stale data impact clinical workflow SLAs and user trust? What is your customer fallback?",
+      thought: "Rohan established technical stack. Switching perspective to product SLA and user empathy impact.",
+      reason: "Priya Mehta (VP Product) executed cross-role handoff to probe business impact.",
       strategy: "Cross-Role Handoff",
     },
     {
-      speaker: ALL_INTERVIEWERS[2], // Marcus Reed (VP Engineering)
-      speech: "Appreciate that breakdown. Marcus here—from an operational standpoint, how do you manage developer velocity and technical debt when maintaining that dual-cache layer?",
+      speaker: ALL_INTERVIEWERS[2], // Vikram Malhotra (VP Engineering)
+      speech: "Appreciate that breakdown. Vikram here—from an operational standpoint, how do you manage developer velocity and technical debt when maintaining that dual-cache layer?",
       thought: "Technical and product depth verified. Probing team execution and engineering pragmatism.",
-      reason: "Marcus Reed (VP Engineering) probed team velocity & technical debt.",
+      reason: "Vikram Malhotra (VP Engineering) probed team velocity & technical debt.",
       strategy: "Challenge Assumption",
     },
   ];
@@ -191,14 +191,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <a href="#faqs" className="hover:text-white transition">
               FAQs
             </a>
-            <a
-              href="/presentation.html"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-indigo-400 hover:text-indigo-300 font-semibold"
-            >
-              Pitch Deck →
-            </a>
+
           </nav>
 
           {/* Right Action Buttons & Mobile Menu Toggle */}
@@ -277,14 +270,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <button type="button" onClick={() => scrollToSection('faqs')} className="text-left hover:text-white py-1">
                 FAQs
               </button>
-              <a
-                href="/presentation.html"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-indigo-400 hover:text-indigo-300 py-1"
-              >
-                Pitch Deck →
-              </a>
+
             </nav>
           </div>
         )}
@@ -303,7 +289,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </div>
 
               {/* Colorful Gradient Headline */}
-              <h1 className="text-2xl sm:text-4xl lg:text-5xl font-black tracking-tight leading-tight">
+              <h1 className="text-2xl sm:text-4xl lg:text-[42px] xl:text-[48px] font-extrabold tracking-tight leading-[1.18]">
                 <span className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
                   Autonomous Multi-Role AI Voice Interviews
                 </span>{' '}
@@ -314,7 +300,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </h1>
 
               {/* High Contrast Subtitle */}
-              <p className="text-xs sm:text-sm lg:text-base text-slate-700 leading-relaxed max-w-3xl font-normal">
+              <p className="text-sm sm:text-base lg:text-[17px] text-slate-700 leading-relaxed max-w-3xl font-normal">
                 Vocalis AI powers an autonomous committee of AI personas that deliberate backstage in real time, negotiate adaptive turn-taking, probe deep technical depth, and output quote-indexed scorecards.
               </p>
 
@@ -529,9 +515,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                           : 'bg-white text-slate-800 border border-slate-200 hover:bg-slate-100'
                       }`}
                     >
-                      <div className={`w-5 h-5 rounded-md flex items-center justify-center ${getAvatarGradientClass(turn.speaker.avatarColor)}`}>
-                        {renderAvatarIcon(turn.speaker.avatarIcon, "w-3 h-3 text-white")}
-                      </div>
+                      <InterviewerAvatar
+                        avatarIcon={turn.speaker.avatarIcon}
+                        avatarColor={turn.speaker.avatarColor}
+                        name={turn.speaker.name}
+                        className="w-5 h-5 rounded-md"
+                      />
                       <span>{turn.speaker.name} ({turn.speaker.role})</span>
                     </button>
                   );
@@ -545,11 +534,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   <div className="space-y-3 bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
                       <div className="flex items-center gap-3">
-                        <div
-                          className={`w-9 h-9 rounded-xl text-white font-bold text-xs flex items-center justify-center shadow-xs shrink-0 ${getAvatarGradientClass(current.speaker.avatarColor)}`}
-                        >
-                          {renderAvatarIcon(current.speaker.avatarIcon, "w-5 h-5 text-white")}
-                        </div>
+                        <InterviewerAvatar
+                          avatarIcon={current.speaker.avatarIcon}
+                          avatarColor={current.speaker.avatarColor}
+                          name={current.speaker.name}
+                          className="w-10 h-10 rounded-xl border border-slate-200 shadow-xs"
+                        />
                         <div>
                           <h4 className="text-xs font-bold text-slate-900 flex items-center gap-2">
                             <span>{current.speaker.name}</span>
@@ -768,11 +758,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   className="bg-white p-5 rounded-xl border border-slate-200 space-y-3 shadow-xs"
                 >
                   <div className="flex items-center gap-3">
-                    <div
-                      className={`w-10 h-10 rounded-xl text-white font-bold text-sm flex items-center justify-center shadow-md ${getAvatarGradientClass(interviewer.avatarColor)}`}
-                    >
-                      {renderAvatarIcon(interviewer.avatarIcon, "w-5 h-5 text-white")}
-                    </div>
+                    <InterviewerAvatar
+                      avatarIcon={interviewer.avatarIcon}
+                      avatarColor={interviewer.avatarColor}
+                      name={interviewer.name}
+                      className="w-11 h-11 rounded-xl border border-slate-200 shadow-md"
+                    />
                     <div>
                       <h3 className="text-sm font-bold text-slate-900">{interviewer.name}</h3>
                       <p className="text-xs text-indigo-600 font-semibold">{interviewer.title}</p>
@@ -1055,9 +1046,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </div>
 
           <div className="flex items-center gap-5">
-            <a href="/presentation.html" target="_blank" className="hover:text-white transition">
-              Pitch Deck
-            </a>
+
             <a href="#dual-workflows" className="hover:text-white transition">
               Workflows
             </a>

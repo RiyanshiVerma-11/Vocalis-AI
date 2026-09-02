@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Cpu,
   Layers,
@@ -41,3 +41,22 @@ export const getAvatarGradientClass = (avatarColor?: string) => {
   }
   return 'bg-gradient-to-br from-indigo-600 to-purple-700';
 };
+
+import { TalkingFaceAvatar } from '../components/TalkingFaceAvatar';
+
+export interface InterviewerAvatarProps {
+  avatarUrl?: string;
+  avatarIcon?: string;
+  avatarColor?: string;
+  name: string;
+  className?: string;
+  imgClassName?: string;
+  isSpeaking?: boolean;
+  volume?: number;
+}
+
+export const InterviewerAvatar: React.FC<InterviewerAvatarProps> = (props) => {
+  return <TalkingFaceAvatar {...props} />;
+};
+
+
