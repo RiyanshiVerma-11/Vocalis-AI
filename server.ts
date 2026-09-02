@@ -484,8 +484,6 @@ async function generateContentWithGroq(prompt: string): Promise<any> {
     'groq/compound',
     'openai/gpt-oss-20b',
     'openai/gpt-oss-120b',
-    'allam-2-7b',
-    'llama-3.3-70b-versatile',
   ];
 
   let lastError: any = null;
@@ -1176,7 +1174,7 @@ ${isClarificationRequest ? 'CRITICAL NOTE: The candidate is asking for CLARIFICA
               groqNormalized.speech = `Thanks ${firstName}, building on that point. ${groqNormalized.speech}`;
             }
           }
-          console.log('[Groq AI] Successfully generated panel turn in <100ms via Llama 3.3 70B');
+          console.log('[Groq AI] Successfully generated panel turn in <100ms via Qwen 3.8 27B');
           return res.json({ success: true, data: groqNormalized });
         }
       } catch (groqErr: any) {
@@ -1715,7 +1713,7 @@ app.post('/api/agora/start-agent', async (req, res) => {
       llm = new Groq({
         apiKey: process.env.GROQ_API_KEY.trim(),
         url: 'https://api.groq.com/openai/v1/chat/completions',
-        model: 'llama-3.3-70b-versatile',
+        model: 'qwen/qwen3.8-27b',
         systemMessages: [
           {
             role: 'system',
@@ -1727,7 +1725,7 @@ app.post('/api/agora/start-agent', async (req, res) => {
         failureMessage: 'I did not catch that clearly. Could you please repeat or elaborate?',
         maxHistory: 20,
       });
-      console.log('[Agora] LLM: Groq (llama-3.3-70b-versatile, cloud direct)');
+      console.log('[Agora] LLM: Groq (qwen/qwen3.8-27b, cloud direct)');
     } else {
       llm = new OpenAI({
         model: 'gpt-4o-mini',
