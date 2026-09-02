@@ -194,34 +194,22 @@ sequenceDiagram
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Foundational: Interview Started (Default Senior Target)
+    [*] --> Foundational: Interview Started (Target: Senior Caliber)
 
-    state Foundational {
-        [*] --> F_Evaluating
-        F_Evaluating --> Intermediate: Surface Answer + High Confidence
-        F_Evaluating --> F_Evaluating: Vague / Needs Probing
-    }
+    Foundational --> Intermediate: Surface Answer + High Confidence
+    Foundational --> Foundational: Vague Buzzwords (Probe Deepened)
 
-    state Intermediate {
-        [*] --> I_Evaluating
-        I_Evaluating --> Senior: Solid System Design + Keywords Matched
-        I_Evaluating --> Foundational: Contradictions Detected
-    }
+    Intermediate --> Senior: Solid System Design + Technical Depth
+    Intermediate --> Foundational: Contradiction Detected (Downgrade)
 
-    state Senior {
-        [*] --> S_Evaluating
-        S_Evaluating --> Staff_Principal: Deep Architectural Insights + Trade-offs
-        S_Evaluating --> Intermediate: Missing Business Impact
-    }
+    Senior --> Staff_Principal: Deep Architectural Insights & Trade-offs
+    Senior --> Intermediate: Missing Business Impact / Unhandled Edge Cases
 
-    state Staff_Principal {
-        [*] --> P_Evaluating
-        P_Evaluating --> P_Evaluating: Consistently Deep Insights
-        P_Evaluating --> Senior: Incomplete Edge-Case Handling
-    }
+    Staff_Principal --> Staff_Principal: Consistently Deep Staff-level Reasoning
+    Staff_Principal --> Senior: Incomplete Failure Mode Handling
 
-    Staff_Principal --> [*]: Finish & Evaluate
-    Senior --> [*]: Finish & Evaluate
+    Senior --> [*]: Finish & Evaluate (Scorecard Generated)
+    Staff_Principal --> [*]: Finish & Evaluate (Scorecard Generated)
 ```
 
 ---
