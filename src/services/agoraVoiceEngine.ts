@@ -40,6 +40,8 @@ export class AgoraVoiceEngine {
   private client: IAgoraRTCClient | null = null;
   private localMicTrack: IMicrophoneAudioTrack | null = null;
   private remoteAudioTrack: IRemoteAudioTrack | null = null;
+  private remoteAudioSilenceCheckInterval: any = null;
+  private remoteAudioSilenceTimeout: any = null;
 
   private isListening = false;
   private isSpeaking = false;
@@ -114,6 +116,58 @@ export class AgoraVoiceEngine {
           this.remoteAudioTrack = user.audioTrack as IRemoteAudioTrack;
           this.remoteAudioTrack.play();
           this._setSpeaking(true);
+
+          // Clear any previous silence monitor
+          if (this.remoteAudioSilenceCheckInterval) {
+            clearInterval(this.remoteAudioSilenceCheckInterval);
+            this.remoteAudioSilenceCheckInterval = null;
+          }
+          if (this.remoteAudioSilenceTimeout) {
+            clearTimeout(this.remoteAudioSilenceTimeout);
+            this.remoteAudioSilenceTimeout = null;
+          }
+
+          // Auto-detect when remote AI agent finishes speaking using audio level
+          this.remoteAudioSilenceCheckInterval = setInterval(() => {
+            if (!this.remoteAudioTrack || !this.isJoined) {
+              if (this.remoteAudioSilenceCheckInterval) {
+                clearInterval(this.remoteAudioSilenceCheckInterval);
+                this.remoteAudioSilenceCheckInterval = null;
+              }
+              this._setSpeaking(false);
+              return;
+            }
+
+            const volume =
+              typeof this.remoteAudioTrack.getVolumeLevel === 'function'
+                ? this.remoteAudioTrack.getVolumeLevel()
+                : 0;
+
+            // If volume drops below threshold (< 0.02) for a finish window, release floor
+            if (volume < 0.02) {
+              if (!this.remoteAudioSilenceTimeout) {
+                this.remoteAudioSilenceTimeout = setTimeout(() => {
+                  if (
+                    this.remoteAudioTrack &&
+                    typeof this.remoteAudioTrack.getVolumeLevel === 'function' &&
+                    this.remoteAudioTrack.getVolumeLevel() < 0.02
+                  ) {
+                    this._setSpeaking(false);
+                  }
+                  this.remoteAudioSilenceTimeout = null;
+                }, 800); // 800ms silence tolerance
+              }
+            } else {
+              // Remote agent is actively producing sound
+              if (this.remoteAudioSilenceTimeout) {
+                clearTimeout(this.remoteAudioSilenceTimeout);
+                this.remoteAudioSilenceTimeout = null;
+              }
+              if (!this.isSpeaking) {
+                this._setSpeaking(true);
+              }
+            }
+          }, 200);
         }
         if (mediaType === 'video') {
           await this.client!.subscribe(user, 'video');
@@ -134,6 +188,14 @@ export class AgoraVoiceEngine {
       this.client.on('user-unpublished', (_user: IAgoraRTCRemoteUser, mediaType) => {
         if (mediaType === 'audio') {
           // Remote audio track ended — agent stopped speaking
+          if (this.remoteAudioSilenceCheckInterval) {
+            clearInterval(this.remoteAudioSilenceCheckInterval);
+            this.remoteAudioSilenceCheckInterval = null;
+          }
+          if (this.remoteAudioSilenceTimeout) {
+            clearTimeout(this.remoteAudioSilenceTimeout);
+            this.remoteAudioSilenceTimeout = null;
+          }
           if (this.remoteAudioTrack) {
             try { this.remoteAudioTrack.stop(); } catch (_) {}
             this.remoteAudioTrack = null;
@@ -173,6 +235,14 @@ export class AgoraVoiceEngine {
     } catch (e) {
       // Ignore leave errors during cleanup
     } finally {
+      if (this.remoteAudioSilenceCheckInterval) {
+        clearInterval(this.remoteAudioSilenceCheckInterval);
+        this.remoteAudioSilenceCheckInterval = null;
+      }
+      if (this.remoteAudioSilenceTimeout) {
+        clearTimeout(this.remoteAudioSilenceTimeout);
+        this.remoteAudioSilenceTimeout = null;
+      }
       this.isJoined = false;
       this.isListening = false;
       this._setSpeaking(false);
@@ -328,6 +398,15 @@ export class AgoraVoiceEngine {
       } catch (_) {}
     }
 
+    if (this.remoteAudioSilenceCheckInterval) {
+      clearInterval(this.remoteAudioSilenceCheckInterval);
+      this.remoteAudioSilenceCheckInterval = null;
+    }
+    if (this.remoteAudioSilenceTimeout) {
+      clearTimeout(this.remoteAudioSilenceTimeout);
+      this.remoteAudioSilenceTimeout = null;
+    }
+
     // Also cancel browser SpeechSynthesis if used as fallback
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
@@ -464,6 +543,14 @@ export class AgoraVoiceEngine {
 
     if (this.volAnimFrameId !== null) {
       cancelAnimationFrame(this.volAnimFrameId);
+    }
+    if (this.remoteAudioSilenceCheckInterval) {
+      clearInterval(this.remoteAudioSilenceCheckInterval);
+      this.remoteAudioSilenceCheckInterval = null;
+    }
+    if (this.remoteAudioSilenceTimeout) {
+      clearTimeout(this.remoteAudioSilenceTimeout);
+      this.remoteAudioSilenceTimeout = null;
     }
     if (this.speechSilenceTimer) {
       clearTimeout(this.speechSilenceTimer);

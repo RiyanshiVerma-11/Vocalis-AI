@@ -21,8 +21,13 @@ import {
   OpenAITTS,
 } from 'agora-agents';
 
-const require = createRequire(import.meta.url);
-const { RtcTokenBuilder, RtcRole } = require('agora-token');
+// Safe require polyfill for both ESM (dev tsx) and CommonJS (dist/server.cjs)
+const getRequire = () => {
+  if (typeof require !== 'undefined') return require;
+  return createRequire(import.meta.url || 'file:///' + __filename);
+};
+const customRequire = getRequire();
+const { RtcTokenBuilder, RtcRole } = customRequire('agora-token');
 
 dotenv.config();
 
@@ -474,10 +479,13 @@ async function generateContentWithGroq(prompt: string): Promise<any> {
   if (keys.length === 0) throw new Error('GROQ_API_KEY missing');
 
   const modelsToTry = [
+    'qwen/qwen3.8-27b',
+    'groq/compound-mini',
+    'groq/compound',
+    'openai/gpt-oss-20b',
+    'openai/gpt-oss-120b',
+    'allam-2-7b',
     'llama-3.3-70b-versatile',
-    'llama-3.1-8b-instant',
-    'mixtral-8x7b-32768',
-    'meta-llama/llama-4-scout-17b-16e-instruct',
   ];
 
   let lastError: any = null;
@@ -749,7 +757,7 @@ Do NOT hallucinate fake company names or fake project names if not in raw text. 
             Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
           },
           body: JSON.stringify({
-            model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+            model: 'qwen/qwen3.8-27b',
             messages: [
               { role: 'system', content: systemPrompt },
               { role: 'user', content: userPrompt },
@@ -1884,7 +1892,7 @@ VOICE INTERVIEW STYLE:
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey.trim()}` },
           body: JSON.stringify({
-            model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+            model: 'qwen/qwen3.8-27b',
             messages: groqMessages,
             temperature: 0.75,
             max_tokens: 120,
