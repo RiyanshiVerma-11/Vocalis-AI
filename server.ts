@@ -1634,6 +1634,9 @@ app.get('/api/agora/token', (req, res) => {
   }
 });
 
+// Active Agora Conversational AI Agent Sessions
+const activeAgoraSessions = new Map<string, any>();
+
 // 2. Start Agora Conversational AI Agent (Official agora-agents SDK)
 // Uses the official TypeScript SDK to deploy a cloud voice agent into the RTC channel.
 // Architecture:
@@ -1785,6 +1788,7 @@ app.post('/api/agora/start-agent', async (req, res) => {
 
     console.log(`[Agora] Starting Conversational AI agent on channel: ${channelName} (interviewer: ${interviewerName})...`);
     const agentId = await session.start();
+    activeAgoraSessions.set(agentId, session);
     console.log(`[Agora] Conversational AI Agent STARTED. Agent ID: ${agentId}`);
 
     return res.json({
@@ -1797,6 +1801,26 @@ app.post('/api/agora/start-agent', async (req, res) => {
     console.error('[Agora] start-agent error:', err);
     // If agent fails to start, return rtc-transport fallback
     res.status(500).json({ success: false, error: err.message, mode: 'rtc-transport' });
+  }
+});
+
+// 2b. Speak through live Agora Conversational AI Agent (Cloud MiniMax TTS Stream)
+app.post('/api/agora/speak', async (req, res) => {
+  try {
+    const { agentId, text } = req.body;
+    if (!agentId || !text) {
+      return res.status(400).json({ success: false, error: 'agentId and text are required.' });
+    }
+    const session = activeAgoraSessions.get(agentId);
+    if (session) {
+      await session.say(text);
+      console.log(`[Agora ConvoAI] Agent ${agentId} speaking: "${text.slice(0, 60)}..."`);
+      return res.json({ success: true });
+    }
+    return res.status(404).json({ success: false, error: 'Agent session not found or inactive.' });
+  } catch (err: any) {
+    console.warn('[Agora] speak error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
@@ -1911,14 +1935,21 @@ app.post('/api/agora/stop-agent', async (req, res) => {
     const appCertificate = process.env.AGORA_APP_CERTIFICATE;
     const { agentId } = req.body;
 
-    if (appId && appCertificate && agentId) {
-      const agoraClient = new AgoraClient({
-        appId,
-        appCertificate,
-        area: Area.US,
-      });
-      await agoraClient.stopAgent(agentId);
-      console.log(`[Agora] Agent ${agentId} stopped via SDK.`);
+    if (agentId) {
+      const session = activeAgoraSessions.get(agentId);
+      if (session) {
+        await session.stop().catch(() => {});
+        activeAgoraSessions.delete(agentId);
+        console.log(`[Agora] Session for agent ${agentId} stopped cleanly via session.stop().`);
+      } else if (appId && appCertificate) {
+        const agoraClient = new AgoraClient({
+          appId,
+          appCertificate,
+          area: Area.US,
+        });
+        await agoraClient.stopAgent(agentId).catch(() => {});
+        console.log(`[Agora] Agent ${agentId} stopped via agoraClient.stopAgent().`);
+      }
     }
 
     res.json({ success: true });

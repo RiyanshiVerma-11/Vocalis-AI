@@ -198,3 +198,17 @@ export async function stopAgoraAgent(agentId: string): Promise<void> {
   }
 }
 
+export async function speakWithAgoraAgent(agentId: string, text: string): Promise<boolean> {
+  try {
+    const response = await fetch('/api/agora/speak', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentId, text }),
+    });
+    return response.ok;
+  } catch (err) {
+    console.warn('[Agora] speak error:', err);
+    return false;
+  }
+}
+

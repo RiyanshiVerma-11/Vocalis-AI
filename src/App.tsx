@@ -30,7 +30,7 @@ import { SkillProgressionHub } from './components/SkillProgressionHub';
 import { TurnTimeMachineModal } from './components/TurnTimeMachineModal';
 import { SystemDesignWhiteboardModal } from './components/SystemDesignWhiteboardModal';
 import { ArchitectureCanvasState } from './types';
-import { requestInterviewTurn, generateFinalAssessment, fetchTTSAudio, fetchAgoraToken, startAgoraAgent, stopAgoraAgent } from './services/apiService';
+import { requestInterviewTurn, generateFinalAssessment, fetchTTSAudio, fetchAgoraToken, startAgoraAgent, stopAgoraAgent, speakWithAgoraAgent } from './services/apiService';
 import { sessionHistoryService } from './services/sessionHistoryService';
 import { turnForkService, TurnCheckpoint } from './services/turnForkService';
 import { agoraVoiceEngine } from './services/agoraVoiceEngine';
@@ -308,11 +308,9 @@ export default function App() {
     setTimeout(() => setErrorToast(null), 3000);
   }, []);
 
-  // Speak interviewer message via Gemini TTS or ultra-fast browser fallback (<200ms start)
+  // Speak interviewer message via Agora Conversational AI Agent (or fallback to Gemini/Browser TTS)
   const speakInterviewerMessage = useCallback(
     async (text: string, interviewer: Interviewer) => {
-      if (agoraMode === 'conversational-ai') return;
-
       const turnId = ++currentTurnIdRef.current;
       setIsAISpeaking(true);
       setActiveSpeakerId(interviewer.id);
@@ -324,6 +322,19 @@ export default function App() {
       }
       agoraVoiceEngine.clearSpeechBuffer();
       setCurrentInterimTranscript('');
+
+      // If Agora Conversational AI cloud agent is active, speak directly through the Agora cloud agent!
+      if (agoraMode === 'conversational-ai' && agoraAgentId) {
+        try {
+          const spoken = await speakWithAgoraAgent(agoraAgentId, text);
+          if (spoken) {
+            console.log(`[Agora ConvoAI] Spoke turn via Agora agent: "${text.slice(0, 60)}..."`);
+            return;
+          }
+        } catch (err) {
+          console.warn('[Agora ConvoAI] Speak failed, falling back to local audio:', err);
+        }
+      }
 
       try {
         // Race Gemini TTS with a 400ms timeout for instant speech start
@@ -358,7 +369,7 @@ export default function App() {
           );
         }
       } finally {
-        if (currentTurnIdRef.current === turnId) {
+        if (currentTurnIdRef.current === turnId && agoraMode !== 'conversational-ai') {
           setIsAISpeaking(false);
           // Clean speech buffer & clear interim transcript when AI finishes speaking
           agoraVoiceEngine.clearSpeechBuffer();
@@ -370,7 +381,7 @@ export default function App() {
         }
       }
     },
-    [agoraMode]
+    [agoraMode, agoraAgentId]
   );
 
   // Start an interview session (Instant Opening Speech <200ms)
@@ -490,11 +501,7 @@ export default function App() {
     setIsSidebarOpen(false); // Automatically hide sidebar for max focus during live interview
     setAssessment(null);
 
-    // Speak initial prompt IMMEDIATELY (<200ms delay)
-    speakInterviewerMessage(openingPrompt, initialSpeaker);
-
     // ── Join Agora RTC channel + start Conversational AI agent ────────────────
-    // Runs async so it doesn't block the immediate opening speech (<200ms)
     (async () => {
       try {
         const channelName = `vocalis-${Date.now()}`;
@@ -513,23 +520,21 @@ export default function App() {
             });
             if (agentData?.agentId) {
               setAgoraAgentId(agentData.agentId);
+              setAgoraMode('conversational-ai');
+              console.log('[App] Agora Conversational AI agent active! Speaking initial prompt via Cloud MiniMax TTS...');
+              // Speak initial prompt directly through the live Agora Conversational AI cloud agent!
+              await speakWithAgoraAgent(agentData.agentId, openingPrompt);
+              return;
             }
-            const mode = agentData?.mode === 'conversational-ai' ? 'conversational-ai' : 'rtc-transport';
-            setAgoraMode(mode);
-            if (mode === 'conversational-ai') {
-              console.log('[App] Agora Conversational AI agent active. Cloud STT/LLM/TTS in effect.');
-            } else {
-              console.log('[App] Agora RTC transport active. Using browser TTS fallback.');
-            }
-          } else {
-            setAgoraMode('offline');
           }
-        } else {
-          setAgoraMode('offline');
         }
-      } catch (err) {
-        console.warn('[App] Agora agent setup failed (interview continues with browser TTS):', err);
+        // Fallback: if Agora agent is not active, speak via local audio engine
         setAgoraMode('offline');
+        speakInterviewerMessage(openingPrompt, initialSpeaker);
+      } catch (err) {
+        console.warn('[App] Agora agent setup failed (interview continues with browser audio):', err);
+        setAgoraMode('offline');
+        speakInterviewerMessage(openingPrompt, initialSpeaker);
       }
     })();
   };
