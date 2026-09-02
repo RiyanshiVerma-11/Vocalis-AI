@@ -193,23 +193,41 @@ sequenceDiagram
 ### Dynamic Calibration State Machine
 
 ```mermaid
-stateDiagram-v2
-    [*] --> Foundational: Interview Started (Target: Senior Caliber)
+flowchart TD
+    Start([● Interview Started]) --> Foundational
 
-    Foundational --> Intermediate: Surface Answer + High Confidence
-    Foundational --> Foundational: Vague Buzzwords (Probe Deepened)
+    subgraph Calibration ["Dynamic Difficulty Calibration Engine"]
+        Foundational["<b>Foundational Level</b><br/><i>Baseline screening & fundamentals</i>"]
+        Intermediate["<b>Intermediate Level</b><br/><i>Core system design & APIs</i>"]
+        Senior["<b>Senior Level</b><br/><i>Production scale & failure recovery</i>"]
+        Staff["<b>Staff / Principal Level</b><br/><i>Strategic trade-offs & architecture</i>"]
+    end
 
-    Intermediate --> Senior: Solid System Design + Technical Depth
-    Intermediate --> Foundational: Contradiction Detected (Downgrade)
+    Foundational -->|Strong Technical Answer| Intermediate
+    Foundational -.->|Vague Buzzwords / Probe| Foundational
 
-    Senior --> Staff_Principal: Deep Architectural Insights & Trade-offs
-    Senior --> Intermediate: Missing Business Impact / Unhandled Edge Cases
+    Intermediate -->|Deep Architectural Detail| Senior
+    Intermediate -.->|Contradiction Detected| Foundational
 
-    Staff_Principal --> Staff_Principal: Consistently Deep Staff-level Reasoning
-    Staff_Principal --> Senior: Incomplete Failure Mode Handling
+    Senior -->|Strategic Cross-Role Trade-offs| Staff
+    Senior -.->|Missing Business Impact| Intermediate
 
-    Senior --> [*]: Finish & Evaluate (Scorecard Generated)
-    Staff_Principal --> [*]: Finish & Evaluate (Scorecard Generated)
+    Staff -.->|Unhandled Edge Cases| Senior
+
+    Senior --> Finish([★ Finish: Generate Executive Scorecard])
+    Staff --> Finish
+
+    classDef foundational fill:#eff6ff,stroke:#3b82f6,stroke-width:2px,color:#1e3a8a;
+    classDef intermediate fill:#f0fdf4,stroke:#22c55e,stroke-width:2px,color:#14532d;
+    classDef senior fill:#fefce8,stroke:#eab308,stroke-width:2px,color:#713f12;
+    classDef staff fill:#faf5ff,stroke:#a855f7,stroke-width:2px,color:#581c87;
+    classDef terminal fill:#1e293b,stroke:#0f172a,stroke-width:2px,color:#ffffff;
+
+    class Foundational foundational;
+    class Intermediate intermediate;
+    class Senior senior;
+    class Staff staff;
+    class Start,Finish terminal;
 ```
 
 ---
