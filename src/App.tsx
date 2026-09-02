@@ -174,15 +174,25 @@ export default function App() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
+  const sessionTimerRef = useRef<any>(null);
+
   useEffect(() => {
-    let interval: any;
     if (inInterview) {
-      interval = setInterval(() => {
+      if (sessionTimerRef.current) clearInterval(sessionTimerRef.current);
+      sessionTimerRef.current = setInterval(() => {
         setSessionSeconds((s) => s + 1);
       }, 1000);
+    } else {
+      if (sessionTimerRef.current) {
+        clearInterval(sessionTimerRef.current);
+        sessionTimerRef.current = null;
+      }
     }
     return () => {
-      if (interval) clearInterval(interval);
+      if (sessionTimerRef.current) {
+        clearInterval(sessionTimerRef.current);
+        sessionTimerRef.current = null;
+      }
     };
   }, [inInterview]);
 
@@ -925,17 +935,21 @@ export default function App() {
 
   // Generate Final Assessment
   const handleEndInterview = async () => {
-    if (transcript.length < 2) {
-      setErrorToast('Please exchange at least a couple of questions before generating an assessment.');
-      setTimeout(() => setErrorToast(null), 3000);
-      return;
+    // 1. Immediately freeze the session and stop the ticking timer synchronously
+    setInInterview(false);
+    if (sessionTimerRef.current) {
+      clearInterval(sessionTimerRef.current);
+      sessionTimerRef.current = null;
     }
 
-    // 1. Immediately freeze the session and stop the ticking timer
-    setInInterview(false);
-
-    // 2. Immediately stop speech recognition, TTS, audio engine & cancel silence auto-submit timers
-    handleInterrupt();
+    // 2. Immediately stop all voice audio, mic tracks & cancel silence auto-submit timers
+    agoraVoiceEngine.interrupt();
+    agoraVoiceEngine.stopSpeechRecognition();
+    agoraVoiceEngine.cleanup();
+    import('./services/audioEngine').then(({ audioEngine }) => audioEngine.interrupt()).catch(() => {});
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
     setIsAISpeaking(false);
     setIsListening(false);
     if (speechSilenceTimerRef.current) {
@@ -944,13 +958,17 @@ export default function App() {
     }
 
     // 3. Immediately disconnect and leave Agora RTC channels (avoids consuming credentials/bandwidth)
-    agoraVoiceEngine.cleanup();
     if (agoraAgentId) {
       stopAgoraAgent(agoraAgentId).catch(() => {});
       setAgoraAgentId(null);
     }
     setAgoraChannelName(null);
     setAgoraMode('offline');
+
+    if (transcript.length === 0) {
+      addToast('Interview Ended', 'Session closed with no transcript recorded.', 'info');
+      return;
+    }
 
     addToast('Session Concluded', 'Voice channels disconnected. Generating candidate scorecard...', 'info');
 
@@ -990,6 +1008,12 @@ export default function App() {
 
   // Restart interview — leave Agora channel and clean up
   const handleRestart = () => {
+    setInInterview(false);
+    if (sessionTimerRef.current) {
+      clearInterval(sessionTimerRef.current);
+      sessionTimerRef.current = null;
+    }
+    setSessionSeconds(0);
     agoraVoiceEngine.cleanup();
     // Stop Agora agent if running
     if (agoraAgentId) {
@@ -1000,7 +1024,6 @@ export default function App() {
     setAgoraMode('offline');
     setIsAISpeaking(false);
     setIsListening(false);
-    setInInterview(false);
     setIsSidebarOpen(true); // Re-open sidebar when returning to setup/dashboard
     setAssessment(null);
     setTranscript([]);
