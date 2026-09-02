@@ -1,4 +1,4 @@
-import { CandidateResume } from '../types';
+import { CandidateResume, DifficultyLevel } from '../types';
 
 export function parseResumeText(rawText: string, fallbackName?: string): CandidateResume {
   const text = rawText.replace(/\r\n/g, '\n').trim();
@@ -311,7 +311,9 @@ export function generatePersonalizedOpening(
   initialSpeaker: { id: string; name: string; title: string },
   activePanel: Array<{ id: string; name: string; title: string }>,
   candidateResume: CandidateResume,
-  scenario?: { id: string; title: string; starterPrompt?: string; context?: string }
+  scenario?: { id: string; title: string; starterPrompt?: string; context?: string },
+  difficulty: DifficultyLevel = 'Intermediate',
+  strictness: string = 'Balanced'
 ): string {
   const otherMembers = activePanel
     .filter((p) => p.id !== initialSpeaker.id)
@@ -350,12 +352,30 @@ export function generatePersonalizedOpening(
   ) {
     if (candidateResume.notableProjects && candidateResume.notableProjects.length > 0) {
       const mainProj = candidateResume.notableProjects[0];
-      return `${greeting} ${panelIntro} We reviewed your background and notable work on ${projNames}. To start off: Could you walk us through the core system architecture of ${mainProj.name.split('(')[0].trim()}, explaining how you designed it, key engineering trade-offs you made, and how you handled data processing and reliability?`;
+      const mainProjName = mainProj.name.split('(')[0].trim();
+
+      if (difficulty === 'Foundational' || strictness === 'Supportive') {
+        return `${greeting} ${panelIntro} It's wonderful to meet you today. We reviewed your background and saw your work on ${projNames || mainProjName}. To kick things off comfortably: Could you introduce yourself and tell us what problem ${mainProjName} solves, along with what key technologies you worked with?`;
+      }
+
+      if (difficulty === 'Intermediate' || strictness === 'Balanced') {
+        return `${greeting} ${panelIntro} We reviewed your background and projects like ${projNames || mainProjName}. To start off: Could you briefly introduce yourself and walk us through ${mainProjName}—specifically what tech stack you chose and what your primary contributions were?`;
+      }
+
+      // Senior / Staff / Strict
+      return `${greeting} ${panelIntro} We reviewed your background and notable work on ${projNames || mainProjName}. To start off: Could you walk us through the core system architecture of ${mainProjName}, explaining how you designed it, key engineering trade-offs you made, and how you handled data processing and reliability?`;
     }
 
     if (candidateResume.workExperience && candidateResume.workExperience.length > 0) {
       const exp = candidateResume.workExperience[0];
+      if (difficulty === 'Foundational' || strictness === 'Supportive') {
+        return `${greeting} ${panelIntro} It's great to have you with us today! We noted your background at ${exp.company} as ${exp.role}. To get started: Could you introduce yourself and tell us a bit about what you worked on during your time there?`;
+      }
       return `${greeting} ${panelIntro} We noted your background at ${exp.company} as ${exp.role}. To start off: Could you walk us through the system architecture of your most impactful project, highlighting key engineering trade-offs?`;
+    }
+
+    if (difficulty === 'Foundational' || strictness === 'Supportive') {
+      return `${greeting} ${panelIntro} Welcome! To get started: Please introduce yourself and tell us a bit about your favorite software project and what technologies you enjoyed using.`;
     }
 
     return `${greeting} ${panelIntro} To start off: Please introduce yourself and walk us through your most impactful engineering project, highlighting key architectural decisions and system trade-offs.`;

@@ -432,7 +432,9 @@ export default function App() {
       initialSpeaker,
       config.activePanel,
       config.candidateResume,
-      config.scenario
+      config.scenario,
+      config.initialDifficulty,
+      config.panelStrictness
     );
 
     const initialContext: SharedCandidateContext = {
