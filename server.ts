@@ -1373,7 +1373,8 @@ function generateFallbackTurn(lastCandidateSpeech: string, activePanel: any[], s
 }
 
 // Endpoint: Generate Full Evidence-Based Assessment Linked to Transcript Quotes
-app.post('/api/interview/final-assessment', async (req, res) => {
+// Supports both primary route and backward-compatible /assess alias
+app.post(['/api/interview/final-assessment', '/api/interview/assess'], async (req, res) => {
   try {
     const { transcript = [], sharedContext = {}, activePanel = [], scenario = {}, candidateName = 'Candidate' } = req.body;
 

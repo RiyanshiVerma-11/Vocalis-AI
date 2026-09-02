@@ -12,16 +12,16 @@
   [![Agora Conversational AI](https://img.shields.io/badge/Agora-Conversational%20AI%20v2.7.0-099DFD?style=for-the-badge&logo=agora&logoColor=white)](https://www.agora.io/)
   [![Agora RTC SDK](https://img.shields.io/badge/Agora-RTC%20SDK%20v4.24-099DFD?style=for-the-badge&logo=agora&logoColor=white)](https://www.agora.io/)
   [![Deepgram Nova-3](https://img.shields.io/badge/Deepgram-Nova--3%20ASR-13EF93?style=for-the-badge&logo=deepgram&logoColor=black)](https://deepgram.com/)
-  [![Groq Llama 3.3](https://img.shields.io/badge/Groq-Llama%203.3%2070B-F05032?style=for-the-badge&logo=groq&logoColor=white)](https://groq.com/)
+  [![Groq Qwen 3.8](https://img.shields.io/badge/Groq-Qwen%203.8%2027B-F05032?style=for-the-badge&logo=groq&logoColor=white)](https://groq.com/)
   [![MiniMax TTS](https://img.shields.io/badge/MiniMax-Speech--2.6--Turbo-5B5BD6?style=for-the-badge)](https://minimax.io/)
-  [![React 18](https://img.shields.io/badge/React-18.3-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://reactjs.org/)
+  [![React 19](https://img.shields.io/badge/React-19.0-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://reactjs.org/)
   [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
   [![Tailwind CSS v4](https://img.shields.io/badge/Tailwind-v4.0-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
   [![License](https://img.shields.io/badge/License-MIT-green.svg?style=for-the-badge)](LICENSE)
 
   <br />
 
-  *Autonomous multi-role AI interview committee powered by official Agora Conversational AI Agent SDK (v2.7.0), Deepgram Nova-3 speech recognition, Groq Llama 3.3 70B intelligence, and MiniMax / ElevenLabs natural cloud voice streaming over Agora SDRTN.*
+  *Autonomous multi-role AI interview committee powered by official Agora Conversational AI Agent SDK (v2.7.0), Deepgram Nova-3 speech recognition, Groq Qwen 3.8 27B / Compound Mini intelligence, and MiniMax / ElevenLabs natural cloud voice streaming over Agora SDRTN.*
 
   <br />
 
@@ -56,7 +56,7 @@
 
 **Vocalis AI** is an enterprise-ready, autonomous multi-role AI voice interviewing platform built with Agora's official **Conversational AI Agent SDK (`agora-agents` v2.7.0)**. Traditional AI interview tools deploy a single static persona that listens passively to one-off text prompts. In contrast, **Vocalis AI** deploys a dynamic panel of 5 specialized AI personas—**Lead Systems Architect**, **Principal Product Manager**, **VP of Engineering**, **Enterprise Client Director**, and **Lead Org Psychologist**.
 
-The audio engine streams over the **Agora Software-Defined Real-Time Network (SDRTN)** with sub-100ms Voice Activity Detection (VAD) barge-in. The live voice pipeline orchestrates **Deepgram Nova-3 (ASR)** ➔ **Groq Llama 3.3 70B (Sub-100ms LLM)** ➔ **MiniMax / ElevenLabs (TTS)** directly in the cloud. After every response, the AI committee deliberates backstage to evaluate answer depth, detect vague buzzwords or resume contradictions, adjust interview difficulty dynamically (Foundational → Staff/Principal), and generate an **executive evaluation scorecard backed by verbatim transcript quote citations**.
+The audio engine streams over the **Agora Software-Defined Real-Time Network (SDRTN)** with sub-100ms Voice Activity Detection (VAD) barge-in. The live voice pipeline orchestrates **Deepgram Nova-3 (ASR)** ➔ **Groq Qwen 3.8 27B / Compound Mini (Sub-100ms LLM)** ➔ **MiniMax / ElevenLabs (TTS)** directly in the cloud. After every response, the AI committee deliberates backstage to evaluate answer depth, detect vague buzzwords or resume contradictions, adjust interview difficulty dynamically (Foundational → Staff/Principal), and generate an **executive evaluation scorecard backed by verbatim transcript quote citations**.
 
 ---
 
@@ -71,7 +71,7 @@ Candidate Mic (WebRTC) ────────► Agora RTC Channel (SDRTN)
                                Deepgram STT (Nova-3)
                                           │
                                           ▼
-                         Groq LLM (Llama-3.3-70b-versatile)
+                         Groq LLM (Qwen-3.8-27b / Compound-Mini)
                          or CustomLLM Webhook (/api/agora/llm-webhook)
                                           │
                                           ▼
@@ -86,7 +86,7 @@ Candidate Speaker ◄──────────── Agora Audio Stream (Op
 | **SDK & Orchestration** | Official `agora-agents` (v2.7.0) with `AgoraClient`, `Agent`, `AgentSession` | ✅ **100% Verified** |
 | **Region & Authentication** | Configured for `Area.US` with dynamic 3600-second privilege RTC tokens (`/api/agora/token`) | ✅ **100% Verified** |
 | **Cloud ASR (STT)** | `DeepgramSTT` with model `nova-3` for ultra-accurate technical jargon transcription | ✅ **100% Verified** |
-| **Cloud Intelligence (LLM)** | `Groq` (`llama-3.3-70b-versatile`) direct cloud inference + `CustomLLM` adaptive webhook | ✅ **100% Verified** |
+| **Cloud Intelligence (LLM)** | `Groq` (`qwen/qwen3.8-27b` / `groq/compound-mini`) direct cloud inference + `CustomLLM` adaptive webhook | ✅ **100% Verified** |
 | **Cloud Voice (TTS)** | Agora-managed `MiniMaxTTS` (`speech-2.6-turbo`) + BYOK `ElevenLabsTTS` (`eleven_flash_v2_5`) | ✅ **100% Verified** |
 | **Turn Audio Sync** | `session.say(text)` via `/api/agora/speak` to synchronize transcript with cloud voice | ✅ **100% Verified** |
 | **Client RTC Engine** | `agora-rtc-sdk-ng` subscribing to remote audio tracks with automated `.play()` | ✅ **100% Verified** |
@@ -121,7 +121,7 @@ Vocalis AI implements all 11 core requirements specified in the **EchoSphere PS1
 ```mermaid
 graph TD
     subgraph Client ["Client Layer (Browser / PWA)"]
-        UI["React 18 + Tailwind v4 UI"]
+        UI["React 19 + Tailwind v4 UI"]
         RTC_Client["Agora RTC SDK Client Engine"]
         VAD_Engine["Web Audio VAD & Volume Analyzer"]
         Store["Local State & Session Storage"]
@@ -129,12 +129,12 @@ graph TD
 
     subgraph Transport ["Media & Signal Transport"]
         Agora_Cloud["Agora SD-RTN™ Media Cloud"]
-        REST_API["Express Node.js Server (Port 3001)"]
+        REST_API["Express Node.js Server (Port 3000)"]
     end
 
     subgraph Intelligence ["AI Intelligence Layer"]
         Gemini["Google Gemini 2.5 Flash Engine"]
-        Groq["Groq Llama 3.3 70B (Sub-100ms Inference)"]
+        Groq["Groq Qwen 3.8 27B / Compound Mini (Sub-100ms Inference)"]
         Parser["PDF & Text Resume Parser Engine"]
         ScorecardEngine["Quote-Backed Scorecard Generator"]
     end
@@ -405,18 +405,31 @@ Content-Type: application/json
 **Response:**
 ```json
 {
-  "nextSpeaker": { "id": "maya", "name": "Priya Mehta", "role": "product" },
-  "turnTakingReason": "Technical answer complete; probing business ROI and customer conversion impact.",
-  "internalThought": "Candidate gave strong Redis architecture details. Need PM input on checkout SLA impact.",
-  "answerDepth": "Deep",
-  "responseText": "That architecture handles scale—how did cache invalidation impact checkout conversion during peak load?",
-  "detectedFlags": []
+  "success": true,
+  "data": {
+    "nextSpeakerId": "prod-maya",
+    "nextSpeakerName": "Priya Mehta",
+    "nextSpeakerRole": "product",
+    "speech": "That architecture handles scale—how did cache invalidation impact checkout conversion during peak load?",
+    "internalThought": "Candidate gave strong Redis architecture details. Need PM input on checkout SLA impact.",
+    "turnTakingReason": "Priya Mehta asked the next probing question.",
+    "questionTopic": "Cache Invalidation & Business Impact",
+    "targetCompetency": "businessAndCustomerImpact",
+    "adaptiveStrategyApplied": "Challenge Assumption",
+    "analysisOfCandidateAnswer": {
+      "sentiment": "Analytical & Deep",
+      "depthLevel": "Intermediate (Practical)",
+      "detectedKeywords": ["redis", "write-through", "pub/sub"],
+      "candidateResponseSummary": "Candidate explained Redis caching."
+    },
+    "detectedFlags": []
+  }
 }
 ```
 
 #### Generate Final Assessment Scorecard
 ```http
-POST /api/interview/assess
+POST /api/interview/final-assessment
 Content-Type: application/json
 
 {
@@ -508,7 +521,7 @@ AGORA_APP_CERTIFICATE="your_agora_app_certificate"
 VITE_AGORA_ENABLED="true"
 
 # ── AI Intelligence Engines ──
-GROQ_API_KEY="your_groq_api_key"        # For sub-100ms Llama-3.3-70b inference
+GROQ_API_KEY="your_groq_api_key"        # For sub-100ms Qwen-3.8-27b / Compound inference
 GEMINI_API_KEY="your_gemini_api_key"    # For committee multi-turn deliberation
 
 # ── Voice & Media (Optional BYOK) ──
@@ -521,7 +534,7 @@ Run the official live verification script to test Agora SDRTN agent deployment:
 ```bash
 node scratch/test_agora_sdk.js
 ```
-*Output confirms connection to `Area.US`, `Deepgram Nova-3`, `Groq Llama-3.3-70b`, and `MiniMax TTS` on Agora SDRTN.*
+*Output confirms connection to `Area.US`, `Deepgram Nova-3`, `Groq Qwen-3.8-27b`, and `MiniMax TTS` on Agora SDRTN.*
 
 ### 4. Run Development Server
 ```bash
@@ -539,7 +552,7 @@ Open **`http://localhost:3000`** in your browser.
 | `AGORA_APP_CERTIFICATE` | Agora Certificate for dynamic token encryption | N/A | **Configured** |
 | `VITE_AGORA_APP_ID` | Agora App ID for client WebRTC `AgoraRTC.createClient` | N/A | **Configured** |
 | `VITE_AGORA_ENABLED` | Toggle live Agora RTC mode (`true`) vs offline test | N/A | **Configured (`true`)** |
-| `GROQ_API_KEY` | Groq Llama 3.3 70B API key for sub-100ms LLM inference | Cloud | **Configured** |
+| `GROQ_API_KEY` | Groq Qwen 3.8 27B / Compound API key for sub-100ms LLM inference | Cloud | **Configured** |
 | `GEMINI_API_KEY` | Google Gemini 2.5 Flash for multi-role deliberation | Cloud | **Configured** |
 | `Deepgram STT (Nova-3)` | Managed directly by Agora Cloud (`agora-agents`) | **Yes (No Key Needed)** | **Active** |
 | `MiniMax TTS` | Managed directly by Agora Cloud (`agora-agents`) | **Yes (No Key Needed)** | **Active** |
@@ -569,7 +582,7 @@ npm run build
 ## 📄 License & Acknowledgments
 
 - Built for **EchoSphere Hackathon 2026** (*AI Interview Track - PS11*).
-- Powered by **Agora Real-Time Engagement Platform**, **Google Gemini 2.5 Flash**, and **Groq Llama 3.3 70B**.
+- Powered by **Agora Real-Time Engagement Platform**, **Google Gemini 2.5 Flash**, and **Groq Qwen 3.8 27B / Compound Mini**.
 - Released under the [MIT License](LICENSE).
 
 <div align="center">
