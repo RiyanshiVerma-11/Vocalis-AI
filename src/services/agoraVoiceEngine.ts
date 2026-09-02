@@ -1,13 +1,14 @@
 // ============================================================
 // Agora Voice Engine — Adaptive Multi-Role AI Interview Panel
 // ============================================================
-// Replaces the browser-only audioEngine.ts with real Agora
-// WebRTC transport. Uses agora-rtc-sdk-ng on the client side.
+// Uses agora-rtc-sdk-ng on the client side.
 //
-// Architecture:
-//   Candidate Mic → Agora RTC Channel → Server Agora Agent
-//   Server Agent  → STT → Gemini LLM → TTS → Agora Channel
-//   Agora Channel → Client speaker output (AI interviewer voice)
+// Architecture (Agora Conversational AI mode):
+//   Candidate Mic → Agora RTC Channel → Cloud AI Agent (ASR → LLM Webhook → TTS)
+//   Cloud Agent Audio → Agora RTC → Client speaker (remote audio track)
+//
+// Architecture (fallback offline/rtc-transport mode):
+//   Candidate Mic → Web Speech API (local STT) → Groq LLM → Gemini TTS → audioEngine
 //
 // CREDENTIALS REQUIRED (add to .env):
 //   VITE_AGORA_APP_ID=<your Agora App ID from console.agora.io>
@@ -103,6 +104,7 @@ export class AgoraVoiceEngine {
     }
 
     try {
+      // Use 'vp8' codec for the Agora RTC Web client (WebRTC audio track is always Opus)
       this.client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
 
       // When the remote AI agent publishes audio or video, subscribe and play
@@ -131,8 +133,12 @@ export class AgoraVoiceEngine {
 
       this.client.on('user-unpublished', (_user: IAgoraRTCRemoteUser, mediaType) => {
         if (mediaType === 'audio') {
+          // Remote audio track ended — agent stopped speaking
+          if (this.remoteAudioTrack) {
+            try { this.remoteAudioTrack.stop(); } catch (_) {}
+            this.remoteAudioTrack = null;
+          }
           this._setSpeaking(false);
-          this.remoteAudioTrack = null;
         }
       });
 

@@ -7,6 +7,19 @@ import nodemailer from 'nodemailer';
 import { GoogleGenAI, Type, Modality } from '@google/genai';
 import { createServer as createViteServer } from 'vite';
 import { createRequire } from 'module';
+import {
+  AgoraClient,
+  Agent,
+  Area,
+  DeepgramSTT,
+  CustomLLM,
+  Groq,
+  OpenAI,
+  MiniMaxTTS,
+  ElevenLabsTTS,
+  MicrosoftTTS,
+  OpenAITTS,
+} from 'agora-agents';
 
 const require = createRequire(import.meta.url);
 const { RtcTokenBuilder, RtcRole } = require('agora-token');
@@ -1621,199 +1634,191 @@ app.get('/api/agora/token', (req, res) => {
   }
 });
 
-// 2. Start Agora Conversational AI Agent
-// This calls Agora's REST API to deploy a Voice Agent into the RTC channel.
-// The agent listens to the candidate's audio, calls our LLM webhook, and speaks the response.
+// 2. Start Agora Conversational AI Agent (Official agora-agents SDK)
+// Uses the official TypeScript SDK to deploy a cloud voice agent into the RTC channel.
+// Architecture:
+//   Candidate Mic → Agora RTC → Agent ASR (Deepgram Nova-3)
+//   → Agent LLM (Groq llama-3.3-70b / CustomLLM webhook / OpenAI managed)
+//   → Agent TTS (MiniMax managed / ElevenLabs BYOK / Microsoft BYOK)
+//   → Agent audio stream → Client speaker output (low-latency WebRTC)
 app.post('/api/agora/start-agent', async (req, res) => {
   try {
     const appId = process.env.AGORA_APP_ID;
     const appCertificate = process.env.AGORA_APP_CERTIFICATE;
-    const customerKey = process.env.AGORA_CUSTOMER_KEY;
-    const customerSecret = process.env.AGORA_CUSTOMER_SECRET;
     const appUrl = process.env.APP_URL || 'http://localhost:3000';
 
-    if (!appId) {
-      return res.status(500).json({ success: false, error: 'AGORA_APP_ID not configured.' });
+    if (!appId || !appCertificate) {
+      return res.status(500).json({ success: false, error: 'AGORA_APP_ID or AGORA_APP_CERTIFICATE not configured.' });
     }
 
     const {
       channelName,
-      uid = 1,                         // agent UID (distinct from candidate UID 0)
+      uid = '1',                        // agent UID (distinct from candidate UID 0)
       interviewerName = 'AI Interviewer',
       systemPrompt = '',
-      voiceName = 'en-US-AvaMultilingualNeural',
-      heygenAvatarId,
+      voiceName = '',
     } = req.body;
 
     if (!channelName) {
       return res.status(400).json({ success: false, error: 'channelName is required.' });
     }
 
-    // Generate a token for the agent to join the channel
-    const agentTokenExpiry = Math.floor(Date.now() / 1000) + 3600;
-    const agentToken = RtcTokenBuilder.buildTokenWithUid(
+    // ── Build Agora SDK client ──────────────────────────────────────────────────
+    // App credentials mode auto-generates signed tokens per session
+    const agoraClient = new AgoraClient({
       appId,
-      appCertificate || '',
-      channelName,
-      uid,
-      RtcRole.PUBLISHER,
-      agentTokenExpiry,
-      agentTokenExpiry
-    );
+      appCertificate,
+      area: Area.US,
+    });
 
-    // Attempt Agora Conversational AI REST API if credentials available
-    if (customerKey && customerSecret) {
-      const credentials = Buffer.from(`${customerKey}:${customerSecret}`).toString('base64');
-      
-      // Potential candidate URLs according to Agora API documentation
-      const candidateUrls = [
-        `https://api.agora.io/v1/projects/${appId}/fls/v1/join`,
-        `https://api.agora.io/api/conversational-ai-agent/v2/projects/${appId}/join`,
-        `https://api.agora.io/v1/projects/${appId}/fls/v2/join`,
-        `https://api.agora.io/api/conversational-ai/v1/projects/${appId}/join`,
-        `https://api.agora.io/api/conversational-ai/v1/projects/${appId}/agents/join`,
-        `https://api.agora.io/v1/projects/${appId}/conversational-ai/agents/join`,
-        `https://api.sd-rtn.com/v1/projects/${appId}/fls/v1/join`,
-        `https://api.agora.io/v2/projects/${appId}/conversational-ai/agents/join`,
-      ];
+    // ── ASR: Deepgram Nova-3 (Agora managed — no API key needed) ───────────────
+    const stt = new DeepgramSTT({
+      model: 'nova-3',
+      language: 'en-US',
+    });
 
-      // Determine TTS vendor based on environment or fallback to Agora-managed / Microsoft / Elevenlabs
-      let ttsVendor = process.env.AGORA_TTS_VENDOR || 'minimax';
-      let ttsParams: any = {};
+    // ── LLM: Groq (llama-3.3-70b-versatile, <100ms) or CustomLLM or OpenAI ────
+    // If public APP_URL is available (not localhost), we can route to our webhook.
+    // Otherwise, Groq runs directly from Agora Cloud for instant turn-taking.
+    let llm: any;
+    const isPublicUrl = Boolean(appUrl && !appUrl.includes('localhost') && !appUrl.includes('127.0.0.1'));
 
-      if (process.env.ELEVENLABS_API_KEY) {
-        ttsVendor = 'elevenlabs';
-        ttsParams = {
-          key: process.env.ELEVENLABS_API_KEY,
-          voice_id: '21m00Tcm4TlvDq8ikWAM',
-        };
-      } else if (process.env.OPENAI_API_KEY) {
-        ttsVendor = 'openai';
-        ttsParams = {
-          key: process.env.OPENAI_API_KEY,
-          model: 'tts-1',
-          voice: 'alloy',
-        };
-      } else if (process.env.AZURE_TTS_KEY) {
-        ttsVendor = 'microsoft';
-        ttsParams = {
-          key: process.env.AZURE_TTS_KEY,
-          region: process.env.AZURE_TTS_REGION || 'eastus',
-          voice_name: voiceName || 'en-US-JennyNeural',
-        };
-      } else {
-        // Default Agora-managed MiniMax TTS
-        ttsVendor = 'minimax';
-        ttsParams = {
-          voice_id: 'male-qn-qingse',
-        };
-      }
-
-      const activeAvatarId = heygenAvatarId || process.env.HEYGEN_AVATAR_ID;
-      const hasHeygenKey = Boolean(process.env.HEYGEN_API_KEY);
-
-      // Format 1: Properties payload with Agora-managed options (STT: Deepgram, LLM: OpenAI, TTS: MiniMax)
-      const payloadProperties: any = {
-        name: `agent-${Date.now()}`,
-        properties: {
-          channel: channelName,
-          token: agentToken,
-          agent_rtc_uid: String(uid),
-          remote_rtc_uids: ['*'],
-          enable_string_uid: false,
-          idle_timeout: 120,
-        },
-        asr: { vendor: 'deepgram', language: 'en-US' },
-        tts: { vendor: ttsVendor, params: ttsParams },
-        llm: {
-          vendor: 'openai',
-          system_messages: [
-            { role: 'system', content: systemPrompt || `You are ${interviewerName}, an adaptive AI interviewer.` },
-          ],
-          greeting_message: `Hello! I am ${interviewerName}. Let us begin the interview.`,
-          failure_message: 'I did not catch that. Could you please clarify?',
-          max_history: 20,
-        },
-        vad: { silence_duration_ms: 480, speech_duration_ms: 10 },
-      };
-
-      if (hasHeygenKey && activeAvatarId) {
-        payloadProperties.avatar = {
-          enable: true,
-          vendor: process.env.AGORA_AVATAR_VENDOR || 'heygen',
-          params: {
-            api_key: process.env.HEYGEN_API_KEY,
-            avatar_id: activeAvatarId,
-            quality: 'medium',
+    if (isPublicUrl) {
+      llm = new CustomLLM({
+        url: `${appUrl}/api/agora/llm-webhook`,
+        apiKey: 'vocalis-internal',
+        model: 'custom',
+        systemMessages: [
+          {
+            role: 'system',
+            content: systemPrompt ||
+              `You are ${interviewerName}, an expert AI interviewer. Ask concise, probing, adaptive follow-up questions (2-3 sentences max).`,
           },
-        };
-      }
-
-      // Format 2: Webhook-routed payload if webhook URL is specified
-      const payloadWebhook: any = {
-        ...payloadProperties,
-        name: `agent-wh-${Date.now()}`,
-        llm: {
-          url: `${appUrl}/api/agora/llm-webhook`,
-          api_key: 'vocalis-internal',
-          system_messages: [
-            { role: 'system', content: systemPrompt || `You are ${interviewerName}, an adaptive AI interviewer.` },
-          ],
-          greeting_message: `Hello! I am ${interviewerName}. Let us begin the interview.`,
-          failure_message: 'I did not catch that. Could you please clarify?',
-          max_history: 20,
-        },
-      };
-
-      const payloadsToTry = [payloadProperties, payloadWebhook];
-
-      console.log(`[Agora] Attempting Conversational AI Agent start (Avatar ID: ${activeAvatarId})...`);
-
-      for (const targetUrl of candidateUrls) {
-        for (const payload of payloadsToTry) {
-          try {
-            console.log(`[Agora] Trying endpoint: ${targetUrl}`);
-            const agoraRes = await fetch(targetUrl, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Basic ${credentials}`,
-              },
-              body: JSON.stringify(payload),
-            });
-
-            const agoraText = await agoraRes.text().catch(() => '');
-            let agoraData: any = {};
-            try { agoraData = JSON.parse(agoraText); } catch (_) {}
-
-            console.log(`[Agora] Response from ${targetUrl}: HTTP ${agoraRes.status} -> ${agoraText.slice(0, 300)}`);
-
-            if (agoraRes.ok) {
-              console.log('[Agora] Conversational AI Agent STARTED SUCCESSFULLY! Endpoint:', targetUrl, 'Agent ID:', agoraData?.agent_id || agoraData?.id || 'ok');
-              return res.json({ success: true, agentId: agoraData?.agent_id || agoraData?.id, token: agentToken, mode: 'conversational-ai' });
-            }
-          } catch (err: any) {
-            console.warn('[Agora] Attempt failed for URL:', targetUrl, err.message);
-          }
-        }
-      }
+        ],
+        greetingMessage: `Hello! I am ${interviewerName}. Let's begin the interview. Please introduce yourself.`,
+        failureMessage: 'I did not catch that clearly. Could you please repeat or elaborate?',
+        maxHistory: 20,
+      });
+      console.log('[Agora] LLM: CustomLLM webhook ->', `${appUrl}/api/agora/llm-webhook`);
+    } else if (process.env.GROQ_API_KEY) {
+      llm = new Groq({
+        apiKey: process.env.GROQ_API_KEY.trim(),
+        url: 'https://api.groq.com/openai/v1/chat/completions',
+        model: 'llama-3.3-70b-versatile',
+        systemMessages: [
+          {
+            role: 'system',
+            content: systemPrompt ||
+              `You are ${interviewerName}, an expert AI interviewer conducting an adaptive technical interview. Ask concise, probing follow-up questions (2-3 sentences max). Be direct, professional, and adaptive.`,
+          },
+        ],
+        greetingMessage: `Hello! I am ${interviewerName}. Let's begin the interview. Please introduce yourself and your background.`,
+        failureMessage: 'I did not catch that clearly. Could you please repeat or elaborate?',
+        maxHistory: 20,
+      });
+      console.log('[Agora] LLM: Groq (llama-3.3-70b-versatile, cloud direct)');
+    } else {
+      llm = new OpenAI({
+        model: 'gpt-4o-mini',
+        systemMessages: [
+          {
+            role: 'system',
+            content: systemPrompt || `You are ${interviewerName}, an expert AI interviewer.`,
+          },
+        ],
+        greetingMessage: `Hello! I am ${interviewerName}. Let's begin the interview. Please introduce yourself.`,
+        failureMessage: 'I did not catch that clearly. Could you please repeat or elaborate?',
+        maxHistory: 20,
+      });
+      console.log('[Agora] LLM: OpenAI gpt-4o-mini (Agora managed)');
     }
 
-    // Fallback: return token only (client uses Gemini TTS via /api/tts)
-    console.log('[Agora] Running in RTC-transport-only mode (no Conversational AI credentials).');
-    res.json({ success: true, token: agentToken, mode: 'rtc-transport', channelName });
+    // ── TTS: Select vendor based on available credentials ──────────────────────
+    let tts: any;
+    if (process.env.ELEVENLABS_API_KEY) {
+      tts = new ElevenLabsTTS({
+        key: process.env.ELEVENLABS_API_KEY,
+        modelId: 'eleven_flash_v2_5',
+        voiceId: process.env.ELEVENLABS_VOICE_ID || 'pNInz6obpgDQGcFmaJgB', // Adam
+        baseUrl: 'wss://api.elevenlabs.io/v1/text-to-speech',
+      });
+      console.log('[Agora] TTS: ElevenLabs (BYOK)');
+    } else if (process.env.AZURE_TTS_KEY) {
+      tts = new MicrosoftTTS({
+        key: process.env.AZURE_TTS_KEY,
+        region: process.env.AZURE_TTS_REGION || 'eastus',
+        voiceName: voiceName || 'en-US-AriaNeural',
+      });
+      console.log('[Agora] TTS: Microsoft Azure (BYOK)');
+    } else if (process.env.OPENAI_API_KEY) {
+      tts = new OpenAITTS({
+        apiKey: process.env.OPENAI_API_KEY,
+        model: 'tts-1',
+        baseUrl: 'https://api.openai.com/v1',
+        voice: 'alloy',
+      });
+      console.log('[Agora] TTS: OpenAI (BYOK)');
+    } else {
+      // MiniMax — Agora managed (no key needed, high quality natural speech)
+      tts = new MiniMaxTTS({
+        model: 'speech-2.6-turbo',
+        voiceId: 'English_captivating_female1',
+      });
+      console.log('[Agora] TTS: MiniMax (Agora managed)');
+    }
+
+    // ── Compose and start the agent ────────────────────────────────────────────
+    const agent = new Agent({ client: agoraClient })
+      .withStt(stt)
+      .withLlm(llm)
+      .withTts(tts);
+
+    const sessionName = `vocalis-${interviewerName.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase()}-${Date.now()}`;
+
+    const session = agent.createSession({
+      channel: channelName,
+      agentUid: String(uid),
+      remoteUids: ['0'],              // candidate always joins as UID 0
+      name: sessionName,
+      idleTimeout: 120,               // auto-stop after 120s silence
+    });
+
+    console.log(`[Agora] Starting Conversational AI agent on channel: ${channelName} (interviewer: ${interviewerName})...`);
+    const agentId = await session.start();
+    console.log(`[Agora] Conversational AI Agent STARTED. Agent ID: ${agentId}`);
+
+    return res.json({
+      success: true,
+      agentId,
+      mode: 'conversational-ai',
+      channelName,
+    });
   } catch (err: any) {
     console.error('[Agora] start-agent error:', err);
-    res.status(500).json({ success: false, error: err.message });
+    // If agent fails to start, return rtc-transport fallback
+    res.status(500).json({ success: false, error: err.message, mode: 'rtc-transport' });
   }
 });
 
 // 3. Agora Conversational AI LLM Webhook
-// The Agora agent POSTs here with the candidate's transcribed speech.
-// We run it through our multi-role interview deliberation engine and return the response.
+// The Agora agent POSTs here with the candidate's transcribed speech + full conversation history.
+// We run it through Groq (sub-100ms) with the full adaptive interview system prompt.
+// This is the core intelligence layer: adaptive questioning, difficulty adjustment, contradiction detection.
 app.post('/api/agora/llm-webhook', async (req, res) => {
   try {
     const { messages = [] } = req.body;
+
+    if (!messages.length) {
+      return res.json({ choices: [{ message: { role: 'assistant', content: 'Could you elaborate on that?' } }] });
+    }
+
+    // Extract full conversation history — pass it to Groq so the interviewer has full context
+    // This enables: adaptive follow-ups, contradiction detection, difficulty escalation
+    const conversationHistory = messages.map((m: any) => ({
+      role: m.role === 'user' ? 'user' : 'assistant',
+      content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+    }));
+
     const lastUserMessage = [...messages].reverse().find((m: any) => m.role === 'user');
     const candidateSpeech = lastUserMessage?.content || '';
 
@@ -1821,63 +1826,108 @@ app.post('/api/agora/llm-webhook', async (req, res) => {
       return res.json({ choices: [{ message: { role: 'assistant', content: 'Could you elaborate on that?' } }] });
     }
 
-    // Route through Groq for sub-100ms response (matches our existing /api/interview/turn fast path)
+    // Adaptive interviewer system prompt — drives all PS11 behaviors:
+    // - Multi-turn adaptive questioning based on candidate's previous answers
+    // - Difficulty adjustment (probe deeper on strong answers, scaffold on weak ones)
+    // - Contradiction & vagueness detection
+    // - Role-appropriate technical/behavioral focus
+    const adaptiveSystemPrompt = `You are an expert AI technical interviewer conducting a real-time voice interview.
+Your role: Ask ONE concise, adaptive follow-up question (2-3 sentences max) based on the candidate's most recent answer.
+
+ADAPTIVE BEHAVIOR RULES:
+- If the answer is technically STRONG and detailed: escalate difficulty, probe edge cases, failure modes, or trade-offs
+- If the answer is VAGUE or buzzword-heavy: ask for specific technical details or a concrete example
+- If the answer is WEAK or incorrect: gently probe to see if they can self-correct; suggest they "walk through it step by step"
+- If the answer CONTRADICTS an earlier statement: politely point it out ("Earlier you mentioned X, but now you're saying Y - can you clarify?")
+- Focus on: distributed systems, scalability, real-world impact, and concrete technical depth
+
+VOICE INTERVIEW STYLE:
+- Speak naturally, conversationally - this is a spoken interview, not written
+- Start directly with your question (no "Great answer!" filler)
+- Keep responses under 40 words for natural conversation flow
+- Reference the candidate's specific words when probing ("You mentioned Kafka - what happens when...")`;
+
+    // Route through Groq for sub-100ms response
     const keys = [process.env.GROQ_API_KEY, process.env.GROQ_API_KEY_SECONDARY].filter(Boolean) as string[];
     for (const apiKey of keys) {
       try {
+        const groqMessages = [
+          { role: 'system', content: adaptiveSystemPrompt },
+          ...conversationHistory,
+        ];
+
         const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey.trim()}` },
           body: JSON.stringify({
             model: 'meta-llama/llama-4-scout-17b-16e-instruct',
-            messages: [
-              { role: 'system', content: 'You are an adaptive AI interviewer. Ask concise, probing follow-up questions (max 2 sentences) based on the candidate response. Be conversational and direct.' },
-              { role: 'user', content: candidateSpeech },
-            ],
-            temperature: 0.7,
-            max_tokens: 150,
+            messages: groqMessages,
+            temperature: 0.75,
+            max_tokens: 120,
           }),
         });
         if (groqRes.ok) {
           const groqData = await groqRes.json();
-          const reply = groqData.choices?.[0]?.message?.content;
+          const reply = groqData.choices?.[0]?.message?.content?.trim();
           if (reply) {
+            console.log(`[Agora LLM Webhook] Response (${reply.split(' ').length} words): "${reply.slice(0, 80)}..."`);
             return res.json({ choices: [{ message: { role: 'assistant', content: reply } }] });
           }
         }
       } catch (e: any) {
-        console.warn('[Agora LLM Webhook] Groq key fallback attempt failed:', e.message);
+        console.warn('[Agora LLM Webhook] Groq attempt failed:', e.message);
       }
     }
 
-    res.json({ choices: [{ message: { role: 'assistant', content: 'Interesting. Could you elaborate further on the technical details?' } }] });
+    // Gemini fallback if Groq is unavailable
+    if (process.env.GEMINI_API_KEY) {
+      try {
+        const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        const model = genAI.models;
+        const geminiRes = await model.generateContent({
+          model: 'gemini-2.0-flash',
+          contents: [{ role: 'user', parts: [{ text: `${adaptiveSystemPrompt}\n\nCandidate said: "${candidateSpeech}"\n\nYour adaptive follow-up question:` }] }],
+        });
+        const geminiReply = geminiRes.text?.trim();
+        if (geminiReply) {
+          return res.json({ choices: [{ message: { role: 'assistant', content: geminiReply } }] });
+        }
+      } catch (geminiErr: any) {
+        console.warn('[Agora LLM Webhook] Gemini fallback failed:', geminiErr.message);
+      }
+    }
+
+    res.json({ choices: [{ message: { role: 'assistant', content: 'Can you walk me through the specific technical trade-offs you considered?' } }] });
   } catch (err: any) {
     console.error('[Agora] LLM webhook error:', err);
     res.json({ choices: [{ message: { role: 'assistant', content: 'Please continue with your answer.' } }] });
   }
 });
 
-// 4. Stop Agora Conversational AI Agent
+// 4. Stop Agora Conversational AI Agent (Official agora-agents SDK)
 app.post('/api/agora/stop-agent', async (req, res) => {
   try {
     const appId = process.env.AGORA_APP_ID;
-    const customerKey = process.env.AGORA_CUSTOMER_KEY;
-    const customerSecret = process.env.AGORA_CUSTOMER_SECRET;
+    const appCertificate = process.env.AGORA_APP_CERTIFICATE;
     const { agentId } = req.body;
 
-    if (customerKey && customerSecret && agentId && appId) {
-      const credentials = Buffer.from(`${customerKey}:${customerSecret}`).toString('base64');
-      await fetch(`https://api.agora.io/api/conversational-ai/v2/projects/${appId}/agents/${agentId}/leave`, {
-        method: 'POST',
-        headers: { Authorization: `Basic ${credentials}` },
-      }).catch((e) => console.warn('[Agora] Agent stop warning:', e.message));
+    if (appId && appCertificate && agentId) {
+      const agoraClient = new AgoraClient({
+        appId,
+        appCertificate,
+        area: Area.US,
+      });
+      await agoraClient.stopAgent(agentId);
+      console.log(`[Agora] Agent ${agentId} stopped via SDK.`);
     }
 
     res.json({ success: true });
   } catch (err: any) {
-    res.json({ success: true }); // Always succeed on stop
+    console.warn('[Agora] stop-agent warning (non-fatal):', err.message);
+    res.json({ success: true }); // Always succeed on stop — interview already ended
   }
 });
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LIVEAVATAR REAL-TIME VIDEO STREAMING LAYER

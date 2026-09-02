@@ -493,7 +493,8 @@ export default function App() {
     // Speak initial prompt IMMEDIATELY (<200ms delay)
     speakInterviewerMessage(openingPrompt, initialSpeaker);
 
-    // ── Join Agora RTC channel asynchronously in background (doesn't block opening speech) ──
+    // ── Join Agora RTC channel + start Conversational AI agent ────────────────
+    // Runs async so it doesn't block the immediate opening speech (<200ms)
     (async () => {
       try {
         const channelName = `vocalis-${Date.now()}`;
@@ -502,15 +503,24 @@ export default function App() {
           const joined = await agoraVoiceEngine.joinChannel(tokenData.token, channelName, 0);
           if (joined) {
             setAgoraChannelName(channelName);
+            // Start the Agora Conversational AI agent with the active interviewer's identity
             const agentData = await startAgoraAgent({
               channelName,
               uid: 1,
               interviewerName: initialSpeaker.name,
               systemPrompt: initialSpeaker.systemPrompt,
-              heygenAvatarId: initialSpeaker.heygenAvatarId,
+              voiceName: initialSpeaker.voiceName,  // Pass interviewer voice personality
             });
-            if (agentData?.agentId) setAgoraAgentId(agentData.agentId);
-            setAgoraMode(agentData?.mode === 'conversational-ai' ? 'conversational-ai' : 'rtc-transport');
+            if (agentData?.agentId) {
+              setAgoraAgentId(agentData.agentId);
+            }
+            const mode = agentData?.mode === 'conversational-ai' ? 'conversational-ai' : 'rtc-transport';
+            setAgoraMode(mode);
+            if (mode === 'conversational-ai') {
+              console.log('[App] Agora Conversational AI agent active. Cloud STT/LLM/TTS in effect.');
+            } else {
+              console.log('[App] Agora RTC transport active. Using browser TTS fallback.');
+            }
           } else {
             setAgoraMode('offline');
           }
@@ -518,6 +528,7 @@ export default function App() {
           setAgoraMode('offline');
         }
       } catch (err) {
+        console.warn('[App] Agora agent setup failed (interview continues with browser TTS):', err);
         setAgoraMode('offline');
       }
     })();
