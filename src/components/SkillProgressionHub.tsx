@@ -38,7 +38,7 @@ interface SkillProgressionHubProps {
 export const SkillProgressionHub: React.FC<SkillProgressionHubProps> = ({
   onSelectAssessment,
   onBackToStudio,
-  candidateName = 'Riyanshi Verma',
+  candidateName = 'Jordan Reed',
   targetRole = 'Senior / Staff Software Engineer',
 }) => {
   const [sessions, setSessions] = useState<ArchivedSession[]>(() => sessionHistoryService.getStoredSessions());

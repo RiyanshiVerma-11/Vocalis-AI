@@ -49,7 +49,10 @@ export class AgoraVoiceEngine {
   private isJoined = false;
   private volAnimFrameId: number | null = null;
   private webSpeechRecognition: any = null;
-  private accumulatedSpeechBuffer = '';
+  // Multi-session speech accumulators: guarantees no duplicate text and zero lost words across pauses
+  private completedSessionsText = '';
+  private currentSessionFinalText = '';
+  private currentSessionInterimText = '';
   private speechSilenceTimer: any = null;
 
   // Callbacks wired from App.tsx
@@ -75,7 +78,15 @@ export class AgoraVoiceEngine {
   }
 
   public clearSpeechBuffer() {
-    this.accumulatedSpeechBuffer = '';
+    this.completedSessionsText = '';
+    this.currentSessionFinalText = '';
+    this.currentSessionInterimText = '';
+    if (this.webSpeechRecognition) {
+      try {
+        this.webSpeechRecognition.abort();
+      } catch (_) {}
+      this.webSpeechRecognition = null;
+    }
   }
 
   public getIsSpeaking() {
@@ -278,8 +289,16 @@ export class AgoraVoiceEngine {
         this.localMicTrack.close();
         this.localMicTrack = null;
       }
-      if (this.client && this.isJoined) {
-        await this.client.leave();
+      if (this.client) {
+        try {
+          if (this.isJoined) {
+            await this.client.leave();
+          }
+        } catch {}
+        try {
+          this.client.removeAllListeners();
+        } catch {}
+        this.client = null;
       }
     } catch (e) {
       // Ignore leave errors during cleanup
@@ -352,38 +371,39 @@ export class AgoraVoiceEngine {
       this.webSpeechRecognition.lang = 'en-US';
 
       this.webSpeechRecognition.onresult = (event: any) => {
-        let interimText = '';
-        let finalChunk = '';
-
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const chunk = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
-            finalChunk += (finalChunk ? ' ' : '') + chunk.trim();
-          } else {
-            interimText += chunk;
-          }
-        }
-
-        // CRITICAL ACOUSTIC ECHO SHIELD:
-        // When the AI interviewer is actively speaking through computer speakers,
-        // ignore all microphone input to prevent recording the interviewer's own voice
-        // and accidentally auto-submitting the interviewer's question as candidate speech!
+        // Acoustic echo shield: ignore microphone while AI is speaking
         if (this.isSpeaking) {
           return;
         }
 
-        if (finalChunk) {
-          this.accumulatedSpeechBuffer = (this.accumulatedSpeechBuffer + ' ' + finalChunk).trim();
+        let sessionFinal = '';
+        let sessionInterim = '';
+
+        // Iterate over ALL results in the current session
+        for (let i = 0; i < event.results.length; i++) {
+          const chunk = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            sessionFinal += (sessionFinal ? ' ' : '') + chunk.trim();
+          } else {
+            sessionInterim += (sessionInterim ? ' ' : '') + chunk.trim();
+          }
         }
 
-        const fullSpeech = (
-          this.accumulatedSpeechBuffer + (interimText ? ' ' + interimText : '')
-        ).trim();
+        this.currentSessionFinalText = sessionFinal;
+        this.currentSessionInterimText = sessionInterim;
+
+        const parts = [
+          this.completedSessionsText,
+          this.currentSessionFinalText,
+          this.currentSessionInterimText,
+        ].filter(Boolean);
+
+        const fullSpeech = parts.join(' ').trim();
 
         if (fullSpeech) {
           // Boost technical jargon (WAL, Raft, gRPC, p99, etc.)
           const boostedSpeech = boostTechnicalJargon(fullSpeech);
-          onTranscript(boostedSpeech, Boolean(finalChunk));
+          onTranscript(boostedSpeech, Boolean(sessionFinal));
         }
       };
 
@@ -394,6 +414,21 @@ export class AgoraVoiceEngine {
       };
 
       this.webSpeechRecognition.onend = () => {
+        // When Chrome ends a recognition session (e.g., momentary pause),
+        // safely seal whatever was spoken in this session into completedSessionsText.
+        const sessionFinishedText = [
+          this.currentSessionFinalText,
+          this.currentSessionInterimText,
+        ].filter(Boolean).join(' ').trim();
+
+        if (sessionFinishedText) {
+          if (!this.completedSessionsText.endsWith(sessionFinishedText)) {
+            this.completedSessionsText = (this.completedSessionsText + ' ' + sessionFinishedText).trim();
+          }
+          this.currentSessionFinalText = '';
+          this.currentSessionInterimText = '';
+        }
+
         if (this.isListening) {
           try {
             this.webSpeechRecognition?.start();

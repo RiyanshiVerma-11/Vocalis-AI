@@ -44,7 +44,7 @@ export const InterviewerStage: React.FC<InterviewerStageProps> = ({
   onSelectTargetInterviewer,
   lastTurnTakingReason,
   lastInternalThought,
-  candidateName = 'Riyanshi Verma',
+  candidateName = 'Jordan Reed',
   candidateHeadline = 'Candidate • Full Stack AI Engineer',
   isListening = false,
   candidateVolume = 0,

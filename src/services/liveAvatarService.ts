@@ -12,6 +12,7 @@
  */
 
 import { Room, RoomEvent, RemoteTrack, Track, RemoteParticipant } from 'livekit-client';
+import { getAuthHeaders } from './apiService';
 
 export interface LiveAvatarSessionInfo {
   sessionId: string;
@@ -53,7 +54,7 @@ export class LiveAvatarService {
       // 1. Ask our backend to create & start a LiveAvatar session
       const res = await fetch('/api/liveavatar/start-session', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           avatarId: options.avatarId,
           isSandbox: options.isSandbox ?? true,
@@ -166,7 +167,7 @@ export class LiveAvatarService {
     if (this.sessionInfo) {
       await fetch('/api/liveavatar/stop-session', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           sessionId: this.sessionInfo.sessionId,
           sessionToken: this.sessionInfo.sessionToken,

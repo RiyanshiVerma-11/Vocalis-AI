@@ -141,10 +141,11 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
                 className="bg-transparent font-semibold text-slate-800 outline-none cursor-pointer text-[11px]"
                 title="Choose when your speech auto-submits. Select Manual Send Only to never get cut off."
               >
-                <option value={-1}>🛑 Manual Send (No Cutoff)</option>
-                <option value={10000}>🧘 10s Generous</option>
+                <option value={-1}>🛑 Manual Send Only (No Cutoff)</option>
+                <option value={4000}>⏱️ 4s Silence (Default)</option>
+                <option value={6000}>🧘 6s Generous</option>
                 <option value={8000}>☕ 8s Relaxed</option>
-                <option value={5000}>⚡ 5s Quick</option>
+                <option value={10000}>🐢 10s Very Patient</option>
               </select>
             </div>
           )}

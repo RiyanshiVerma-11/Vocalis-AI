@@ -10,6 +10,7 @@
  */
 
 import { CustomCompanyRubric, PanelStrictness, RubricWeights } from '../types';
+import { getAuthHeaders } from '../services/apiService';
 
 // ── 1. PRE-CONFIGURED ENTERPRISE RUBRIC TEMPLATES ──────────────────────────
 
@@ -353,7 +354,7 @@ export async function parseRubricDocumentAsync(
   try {
     const res = await fetch('/api/rubric/parse', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify({ rawText, fileName }),
     });
 

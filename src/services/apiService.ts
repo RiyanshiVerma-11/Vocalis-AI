@@ -57,6 +57,19 @@ export interface TurnResponseData {
   resolvedProbesToRemove?: string[];
 }
 
+export function getAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('vocalis_jwt_token') : null;
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  } else {
+    headers['x-vocalis-demo-mode'] = 'true';
+  }
+  return headers;
+}
+
 export async function requestInterviewTurn(params: {
   transcript: TranscriptMessage[];
   sharedContext: SharedCandidateContext;
@@ -68,7 +81,7 @@ export async function requestInterviewTurn(params: {
 }): Promise<TurnResponseData> {
   const response = await fetch('/api/interview/turn', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(params),
   });
 
@@ -94,7 +107,7 @@ export async function generateFinalAssessment(params: {
 }): Promise<StructuredAssessment> {
   const response = await fetch('/api/interview/final-assessment', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(params),
   });
 
@@ -115,7 +128,7 @@ export async function fetchTTSAudio(text: string, voiceName: string = 'Kore'): P
   try {
     const response = await fetch('/api/tts', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify({ text, voiceName }),
     });
 
@@ -146,7 +159,10 @@ export async function fetchAgoraToken(
 ): Promise<{ token: string; appId: string; channelName: string; uid: number } | null> {
   try {
     const response = await fetch(
-      `/api/agora/token?channelName=${encodeURIComponent(channelName)}&uid=${uid}`
+      `/api/agora/token?channelName=${encodeURIComponent(channelName)}&uid=${uid}`,
+      {
+        headers: getAuthHeaders(),
+      }
     );
     if (!response.ok) {
       console.warn('[Agora] Token fetch failed:', response.status);
@@ -171,7 +187,7 @@ export async function startAgoraAgent(params: {
   try {
     const response = await fetch('/api/agora/start-agent', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify(params),
     });
     if (!response.ok) {
@@ -190,7 +206,7 @@ export async function stopAgoraAgent(agentId: string): Promise<void> {
   try {
     await fetch('/api/agora/stop-agent', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify({ agentId }),
     });
   } catch (err) {
@@ -202,7 +218,7 @@ export async function speakWithAgoraAgent(agentId: string, text: string): Promis
   try {
     const response = await fetch('/api/agora/speak', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify({ agentId, text }),
     });
     return response.ok;
@@ -216,7 +232,7 @@ export async function interruptAgoraAgent(agentId: string): Promise<void> {
   try {
     await fetch('/api/agora/interrupt', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify({ agentId }),
     });
   } catch (err) {

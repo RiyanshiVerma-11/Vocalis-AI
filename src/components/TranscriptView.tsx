@@ -235,37 +235,50 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({
 
                 {/* Message Body */}
                 <p className="text-xs sm:text-[13px] text-slate-800 leading-snug whitespace-pre-wrap">
-                  {msg.content}
+                  {msg.content?.trim() ||
+                    (msg.speakerRole === 'candidate'
+                      ? '...'
+                      : 'Could you walk us through the system architecture, component boundaries, and key technical trade-offs you evaluated?')}
                 </p>
 
                 {/* Adaptive Answer Evaluation (for Candidate Turns) */}
                 {isCandidate && msg.adaptiveAnalysis && (
                   <div className="mt-2 pt-1.5 border-t border-indigo-100/80 flex flex-wrap items-center gap-1.5 text-[10px]">
-                    <span className="text-slate-500 font-medium">Evaluated Depth:</span>
-                    <span className="px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-800 font-bold font-mono text-[9px]">
-                      {msg.adaptiveAnalysis.depthLevel}
-                    </span>
-                    <span className="text-slate-500 font-medium ml-1">Confidence:</span>
-                    <span className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 font-medium text-[9px]">
-                      {msg.adaptiveAnalysis.sentiment}
-                    </span>
-                    {msg.adaptiveAnalysis.detectedKeywords && msg.adaptiveAnalysis.detectedKeywords.length > 0 && (
-                      <div className="flex items-center gap-1 ml-auto">
-                        <span className="text-slate-400 text-[9px]">Keywords:</span>
-                        {msg.adaptiveAnalysis.detectedKeywords.slice(0, 3).map((kw, kIdx) => (
-                          <span key={kIdx} className="bg-white border border-slate-200 text-slate-600 px-1 py-0.2 rounded text-[9px] font-mono">
-                            {kw}
-                          </span>
-                        ))}
-                      </div>
+                    {msg.adaptiveAnalysis.depthLevel === 'Clarification Requested' ||
+                    (msg.adaptiveAnalysis.detectedKeywords && msg.adaptiveAnalysis.detectedKeywords.includes('clarification_request')) ||
+                    /rephrase|repeat|clarify|what do you mean|didn't understand|could you explain/i.test(msg.content) ? (
+                      <span className="inline-flex items-center gap-1 text-teal-700 bg-teal-50 px-2 py-0.5 rounded border border-teal-200 font-semibold text-[10px]">
+                        <Sparkles className="w-3 h-3 text-teal-600" /> Question Clarification Requested (No Penalty)
+                      </span>
+                    ) : (
+                      <>
+                        <span className="text-slate-500 font-medium">Evaluated Depth:</span>
+                        <span className="px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-800 font-bold font-mono text-[9px]">
+                          {msg.adaptiveAnalysis.depthLevel}
+                        </span>
+                        <span className="text-slate-500 font-medium ml-1">Confidence:</span>
+                        <span className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 font-medium text-[9px]">
+                          {msg.adaptiveAnalysis.sentiment}
+                        </span>
+                        {msg.adaptiveAnalysis.detectedKeywords && msg.adaptiveAnalysis.detectedKeywords.length > 0 && (
+                          <div className="flex items-center gap-1 ml-auto">
+                            <span className="text-slate-400 text-[9px]">Keywords:</span>
+                            {msg.adaptiveAnalysis.detectedKeywords.slice(0, 3).map((kw, kIdx) => (
+                              <span key={kIdx} className="bg-white border border-slate-200 text-slate-600 px-1 py-0.2 rounded text-[9px] font-mono">
+                                {kw}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 )}
 
-                {/* Flagged Items on Candidate Turns */}
-                {msg.detectedFlags && msg.detectedFlags.length > 0 && (
+                {/* Flagged Items on Candidate Turns (Filter out blank or empty quotes) */}
+                {msg.detectedFlags && msg.detectedFlags.filter((f) => f.quote && f.quote.trim().length > 0).length > 0 && (
                   <div className="mt-3 pt-2.5 border-t border-indigo-100 space-y-2">
-                    {msg.detectedFlags.map((flag, fIdx) => (
+                    {msg.detectedFlags.filter((f) => f.quote && f.quote.trim().length > 0).map((flag, fIdx) => (
                       <div
                         key={fIdx}
                         className="bg-white p-2.5 rounded-lg border border-slate-200 text-xs space-y-1 shadow-sm"

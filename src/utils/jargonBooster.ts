@@ -211,7 +211,17 @@ export function analyzeSemanticPause(
     };
   }
 
-  // 4. Complete sentence with falling terminal cadence
+  // 4. Short complete answer (under 20 words) — likely mid-explanation even with punctuation.
+  // Real interview answers are paragraphs; give extra time before cutting off.
+  if (endsWithTerminalPunctuation && wordCount < 20) {
+    return {
+      isIncompleteThought: true,
+      reason: 'Short answer — may be mid-paragraph, holding floor',
+      recommendedGraceMs: 2500,
+    };
+  }
+
+  // 5. Complete, full-length sentence with falling terminal cadence
   return {
     isIncompleteThought: false,
     recommendedGraceMs: 0,

@@ -11,7 +11,7 @@ interface CandidateStageTileProps {
 }
 
 export const CandidateStageTile: React.FC<CandidateStageTileProps> = ({
-  candidateName = 'Riyanshi Verma',
+  candidateName = 'Jordan Reed',
   candidateHeadline = 'Candidate • Full Stack AI Engineer',
   isListening = false,
   candidateVolume = 0,

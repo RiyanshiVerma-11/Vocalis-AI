@@ -70,7 +70,7 @@ const STORAGE_KEY = 'vocalis_session_history_v2';
 const INITIAL_SEED_SESSIONS: ArchivedSession[] = [
   {
     id: 'arch-session-101',
-    candidateName: 'Riyanshi Verma',
+    candidateName: 'Jordan Reed',
     targetRole: 'Senior / Staff Software Engineer',
     scenarioTitle: 'System Design & Distributed Cache',
     timestamp: Date.now() - 68 * 24 * 60 * 60 * 1000, // ~68 days ago
@@ -96,7 +96,7 @@ const INITIAL_SEED_SESSIONS: ArchivedSession[] = [
       'Used vague terms for database locking mechanisms'
     ],
     fullAssessment: {
-      candidateName: 'Riyanshi Verma',
+      candidateName: 'Jordan Reed',
       targetRole: 'Senior / Staff Software Engineer',
       interviewDate: 'June 26, 2026',
       durationMinutes: 24,
@@ -163,7 +163,7 @@ const INITIAL_SEED_SESSIONS: ArchivedSession[] = [
   },
   {
     id: 'arch-session-102',
-    candidateName: 'Riyanshi Verma',
+    candidateName: 'Jordan Reed',
     targetRole: 'Senior / Staff Software Engineer',
     scenarioTitle: 'Critical Outage Post-Mortem & Stakeholder Crisis',
     timestamp: Date.now() - 44 * 24 * 60 * 60 * 1000, // ~44 days ago
@@ -188,7 +188,7 @@ const INITIAL_SEED_SESSIONS: ArchivedSession[] = [
       'Could provide more concrete recovery point objectives (RPO)'
     ],
     fullAssessment: {
-      candidateName: 'Riyanshi Verma',
+      candidateName: 'Jordan Reed',
       targetRole: 'Senior / Staff Software Engineer',
       interviewDate: 'July 20, 2026',
       durationMinutes: 28,
@@ -219,7 +219,7 @@ const INITIAL_SEED_SESSIONS: ArchivedSession[] = [
   },
   {
     id: 'arch-session-103',
-    candidateName: 'Riyanshi Verma',
+    candidateName: 'Jordan Reed',
     targetRole: 'Senior / Staff Software Engineer',
     scenarioTitle: '⭐ The Missing Business Impact [PS11 Demo]',
     timestamp: Date.now() - 20 * 24 * 60 * 60 * 1000, // ~20 days ago
@@ -244,7 +244,7 @@ const INITIAL_SEED_SESSIONS: ArchivedSession[] = [
       'Minor vagueness on zero-downtime database index migrations'
     ],
     fullAssessment: {
-      candidateName: 'Riyanshi Verma',
+      candidateName: 'Jordan Reed',
       targetRole: 'Senior / Staff Software Engineer',
       interviewDate: 'August 13, 2026',
       durationMinutes: 32,
@@ -265,7 +265,7 @@ const INITIAL_SEED_SESSIONS: ArchivedSession[] = [
   },
   {
     id: 'arch-session-104',
-    candidateName: 'Riyanshi Verma',
+    candidateName: 'Jordan Reed',
     targetRole: 'Senior / Staff Software Engineer',
     scenarioTitle: 'Staff Engineering Roadmap & Monolith Migration',
     timestamp: Date.now() - 5 * 24 * 60 * 60 * 1000, // ~5 days ago
@@ -290,7 +290,7 @@ const INITIAL_SEED_SESSIONS: ArchivedSession[] = [
       'None significant; ready for top-tier Staff / Principal engineering bar'
     ],
     fullAssessment: {
-      candidateName: 'Riyanshi Verma',
+      candidateName: 'Jordan Reed',
       targetRole: 'Senior / Staff Software Engineer',
       interviewDate: 'August 28, 2026',
       durationMinutes: 35,
@@ -311,12 +311,36 @@ const INITIAL_SEED_SESSIONS: ArchivedSession[] = [
   }
 ];
 
+function getStorageKey(userId?: string): string {
+  if (userId) return `vocalis_session_history_${userId}`;
+  if (typeof localStorage !== 'undefined') {
+    const currentUserStr = localStorage.getItem('vocalis_user_session') || localStorage.getItem('vocalis_current_user');
+    if (currentUserStr) {
+      try {
+        const user = JSON.parse(currentUserStr);
+        const effectiveId = user?.id || user?.userId;
+        if (effectiveId) return `vocalis_session_history_${effectiveId}`;
+      } catch {}
+    }
+  }
+  return 'vocalis_session_history_v2';
+}
+
 export const sessionHistoryService = {
-  getStoredSessions(): ArchivedSession[] {
+  getStoredSessions(userId?: string): ArchivedSession[] {
+    const key = getStorageKey(userId);
     try {
-      const data = localStorage.getItem(STORAGE_KEY);
+      const data = localStorage.getItem(key);
       if (data) {
         const parsed = JSON.parse(data);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+      // Check legacy shared key fallback
+      const legacyData = localStorage.getItem('vocalis_session_history_v2');
+      if (legacyData) {
+        const parsed = JSON.parse(legacyData);
         if (Array.isArray(parsed) && parsed.length > 0) {
           return parsed;
         }
@@ -325,13 +349,14 @@ export const sessionHistoryService = {
       console.warn('[SessionHistoryService] Failed to read storage:', e);
     }
     // Pre-seed default realistic historical data if first time
-    this.saveAllSessions(INITIAL_SEED_SESSIONS);
+    this.saveAllSessions(INITIAL_SEED_SESSIONS, userId);
     return INITIAL_SEED_SESSIONS;
   },
 
-  saveAllSessions(sessions: ArchivedSession[]): void {
+  saveAllSessions(sessions: ArchivedSession[], userId?: string): void {
+    const key = getStorageKey(userId);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
+      localStorage.setItem(key, JSON.stringify(sessions));
     } catch (e) {
       console.warn('[SessionHistoryService] Failed to write storage:', e);
     }

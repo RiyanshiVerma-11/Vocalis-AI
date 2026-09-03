@@ -393,7 +393,7 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
                   rows={4}
                   value={pastedText}
                   onChange={(e) => setPastedText(e.target.value)}
-                  placeholder="Paste plain text resume here (e.g. Riyanshi Verma, B.Tech CSE Data Science, HospiSynAI, VoteWise AI, Infosys Springboard 7.0, Python, FastAPI, Docker, RAG...)"
+                  placeholder="Paste plain text resume here (e.g. Jordan Reed, B.Tech CSE Data Science, HospiSynAI, VoteWise AI, Infosys Springboard 7.0, Python, FastAPI, Docker, RAG...)"
                   className="w-full bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs text-slate-900 focus:border-indigo-600 focus:bg-white outline-none font-sans"
                 />
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">

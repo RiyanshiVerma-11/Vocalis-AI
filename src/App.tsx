@@ -56,10 +56,18 @@ export default function App() {
     }
   });
 
-  // Workspace Mode ('candidate' | 'recruiter')
+  // Workspace Mode ('candidate' | 'recruiter') - RBAC protected
   const [workspaceMode, setWorkspaceMode] = useState<'candidate' | 'recruiter'>(() => {
-    return currentUser?.role === 'recruiter' ? 'recruiter' : 'candidate';
+    return (currentUser?.role === 'recruiter' || currentUser?.role === 'interviewer') ? 'recruiter' : 'candidate';
   });
+
+  const handleSetWorkspaceMode = (mode: 'candidate' | 'recruiter') => {
+    if (mode === 'recruiter' && (!currentUser || currentUser.role === 'candidate')) {
+      alert('Access Restricted: Recruiter or Hiring Team credentials are required.');
+      return;
+    }
+    setWorkspaceMode(mode);
+  };
 
   // Session State
   const [inInterview, setInInterview] = useState(false);
@@ -127,7 +135,7 @@ export default function App() {
   const [ambientReactions, setAmbientReactions] = useState<Record<string, { reactionType: PanelistReactionType; label: string }>>({});
 
   // Silence Tolerance & Floor Control (Snappy Agora Conversational AI pace)
-  const [silenceTimeoutMs, setSilenceTimeoutMs] = useState<number>(1400); // 1.4s snappy response (like Agora & ChatGPT voice)
+  const [silenceTimeoutMs, setSilenceTimeoutMs] = useState<number>(4000); // 4s — candidate must pause 4 full seconds or press Send manually
   const [isFloorHeld, setIsFloorHeld] = useState<boolean>(false);
   const [isFocusMode, setIsFocusMode] = useState<boolean>(false);
   const [thoughtGraceActive, setThoughtGraceActive] = useState<boolean>(false);
@@ -219,10 +227,16 @@ export default function App() {
   isAISpeakingRef.current = isAISpeaking;
   const inInterviewRef = useRef<boolean>(inInterview);
   inInterviewRef.current = inInterview;
+  const isListeningRef = useRef<boolean>(isListening);
+  isListeningRef.current = isListening;
   const agoraAgentIdRef = useRef<string | null>(agoraAgentId);
   agoraAgentIdRef.current = agoraAgentId;
   const speechSilenceTimerRef = useRef<any>(null);
   const currentTurnIdRef = useRef<number>(0);
+  // Tracks the exact timestamp when AI finished speaking.
+  // Used to reject spurious auto-submits caused by Web Speech API flushing
+  // residual final-chunk results after the AI echo shield drops.
+  const aiFinishedSpeakingAtRef = useRef<number>(0);
 
   // Guaranteed Quota Preservation: Stop cloud agent if tab is closed, reloaded, or navigated away
   useEffect(() => {
@@ -268,6 +282,13 @@ export default function App() {
       return;
     }
 
+    // ECHO DECONTAMINATION GUARD:
+    // Reject immediate submit within 700ms of AI finishing speech, but DO NOT wipe candidate buffer!
+    const msSinceAIStopped = Date.now() - aiFinishedSpeakingAtRef.current;
+    if (msSinceAIStopped < 700) {
+      return;
+    }
+
     const currentTimeout = silenceTimeoutMsRef.current;
     if (currentTimeout <= 0) {
       // Manual submit mode: no timer will automatically cut the candidate off
@@ -302,7 +323,10 @@ export default function App() {
       }
 
       setThoughtGraceActive(false);
-      handleCandidateResponse(fullText);
+      const textToSubmit = fullText.trim();
+      agoraVoiceEngine.clearSpeechBuffer();
+      setCurrentInterimTranscript('');
+      handleCandidateResponse(textToSubmit);
     };
 
     speechSilenceTimerRef.current = setTimeout(checkAndSubmit, effectiveTimeout);
@@ -334,8 +358,9 @@ export default function App() {
     agoraVoiceEngine.startSpeechRecognition(
       (fullText) => {
         if (!isAISpeakingRef.current && !isProcessingRef.current) {
-          setCurrentInterimTranscript(fullText);
-          scheduleSilenceAutoSubmit(fullText);
+          const cleanIncoming = fullText.trim();
+          setCurrentInterimTranscript(cleanIncoming);
+          scheduleSilenceAutoSubmit(cleanIncoming);
         }
       },
       () => {
@@ -390,10 +415,8 @@ export default function App() {
       agoraVoiceEngine.clearSpeechBuffer();
       setCurrentInterimTranscript('');
 
-      // Notify Agora Conversational AI cloud agent in parallel (so cloud session has turn history)
-      if (agoraAgentId) {
-        speakWithAgoraAgent(agoraAgentId, cleanDialogue).catch(() => {});
-      }
+      // [RES-01 Resolved] Avoid triggering duplicate Agora cloud TTS since audio track is muted for Studio Gemini TTS
+      // This preserves cloud MiniMax & Agora minutes from double-generation waste.
 
       try {
         // Race Studio TTS with a 1500ms timeout for instant speech response
@@ -432,15 +455,37 @@ export default function App() {
         }
       } finally {
         if (currentTurnIdRef.current === turnId) {
+          // Record EXACT timestamp AI stopped speaking — used by echo decontamination guard
+          aiFinishedSpeakingAtRef.current = Date.now();
           setIsAISpeaking(false);
           isAISpeakingRef.current = false;
           agoraVoiceEngine.muteRemoteAudioTrack(false);
-          // Clean speech buffer & clear interim transcript when AI finishes speaking
-          agoraVoiceEngine.clearSpeechBuffer();
-          setCurrentInterimTranscript('');
+          // IMPORTANT: Delay buffer clear by 700ms to let Web Speech API flush its
+          // pending final results safely WITHOUT triggering an auto-submit of AI echo.
           if (speechSilenceTimerRef.current) {
             clearTimeout(speechSilenceTimerRef.current);
             speechSilenceTimerRef.current = null;
+          }
+          // Flushes all previous turn speech from memory and aborts stale browser SpeechRecognition
+          agoraVoiceEngine.clearSpeechBuffer();
+          setCurrentInterimTranscript('');
+
+          // Start a 100% fresh, clean recognition session for candidate's next turn
+          if (isListeningRef.current) {
+            agoraVoiceEngine.startSpeechRecognition(
+              (fullText) => {
+                if (!isAISpeakingRef.current && !isProcessingRef.current) {
+                  const cleanIncoming = fullText.trim();
+                  setCurrentInterimTranscript(cleanIncoming);
+                  scheduleSilenceAutoSubmit(cleanIncoming);
+                }
+              },
+              () => {
+                if (isAISpeakingRef.current) {
+                  handleInterrupt();
+                }
+              }
+            );
           }
         }
       }
@@ -629,24 +674,26 @@ export default function App() {
     setThoughtGraceReason('');
     setCurrentInterimTranscript('');
 
-    // Clean echoed AI question text if microphone recorded the previous interviewer's speech output
+    // Clean echoed AI question text ONLY if it appears at the very START of the candidate's transcript.
+    // (Microphone echo-cancellation: mic sometimes picks up the AI's TTS audio output)
+    // IMPORTANT: Only strip from the beginning — never mid-sentence, to avoid cutting the candidate's real reply.
     let cleanSpeechText = speechText.trim();
     const lastAIMsg = [...transcriptRef.current].reverse().find((t) => t.speakerId && t.speakerId !== 'candidate');
     if (lastAIMsg && lastAIMsg.content) {
       const aiContent = lastAIMsg.content.trim();
-      // If candidate transcript starts with or contains the AI's question text, strip it out
       const aiWords = aiContent.split(/\s+/);
-      if (aiWords.length > 4) {
-        const lastFewWords = aiWords.slice(-4).join(' ').toLowerCase().replace(/[^a-z0-9 ]/g, '');
-        const matchIdx = cleanSpeechText.toLowerCase().replace(/[^a-z0-9 ]/g, '').indexOf(lastFewWords);
-        if (matchIdx !== -1) {
-          // Find the cut point in the original speechText string
-          const rawLastWords = aiWords.slice(-3).join(' ').toLowerCase();
-          const rawMatchIdx = cleanSpeechText.toLowerCase().lastIndexOf(rawLastWords);
-          if (rawMatchIdx !== -1) {
-            const actualCandidateInput = cleanSpeechText.slice(rawMatchIdx + rawLastWords.length).trim();
-            if (actualCandidateInput.length > 5) {
-              cleanSpeechText = actualCandidateInput;
+      // Only do echo-strip if the candidate speech STARTS WITH the first few words of the AI's question
+      if (aiWords.length > 5) {
+        const aiFirstWords = aiWords.slice(0, 6).join(' ').toLowerCase().replace(/[^a-z0-9 ]/g, '');
+        const candidateStart = cleanSpeechText.toLowerCase().replace(/[^a-z0-9 ]/g, '').slice(0, aiFirstWords.length + 10);
+        if (candidateStart.startsWith(aiFirstWords.slice(0, 20))) {
+          // The candidate's transcript starts with the AI's question — it's mic echo, strip the AI portion
+          const aiLastWords = aiWords.slice(-4).join(' ').toLowerCase();
+          const echoEndIdx = cleanSpeechText.toLowerCase().indexOf(aiLastWords);
+          if (echoEndIdx !== -1) {
+            const afterEcho = cleanSpeechText.slice(echoEndIdx + aiLastWords.length).trim();
+            if (afterEcho.length > 5) {
+              cleanSpeechText = afterEcho;
             }
           }
         }
@@ -790,13 +837,25 @@ export default function App() {
         const speaker1 = activePanel.find((i) => i.id === step1.speakerId || i.role === step1.speakerRole) || activePanel[0];
         const speaker2 = activePanel.find((i) => i.id === step2.speakerId || i.role === step2.speakerRole) || activePanel[1] || activePanel[0];
 
-        // Step 1: Speaker 1 (e.g. Alex, Technical) briefly acknowledges technical solution
+        const speech1 =
+          step1.speech?.trim() ||
+          (speaker1.role === 'product'
+            ? "From a product perspective, we need to balance feature velocity with architectural complexity."
+            : "From an architecture standpoint, we need to examine data consistency, cache invalidation, and failure modes.");
+
+        const speech2 =
+          step2.speech?.trim() ||
+          (speaker2.role === 'product'
+            ? "Building on that, how did you measure real user adoption and business ROI for that implementation?"
+            : "How do you ensure enterprise SLA guarantees and low p99 latency under sudden traffic spikes?");
+
+        // Step 1: Speaker 1 (e.g. Technical) acknowledges solution
         const msg1: TranscriptMessage = {
           id: `turn-ai-d1-${Date.now()}`,
           speakerId: speaker1.id,
           speakerName: speaker1.name,
           speakerRole: speaker1.role,
-          content: step1.speech,
+          content: speech1,
           timestamp: Date.now(),
           difficultyAtTurn: turnResult.updatedDifficulty,
           internalThought: step1.internalThought || turnResult.internalThought,
@@ -812,20 +871,20 @@ export default function App() {
         setLastInternalThought(step1.internalThought || turnResult.internalThought);
 
         if (currentTurnIdRef.current === thisTurnId) {
-          await speakInterviewerMessage(step1.speech, speaker1);
+          await speakInterviewerMessage(speech1, speaker1);
         }
 
         // Brief natural pause (350ms) between committee members
         await new Promise((resolve) => setTimeout(resolve, 350));
 
-        // Step 2: Speaker 2 (e.g. Maya, Product) pushes back and challenges candidate to resolve
+        // Step 2: Speaker 2 (e.g. Product) challenges candidate to resolve
         if (currentTurnIdRef.current === thisTurnId) {
           const msg2: TranscriptMessage = {
             id: `turn-ai-d2-${Date.now()}`,
             speakerId: speaker2.id,
             speakerName: speaker2.name,
             speakerRole: speaker2.role,
-            content: step2.speech,
+            content: speech2,
             timestamp: Date.now(),
             difficultyAtTurn: turnResult.updatedDifficulty,
             internalThought: step2.internalThought || turnResult.internalThought,
@@ -840,16 +899,24 @@ export default function App() {
           setLastTurnTakingReason(`⚡ Committee Debate: ${speaker2.name} challenged ${speaker1.name} on constraints & asked candidate to resolve.`);
           setLastInternalThought(step2.internalThought || turnResult.internalThought);
 
-          await speakInterviewerMessage(step2.speech, speaker2);
+          await speakInterviewerMessage(speech2, speaker2);
         }
       } else {
         // Standard Single-Speaker Follow-Up Turn
+        const mainSpeech =
+          turnResult.speech?.trim() ||
+          (nextInterviewer.role === 'product' || nextInterviewer.name.toLowerCase().includes('priya')
+            ? "From a product and user impact standpoint, how did user feedback and core metrics shape your engineering roadmap for that system?"
+            : nextInterviewer.role === 'customer' || nextInterviewer.name.toLowerCase().includes('neha')
+            ? "In mission-critical production operations, system reliability is critical. What SLA monitoring and fault tolerance mechanisms did you establish?"
+            : "Could you walk us through the system architecture, component boundaries, and key technical trade-offs you evaluated for your implementation?");
+
         const interviewerMsg: TranscriptMessage = {
           id: `turn-ai-${Date.now()}`,
           speakerId: nextInterviewer.id,
           speakerName: nextInterviewer.name,
           speakerRole: nextInterviewer.role,
-          content: turnResult.speech,
+          content: mainSpeech,
           timestamp: Date.now(),
           difficultyAtTurn: turnResult.updatedDifficulty,
           internalThought: turnResult.internalThought,
@@ -862,7 +929,7 @@ export default function App() {
 
         // Speak response if not interrupted
         if (currentTurnIdRef.current === thisTurnId) {
-          await speakInterviewerMessage(turnResult.speech, nextInterviewer);
+          await speakInterviewerMessage(mainSpeech, nextInterviewer);
         }
       }
     } catch (err: any) {
@@ -989,8 +1056,9 @@ export default function App() {
       const started = await agoraVoiceEngine.startSpeechRecognition(
         (fullText) => {
           if (!isAISpeakingRef.current && !isProcessingRef.current) {
-            setCurrentInterimTranscript(fullText);
-            scheduleSilenceAutoSubmit(fullText);
+            const cleanIncoming = fullText.trim();
+            setCurrentInterimTranscript(cleanIncoming);
+            scheduleSilenceAutoSubmit(cleanIncoming);
           }
         },
         () => {
@@ -1132,39 +1200,59 @@ export default function App() {
 
     if (user.role === 'recruiter' || user.role === 'interviewer') {
       setWorkspaceMode('recruiter');
+      // For demo recruiter, default the candidate screen to Jordan Reed (DEFAULT_RESUME)
+      if (user.isDemo || user.email === 'recruiter@vocalis.ai') {
+        setCandidateResume(DEFAULT_RESUME);
+        setCandidateName(DEFAULT_RESUME.fullName);
+        setTargetRole(DEFAULT_RESUME.headline || 'Senior / Staff Software Engineer');
+        try {
+          localStorage.removeItem('vocalis_candidate_resume');
+        } catch {}
+      }
     } else {
       setWorkspaceMode('candidate');
-    }
-
-    if (user.role === 'candidate' && user.name) {
-      setCandidateName(user.name);
-      let userResume: CandidateResume;
-      try {
-        const savedResume = localStorage.getItem('vocalis_candidate_resume');
-        if (savedResume) {
-          const parsed = JSON.parse(savedResume);
-          userResume = { ...parsed, fullName: user.name, headline: user.targetTitle || parsed.headline };
-        } else {
+      if (user.isDemo || user.email === 'candidate@vocalis.ai') {
+        setCandidateResume(DEFAULT_RESUME);
+        setCandidateName(DEFAULT_RESUME.fullName);
+        setTargetRole(DEFAULT_RESUME.headline || 'Senior / Staff Software Engineer');
+        try {
+          localStorage.setItem('vocalis_candidate_resume', JSON.stringify(DEFAULT_RESUME));
+        } catch {}
+      } else if (user.name) {
+        // User created their own profile / registered
+        setCandidateName(user.name);
+        let userResume: CandidateResume;
+        try {
+          const savedResume = localStorage.getItem('vocalis_candidate_resume');
+          if (savedResume) {
+            const parsed = JSON.parse(savedResume);
+            userResume = { ...parsed, fullName: user.name, headline: user.targetTitle || parsed.headline };
+          } else {
+            userResume = createDefaultCandidateResume(user.name, user.targetTitle);
+          }
+        } catch {
           userResume = createDefaultCandidateResume(user.name, user.targetTitle);
         }
-      } catch {
-        userResume = createDefaultCandidateResume(user.name, user.targetTitle);
+        setCandidateResume(userResume);
+        try {
+          localStorage.setItem('vocalis_candidate_resume', JSON.stringify(userResume));
+        } catch {
+          // ignore
+        }
+        setSharedContext((prev) => ({
+          ...prev,
+          candidateName: user.name,
+          targetRole: user.targetTitle || userResume.headline,
+          candidateResume: userResume,
+        }));
       }
-      setCandidateResume(userResume);
-      try {
-        localStorage.setItem('vocalis_candidate_resume', JSON.stringify(userResume));
-      } catch {
-        // ignore
-      }
-      setSharedContext((prev) => ({
-        ...prev,
-        candidateName: user.name,
-        targetRole: user.targetTitle || userResume.headline,
-        candidateResume: userResume,
-      }));
     }
-    setErrorToast(`Signed in as ${user.name} (${user.role === 'recruiter' ? 'Recruiter Mode' : 'Candidate Mode'})`);
-    setTimeout(() => setErrorToast(null), 3000);
+
+    addToast(
+      `Welcome, ${user.name}!`,
+      `Signed in as ${user.role === 'recruiter' ? 'Hiring Committee Lead' : 'Candidate'}.`,
+      'success'
+    );
     setCurrentView('studio');
   };
 
@@ -1173,9 +1261,13 @@ export default function App() {
       handleRestart();
     }
     setCurrentUser(null);
+    setCandidateResume(DEFAULT_RESUME);
+    setCandidateName(DEFAULT_RESUME.fullName);
+    setTargetRole(DEFAULT_RESUME.headline || 'Senior / Staff Software Engineer');
     try {
       localStorage.removeItem('vocalis_user_session');
       localStorage.removeItem('vocalis_jwt_token');
+      localStorage.removeItem('vocalis_candidate_resume');
     } catch {
       // ignore
     }
@@ -1286,12 +1378,12 @@ export default function App() {
 
           {/* Right Controls & Navigation */}
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Mode Switcher: Recruiter vs Candidate (Only visible to recruiters/hiring managers) */}
-            {!inInterview && (!currentUser || currentUser.role === 'recruiter' || currentUser.role === 'interviewer') && (
+            {/* Mode Switcher: Recruiter vs Candidate (Strictly restricted to verified recruiters/interviewers) */}
+            {!inInterview && currentUser && (currentUser.role === 'recruiter' || currentUser.role === 'interviewer') && (
               <div className="flex rounded-lg bg-slate-800/90 p-0.5 border border-slate-700/80">
                 <button
                   type="button"
-                  onClick={() => setWorkspaceMode('candidate')}
+                  onClick={() => handleSetWorkspaceMode('candidate')}
                   className={`px-2.5 py-1 text-xs font-bold rounded transition flex items-center gap-1.5 cursor-pointer ${
                     workspaceMode === 'candidate'
                       ? 'bg-indigo-600 text-white shadow-xs'
@@ -1304,7 +1396,7 @@ export default function App() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setWorkspaceMode('recruiter')}
+                  onClick={() => handleSetWorkspaceMode('recruiter')}
                   className={`px-2.5 py-1 text-xs font-bold rounded transition flex items-center gap-1.5 cursor-pointer ${
                     workspaceMode === 'recruiter'
                       ? 'bg-indigo-600 text-white shadow-xs'
@@ -1409,7 +1501,9 @@ export default function App() {
             ) : (
               <div className="hidden lg:flex text-xs font-semibold text-slate-300 items-center gap-2 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700/80">
                 <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                <span>Profile: <strong className="text-white">{candidateName}</strong> (Synced)</span>
+                <span>
+                  Profile: <strong className="text-white">{currentUser?.name || candidateName}</strong> {currentUser?.role === 'recruiter' ? '(Recruiter)' : '(Synced)'}
+                </span>
               </div>
             )}
           </div>

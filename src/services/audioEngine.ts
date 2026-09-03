@@ -15,14 +15,24 @@ export class AudioEngine {
   private onSpeakingStateChangeCallback: ((speaking: boolean) => void) | null = null;
   private onInterruptedCallback: (() => void) | null = null;
 
-  private accumulatedSpeechBuffer = '';
+  private completedSessionsText = '';
+  private currentSessionFinalText = '';
+  private currentSessionInterimText = '';
 
   constructor() {
     // Lazy initialize AudioContext on user interaction
   }
 
   public clearSpeechBuffer(): void {
-    this.accumulatedSpeechBuffer = '';
+    this.completedSessionsText = '';
+    this.currentSessionFinalText = '';
+    this.currentSessionInterimText = '';
+    if (this.recognition) {
+      try {
+        this.recognition.abort();
+      } catch (_) {}
+      this.recognition = null;
+    }
   }
 
   private getOutputContext(): AudioContext {
@@ -72,19 +82,25 @@ export class AudioEngine {
         const source = ctx.createBufferSource();
         source.buffer = buffer;
 
-        // Connect through analyser for AI speaking animation
-        const analyser = ctx.createAnalyser();
-        analyser.fftSize = 256;
-        source.connect(analyser);
-        analyser.connect(ctx.destination);
+        // Reuse single analyser node to prevent audio graph node accumulation leak
+        if (!this.analyserNode || this.analyserNode.context !== ctx) {
+          this.analyserNode = ctx.createAnalyser();
+          this.analyserNode.fftSize = 256;
+          this.analyserNode.connect(ctx.destination);
+        }
 
+        source.connect(this.analyserNode);
         this.currentSourceNode = source;
-        this.analyserNode = analyser;
         this.setSpeaking(true);
 
         source.onended = () => {
           this.setSpeaking(false);
-          this.currentSourceNode = null;
+          try {
+            source.disconnect();
+          } catch {}
+          if (this.currentSourceNode === source) {
+            this.currentSourceNode = null;
+          }
           resolve();
         };
 
@@ -250,31 +266,36 @@ export class AudioEngine {
       };
 
       this.recognition.onresult = (event: any) => {
-        let interimTranscript = '';
-        let finalChunk = '';
-
         // Acoustic echo shield: ignore mic recognition while AI is speaking
         if (this.isSpeaking) {
           return;
         }
 
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          const transcriptChunk = event.results[i][0].transcript;
+        let sessionFinal = '';
+        let sessionInterim = '';
+
+        for (let i = 0; i < event.results.length; ++i) {
+          const chunk = event.results[i][0].transcript;
           if (event.results[i].isFinal) {
-            finalChunk += (finalChunk ? ' ' : '') + transcriptChunk.trim();
+            sessionFinal += (sessionFinal ? ' ' : '') + chunk.trim();
           } else {
-            interimTranscript += transcriptChunk;
+            sessionInterim += (sessionInterim ? ' ' : '') + chunk.trim();
           }
         }
 
-        if (finalChunk) {
-          this.accumulatedSpeechBuffer = (this.accumulatedSpeechBuffer + ' ' + finalChunk).trim();
-        }
+        this.currentSessionFinalText = sessionFinal;
+        this.currentSessionInterimText = sessionInterim;
 
-        const combinedFullSpeech = (this.accumulatedSpeechBuffer + (interimTranscript ? ' ' + interimTranscript : '')).trim();
+        const parts = [
+          this.completedSessionsText,
+          this.currentSessionFinalText,
+          this.currentSessionInterimText,
+        ].filter(Boolean);
+
+        const combinedFullSpeech = parts.join(' ').trim();
 
         if (combinedFullSpeech && this.onTranscriptUpdateCallback) {
-          this.onTranscriptUpdateCallback(combinedFullSpeech, Boolean(finalChunk));
+          this.onTranscriptUpdateCallback(combinedFullSpeech, Boolean(sessionFinal));
         }
       };
 
@@ -285,6 +306,20 @@ export class AudioEngine {
       };
 
       this.recognition.onend = () => {
+        // If recognition ended on a pause, seal session text into completedSessionsText
+        const sessionFinishedText = [
+          this.currentSessionFinalText,
+          this.currentSessionInterimText,
+        ].filter(Boolean).join(' ').trim();
+
+        if (sessionFinishedText) {
+          if (!this.completedSessionsText.endsWith(sessionFinishedText)) {
+            this.completedSessionsText = (this.completedSessionsText + ' ' + sessionFinishedText).trim();
+          }
+          this.currentSessionFinalText = '';
+          this.currentSessionInterimText = '';
+        }
+
         // Auto-restart if candidate is still actively in interview listening mode
         if (this.isListening) {
           try {
