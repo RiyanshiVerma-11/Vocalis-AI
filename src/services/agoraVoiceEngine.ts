@@ -45,6 +45,7 @@ export class AgoraVoiceEngine {
 
   private isListening = false;
   private isSpeaking = false;
+  private isBrowserSpeaking = false;
   private isJoined = false;
   private volAnimFrameId: number | null = null;
   private webSpeechRecognition: any = null;
@@ -53,6 +54,7 @@ export class AgoraVoiceEngine {
 
   // Callbacks wired from App.tsx
   private callbacks: AgoraVoiceCallbacks = {};
+  private onSpeechDetectedCallback: (() => void) | null = null;
 
   // ── Agora App ID (read from env at runtime) ──────────────
   private readonly appId: string =
@@ -112,9 +114,15 @@ export class AgoraVoiceEngine {
       // When the remote AI agent publishes audio or video, subscribe and play
       this.client.on('user-published', async (user: IAgoraRTCRemoteUser, mediaType) => {
         if (mediaType === 'audio') {
+          console.log(`[AgoraVoiceEngine] 🔊 Real Agora audio track published from UID: ${user.uid}! Subscribing...`);
           await this.client!.subscribe(user, 'audio');
           this.remoteAudioTrack = user.audioTrack as IRemoteAudioTrack;
-          this.remoteAudioTrack.play();
+          try {
+            this.remoteAudioTrack.play();
+            console.log(`[AgoraVoiceEngine] 🎵 Remote audio track playing through speakers!`);
+          } catch (playErr) {
+            console.warn('[AgoraVoiceEngine] remoteAudioTrack.play() autoplay blocked:', playErr);
+          }
           this._setSpeaking(true);
 
           // Clear any previous silence monitor
@@ -144,10 +152,12 @@ export class AgoraVoiceEngine {
                 : 0;
 
             // If volume drops below threshold (< 0.02) for a finish window, release floor
+            // ONLY if browser fallback is not actively speaking
             if (volume < 0.02) {
               if (!this.remoteAudioSilenceTimeout) {
                 this.remoteAudioSilenceTimeout = setTimeout(() => {
                   if (
+                    !this.isBrowserSpeaking &&
                     this.remoteAudioTrack &&
                     typeof this.remoteAudioTrack.getVolumeLevel === 'function' &&
                     this.remoteAudioTrack.getVolumeLevel() < 0.02
@@ -213,12 +223,51 @@ export class AgoraVoiceEngine {
       this.currentUid = uid;
       this.isJoined = true;
 
+      // ── Publish local microphone track to Agora SD-RTN™ channel ──
+      // This allows the Agora Conversational AI cloud agent (Deepgram STT) to hear the candidate live over WebRTC!
+      try {
+        this.localMicTrack = await AgoraRTC.createMicrophoneAudioTrack({
+          encoderConfig: 'high_quality_stereo',
+          AEC: true,
+          ANS: true,
+          AGC: true,
+        });
+        await this.client.publish([this.localMicTrack]);
+        console.log(`[AgoraVoiceEngine] 🎙️ Candidate microphone PUBLISHED to Agora SD-RTN™ channel! Cloud agent can now hear live audio.`);
+      } catch (micErr) {
+        console.warn('[AgoraVoiceEngine] Mic publish warning (will use audio fallback):', micErr);
+      }
+
       console.log(`[AgoraVoiceEngine] Joined channel: ${channelName} as uid ${uid}`);
       return true;
     } catch (err) {
       console.error('[AgoraVoiceEngine] joinChannel failed:', err);
       return false;
     }
+  }
+
+  // Check if Agora cloud agent's audio track is currently ready and subscribed
+  public hasRemoteAudioTrack(): boolean {
+    return Boolean(this.remoteAudioTrack);
+  }
+
+  // Wait for Agora cloud agent to join channel and publish audio track
+  public async waitForRemoteAgent(timeoutMs = 4000): Promise<boolean> {
+    if (this.remoteAudioTrack) return true;
+    return new Promise((resolve) => {
+      const startTime = Date.now();
+      const checkInterval = setInterval(() => {
+        if (this.remoteAudioTrack) {
+          clearInterval(checkInterval);
+          console.log(`[AgoraVoiceEngine] 🚀 Remote agent audio track ready after ${Date.now() - startTime}ms`);
+          resolve(true);
+        } else if (Date.now() - startTime >= timeoutMs) {
+          clearInterval(checkInterval);
+          console.log(`[AgoraVoiceEngine] ⏱️ Timeout waiting for remote agent audio (${timeoutMs}ms)`);
+          resolve(false);
+        }
+      }, 100);
+    });
   }
 
   // ─── Leave channel (cleanup on interview end) ────────────
@@ -255,6 +304,7 @@ export class AgoraVoiceEngine {
     onSpeechDetected?: () => void
   ): Promise<boolean> {
     this.callbacks.onTranscript = onTranscript;
+    this.onSpeechDetectedCallback = onSpeechDetected || null;
 
     // 1. Publish mic to Agora channel (non-blocking so failure doesn't prevent local speech recognition)
     if (this.isJoined && this.client) {
@@ -412,6 +462,8 @@ export class AgoraVoiceEngine {
       window.speechSynthesis.cancel();
     }
 
+    this.isBrowserSpeaking = false;
+
     if (this.isSpeaking) {
       this._setSpeaking(false);
       this.callbacks.onInterrupted?.();
@@ -441,7 +493,13 @@ export class AgoraVoiceEngine {
       }
 
       if (!stream) {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch((err) => {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          }
+        }).catch((err) => {
           console.warn('[AgoraVoiceEngine] Visualizer getUserMedia fallback skipped:', err);
           return null;
         });
@@ -464,7 +522,8 @@ export class AgoraVoiceEngine {
       const tick = () => {
         analyser.getByteFrequencyData(data);
         const avg = data.reduce((a, b) => a + b, 0) / data.length;
-        onVolume(Math.min(100, Math.round((avg / 128) * 100)));
+        const vol = Math.min(100, Math.round((avg / 128) * 100));
+        onVolume(vol);
         this.volAnimFrameId = requestAnimationFrame(tick);
       };
 
@@ -491,44 +550,122 @@ export class AgoraVoiceEngine {
     }
   }
 
+  // ─── Resume remote audio playback if it was interrupted ────
+  public resumeAudioPlayback(): void {
+    if (this.remoteAudioTrack) {
+      try {
+        this.remoteAudioTrack.play();
+        console.log('[AgoraVoiceEngine] Resumed remote audio track playback');
+      } catch (err) {
+        console.warn('[AgoraVoiceEngine] Could not resume remoteAudioTrack:', err);
+      }
+    }
+  }
+
+  // ─── Mute / Unmute remote audio track to prevent double-audio / echo ──
+  public muteRemoteAudioTrack(muted: boolean): void {
+    if (this.remoteAudioTrack) {
+      if (muted) {
+        this.remoteAudioTrack.stop();
+      } else {
+        try {
+          this.remoteAudioTrack.play();
+        } catch {}
+      }
+    }
+  }
+
   // ─── Browser TTS fallback (used when Agora agent is unavailable) ──
   // This mirrors the old audioEngine so the app degrades gracefully.
   public async speakWithBrowserFallback(
     text: string,
-    _voiceName: string = 'Kore',
+    voiceName: string = 'Kore',
     pitch = 1.0,
     rate = 1.0
   ): Promise<void> {
-    this.interrupt();
-
     if (!('speechSynthesis' in window)) return;
 
+    this.isBrowserSpeaking = true;
+    this._setSpeaking(true);
+
+    // Only cancel if actively speaking to avoid clearing newly scheduled utterances
+    if (window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
+      await new Promise((resolve) => setTimeout(resolve, 80));
+    }
+
+    // Chromium recovery: resume if stuck in paused state
+    if (window.speechSynthesis.paused) {
+      window.speechSynthesis.resume();
+    }
+
     return new Promise((resolve) => {
-      const cleaned = text.replace(/\[.*?\]/g, '').replace(/\*+/g, '').trim();
+      // Clean up brackets, strategy badges, emojis or formatting before speaking
+      const cleaned = text
+        .replace(/^[💡⚡🛡️👥🎯🧠✨].*$/gm, '')
+        .replace(/^Resume Highlight:.*$/gmi, '')
+        .replace(/\[.*?\]/g, '')
+        .replace(/[*#_`~]/g, '')
+        .replace(/[\u{1F300}-\u{1F9FF}]/gu, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      if (!cleaned) {
+        this.isBrowserSpeaking = false;
+        this._setSpeaking(false);
+        resolve();
+        return;
+      }
+
       const utterance = new SpeechSynthesisUtterance(cleaned);
       const voices = window.speechSynthesis.getVoices();
 
       if (voices.length > 0) {
-        const preferred = voices.find(
-          (v) =>
-            v.name.toLowerCase().includes('female') ||
-            v.name.toLowerCase().includes('samantha') ||
-            v.name.toLowerCase().includes('zira')
-        );
-        if (preferred) utterance.voice = preferred;
+        if (voiceName === 'Kore' || voiceName === 'Aoede') {
+          const preferred = voices.find(
+            (v) =>
+              v.name.toLowerCase().includes('female') ||
+              v.name.toLowerCase().includes('samantha') ||
+              v.name.toLowerCase().includes('zira') ||
+              v.name.toLowerCase().includes('google uk english female')
+          );
+          if (preferred) utterance.voice = preferred;
+        } else {
+          const preferred = voices.find(
+            (v) =>
+              v.name.toLowerCase().includes('male') ||
+              v.name.toLowerCase().includes('david') ||
+              v.name.toLowerCase().includes('george') ||
+              v.name.toLowerCase().includes('google uk english male')
+          );
+          if (preferred) utterance.voice = preferred;
+        }
       }
 
       utterance.pitch = pitch;
       utterance.rate = rate;
-      this._setSpeaking(true);
 
-      utterance.onend = () => {
+      // Keep-alive heartbeat for longer utterances in Chromium
+      const heartbeat = setInterval(() => {
+        if (window.speechSynthesis.speaking) {
+          window.speechSynthesis.pause();
+          window.speechSynthesis.resume();
+        } else {
+          clearInterval(heartbeat);
+        }
+      }, 5000);
+
+      const cleanup = () => {
+        clearInterval(heartbeat);
+        this.isBrowserSpeaking = false;
         this._setSpeaking(false);
         resolve();
       };
-      utterance.onerror = () => {
-        this._setSpeaking(false);
-        resolve();
+
+      utterance.onend = cleanup;
+      utterance.onerror = (e) => {
+        console.warn('[AgoraVoiceEngine] SpeechSynthesis event/error:', (e as any)?.error);
+        cleanup();
       };
 
       window.speechSynthesis.speak(utterance);
@@ -537,6 +674,7 @@ export class AgoraVoiceEngine {
 
   // ─── Full cleanup ────────────────────────────────────────
   public cleanup(): void {
+    this.isBrowserSpeaking = false;
     this.interrupt();
     this.stopSpeechRecognition();
     this.leaveChannel().catch(() => {});

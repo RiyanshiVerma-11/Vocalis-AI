@@ -35,6 +35,15 @@ const app = express();
 const PORT = 3000;
 
 app.use(express.json({ limit: '10mb' }));
+app.use(express.text({ type: ['text/plain', 'text/*'] }));
+
+// Catch JSON parse errors from malformed requests or beacons so server never crashes
+app.use((err: any, _req: any, res: any, next: any) => {
+  if (err instanceof SyntaxError && (err as any).status === 400 && 'body' in err) {
+    return res.status(400).json({ success: false, error: 'Invalid JSON payload' });
+  }
+  next(err);
+});
 
 // ── JWT & SMTP Auth Infrastructure ───────────────────────────────────────────
 const JWT_SECRET = process.env.JWT_SECRET || 'vocalis_ai_jwt_secret_key_2026_super_secure_key';
@@ -1743,38 +1752,54 @@ app.post('/api/agora/start-agent', async (req, res) => {
       console.log('[Agora] LLM: OpenAI gpt-4o-mini (Agora managed)');
     }
 
-    // ── TTS: Select vendor based on available credentials ──────────────────────
+    // ── TTS: Select vendor & gender-matched voice based on interviewer ─────────
+    const isMaleSpeaker =
+      interviewerName.toLowerCase().includes('rohan') ||
+      interviewerName.toLowerCase().includes('vikram') ||
+      voiceName === 'Fenrir' ||
+      voiceName === 'Puck';
+
     let tts: any;
     if (process.env.ELEVENLABS_API_KEY) {
+      // Adam ('pNInz6obpgDQGcFmaJgB') for Male (Rohan Sharma)
+      // Rachel ('21m00Tcm4TlvDq8ikWAM') for Female (Priya Mehta / Neha Kapoor)
+      const selectedVoiceId = isMaleSpeaker
+        ? (process.env.ELEVENLABS_VOICE_ID_MALE || 'pNInz6obpgDQGcFmaJgB')
+        : (process.env.ELEVENLABS_VOICE_ID_FEMALE || '21m00Tcm4TlvDq8ikWAM');
+
       tts = new ElevenLabsTTS({
         key: process.env.ELEVENLABS_API_KEY,
         modelId: 'eleven_flash_v2_5',
-        voiceId: process.env.ELEVENLABS_VOICE_ID || 'pNInz6obpgDQGcFmaJgB', // Adam
-        baseUrl: 'wss://api.elevenlabs.io/v1/text-to-speech',
+        voiceId: selectedVoiceId,
+        baseUrl: 'wss://api.elevenlabs.io/v1',
+        sampleRate: 24000,
       });
-      console.log('[Agora] TTS: ElevenLabs (BYOK)');
+      console.log(`[Agora] TTS: ElevenLabs (${isMaleSpeaker ? 'Male: Adam' : 'Female: Rachel'}, voiceId: ${selectedVoiceId})`);
     } else if (process.env.AZURE_TTS_KEY) {
+      const azureVoice = isMaleSpeaker ? 'en-US-GuyNeural' : 'en-US-AriaNeural';
       tts = new MicrosoftTTS({
         key: process.env.AZURE_TTS_KEY,
         region: process.env.AZURE_TTS_REGION || 'eastus',
-        voiceName: voiceName || 'en-US-AriaNeural',
+        voiceName: azureVoice,
       });
-      console.log('[Agora] TTS: Microsoft Azure (BYOK)');
+      console.log(`[Agora] TTS: Microsoft Azure (${azureVoice})`);
     } else if (process.env.OPENAI_API_KEY) {
+      const openAiVoice = isMaleSpeaker ? 'onyx' : 'alloy';
       tts = new OpenAITTS({
         apiKey: process.env.OPENAI_API_KEY,
         model: 'tts-1',
         baseUrl: 'https://api.openai.com/v1',
-        voice: 'alloy',
+        voice: openAiVoice,
       });
-      console.log('[Agora] TTS: OpenAI (BYOK)');
+      console.log(`[Agora] TTS: OpenAI (${openAiVoice})`);
     } else {
-      // MiniMax — Agora managed (no key needed, high quality natural speech)
+      // MiniMax — Agora managed
+      const minimaxVoice = isMaleSpeaker ? 'English_charismatic_male' : 'English_captivating_female1';
       tts = new MiniMaxTTS({
         model: 'speech-2.6-turbo',
-        voiceId: 'English_captivating_female1',
+        voiceId: minimaxVoice,
       });
-      console.log('[Agora] TTS: MiniMax (Agora managed)');
+      console.log(`[Agora] TTS: MiniMax (${minimaxVoice})`);
     }
 
     // ── Compose and start the agent ────────────────────────────────────────────
@@ -1783,14 +1808,25 @@ app.post('/api/agora/start-agent', async (req, res) => {
       .withLlm(llm)
       .withTts(tts);
 
+    // Clean up any existing active sessions before starting a new one to protect free quota
+    for (const [staleId, staleSession] of activeAgoraSessions.entries()) {
+      try {
+        if (typeof staleSession.stop === 'function') {
+          await staleSession.stop().catch(() => {});
+        }
+        console.log(`[Agora] Stopped previous stale session ${staleId} to preserve user quota.`);
+      } catch {}
+      activeAgoraSessions.delete(staleId);
+    }
+
     const sessionName = `vocalis-${interviewerName.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase()}-${Date.now()}`;
 
     const session = agent.createSession({
       channel: channelName,
       agentUid: String(uid),
-      remoteUids: ['0'],              // candidate always joins as UID 0
+      remoteUids: ['*'],              // subscribe to all candidate UIDs in channel
       name: sessionName,
-      idleTimeout: 120,               // auto-stop after 120s silence
+      idleTimeout: 30,                // Strict auto-stop after 30s silence to protect free tier quota!
     });
 
     console.log(`[Agora] Starting Conversational AI agent on channel: ${channelName} (interviewer: ${interviewerName})...`);
@@ -1820,6 +1856,10 @@ app.post('/api/agora/speak', async (req, res) => {
     }
     const session = activeAgoraSessions.get(agentId);
     if (session) {
+      // If agent was speaking from a previous turn, halt it first so new turn takes over cleanly
+      if (typeof session.interrupt === 'function') {
+        await session.interrupt().catch(() => {});
+      }
       await session.say(text);
       console.log(`[Agora ConvoAI] Agent ${agentId} speaking: "${text.slice(0, 60)}..."`);
       return res.json({ success: true });
@@ -1828,6 +1868,83 @@ app.post('/api/agora/speak', async (req, res) => {
   } catch (err: any) {
     console.warn('[Agora] speak error:', err.message);
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 2c. Interrupt Agora Conversational AI Agent mid-speech
+app.post('/api/agora/interrupt', async (req, res) => {
+  try {
+    const { agentId } = req.body;
+    if (agentId) {
+      const session = activeAgoraSessions.get(agentId);
+      if (session && typeof session.interrupt === 'function') {
+        await session.interrupt().catch(() => {});
+        console.log(`[Agora] Cloud agent ${agentId} interrupted cleanly.`);
+      }
+    }
+    res.json({ success: true });
+  } catch (err: any) {
+    console.warn('[Agora] interrupt warning (non-fatal):', err.message);
+    res.json({ success: true });
+  }
+});
+
+// 2d. Stop Agora Conversational AI Agent immediately (CRUCIAL: Halts cloud session immediately to save 300 free minutes!)
+app.post('/api/agora/stop-agent', async (req, res) => {
+  try {
+    const appId = process.env.AGORA_APP_ID;
+    const appCertificate = process.env.AGORA_APP_CERTIFICATE;
+
+    let agentId = req.body?.agentId || (req.query?.agentId as string);
+    // Support text/plain payload from navigator.sendBeacon when user closes tab
+    if (!agentId && typeof req.body === 'string') {
+      try {
+        agentId = JSON.parse(req.body).agentId;
+      } catch {}
+    }
+
+    if (agentId) {
+      let stopped = false;
+      const session = activeAgoraSessions.get(agentId);
+      if (session) {
+        if (typeof session.stop === 'function') {
+          await session.stop().catch(() => {});
+        }
+        activeAgoraSessions.delete(agentId);
+        stopped = true;
+        console.log(`[Agora] 🛑 Cloud agent ${agentId} STOPPED immediately via session.stop(). Free quota preserved!`);
+      }
+
+      // If not in active memory map (e.g. server restarted or cold start), stop via direct Agora Cloud REST SDK
+      if (!stopped && appId && appCertificate) {
+        try {
+          const agoraClient = new AgoraClient({
+            appId,
+            appCertificate,
+            area: Area.US,
+          });
+          await agoraClient.stopAgent(agentId).catch(() => {});
+          console.log(`[Agora] 🛑 Agent ${agentId} STOPPED via direct agoraClient.stopAgent(). Free quota preserved!`);
+        } catch (apiErr: any) {
+          console.warn(`[Agora] agoraClient.stopAgent fallback warning:`, apiErr?.message);
+        }
+      }
+    } else {
+      // Stop all active sessions if no specific ID passed (e.g. general teardown / logout)
+      for (const [id, session] of activeAgoraSessions.entries()) {
+        try {
+          if (typeof session.stop === 'function') {
+            await session.stop().catch(() => {});
+          }
+          console.log(`[Agora] 🛑 Cleaned up agent session ${id}. Free quota preserved!`);
+        } catch {}
+        activeAgoraSessions.delete(id);
+      }
+    }
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.warn('[Agora] stop-agent error:', err?.message);
+    return res.json({ success: true });
   }
 });
 
@@ -1935,36 +2052,6 @@ VOICE INTERVIEW STYLE:
   }
 });
 
-// 4. Stop Agora Conversational AI Agent (Official agora-agents SDK)
-app.post('/api/agora/stop-agent', async (req, res) => {
-  try {
-    const appId = process.env.AGORA_APP_ID;
-    const appCertificate = process.env.AGORA_APP_CERTIFICATE;
-    const { agentId } = req.body;
-
-    if (agentId) {
-      const session = activeAgoraSessions.get(agentId);
-      if (session) {
-        await session.stop().catch(() => {});
-        activeAgoraSessions.delete(agentId);
-        console.log(`[Agora] Session for agent ${agentId} stopped cleanly via session.stop().`);
-      } else if (appId && appCertificate) {
-        const agoraClient = new AgoraClient({
-          appId,
-          appCertificate,
-          area: Area.US,
-        });
-        await agoraClient.stopAgent(agentId).catch(() => {});
-        console.log(`[Agora] Agent ${agentId} stopped via agoraClient.stopAgent().`);
-      }
-    }
-
-    res.json({ success: true });
-  } catch (err: any) {
-    console.warn('[Agora] stop-agent warning (non-fatal):', err.message);
-    res.json({ success: true }); // Always succeed on stop — interview already ended
-  }
-});
 
 
 // ─────────────────────────────────────────────────────────────────────────────

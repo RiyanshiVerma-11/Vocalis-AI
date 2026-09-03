@@ -30,13 +30,14 @@ import { SkillProgressionHub } from './components/SkillProgressionHub';
 import { TurnTimeMachineModal } from './components/TurnTimeMachineModal';
 import { SystemDesignWhiteboardModal } from './components/SystemDesignWhiteboardModal';
 import { ArchitectureCanvasState } from './types';
-import { requestInterviewTurn, generateFinalAssessment, fetchTTSAudio, fetchAgoraToken, startAgoraAgent, stopAgoraAgent, speakWithAgoraAgent } from './services/apiService';
+import { requestInterviewTurn, generateFinalAssessment, fetchTTSAudio, fetchAgoraToken, startAgoraAgent, stopAgoraAgent, speakWithAgoraAgent, interruptAgoraAgent } from './services/apiService';
 import { sessionHistoryService } from './services/sessionHistoryService';
 import { turnForkService, TurnCheckpoint } from './services/turnForkService';
 import { agoraVoiceEngine } from './services/agoraVoiceEngine';
 import { generatePersonalizedOpening } from './utils/resumeParser';
 import { generateDynamicPanel } from './utils/dynamicPanelGenerator';
 import { analyzeSemanticPause, boostTechnicalJargon } from './utils/jargonBooster';
+import { generateHeuristicAssessment } from './utils/assessmentFallback';
 import { ArrowLeft, Sparkles, ShieldCheck, FileText, Home, User, LogOut, LogIn, PanelLeft, Building2, GraduationCap, Menu, Radio, Activity } from 'lucide-react';
 import { PWAInstallPrompt } from './components/PWAInstallPrompt';
 import { ToastNotification, ToastMessage } from './components/ToastNotification';
@@ -125,8 +126,8 @@ export default function App() {
   const [lastInternalThought, setLastInternalThought] = useState<string>('');
   const [ambientReactions, setAmbientReactions] = useState<Record<string, { reactionType: PanelistReactionType; label: string }>>({});
 
-  // Silence Tolerance & Floor Control (Fixes Accidental Cut-offs / VAD Sensitivity)
-  const [silenceTimeoutMs, setSilenceTimeoutMs] = useState<number>(8000); // 8s relaxed default (with VAD volume guard)
+  // Silence Tolerance & Floor Control (Snappy Agora Conversational AI pace)
+  const [silenceTimeoutMs, setSilenceTimeoutMs] = useState<number>(1400); // 1.4s snappy response (like Agora & ChatGPT voice)
   const [isFloorHeld, setIsFloorHeld] = useState<boolean>(false);
   const [isFocusMode, setIsFocusMode] = useState<boolean>(false);
   const [thoughtGraceActive, setThoughtGraceActive] = useState<boolean>(false);
@@ -216,8 +217,43 @@ export default function App() {
   isProcessingRef.current = isProcessing;
   const isAISpeakingRef = useRef<boolean>(isAISpeaking);
   isAISpeakingRef.current = isAISpeaking;
+  const inInterviewRef = useRef<boolean>(inInterview);
+  inInterviewRef.current = inInterview;
+  const agoraAgentIdRef = useRef<string | null>(agoraAgentId);
+  agoraAgentIdRef.current = agoraAgentId;
   const speechSilenceTimerRef = useRef<any>(null);
   const currentTurnIdRef = useRef<number>(0);
+
+  // Guaranteed Quota Preservation: Stop cloud agent if tab is closed, reloaded, or navigated away
+  useEffect(() => {
+    const sendBeaconStop = () => {
+      const currentAgentId = agoraAgentIdRef.current;
+      if (currentAgentId) {
+        try {
+          const url = `/api/agora/stop-agent?agentId=${encodeURIComponent(currentAgentId)}`;
+          const payload = JSON.stringify({ agentId: currentAgentId });
+          const blob = new Blob([payload], { type: 'application/json' });
+          if (navigator.sendBeacon) {
+            navigator.sendBeacon(url, blob);
+          } else {
+            fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: payload,
+              keepalive: true,
+            });
+          }
+        } catch {}
+      }
+    };
+
+    window.addEventListener('beforeunload', sendBeaconStop);
+    window.addEventListener('pagehide', sendBeaconStop);
+    return () => {
+      window.removeEventListener('beforeunload', sendBeaconStop);
+      window.removeEventListener('pagehide', sendBeaconStop);
+    };
+  }, []);
 
   // Intelligent VAD Volume & Semantic Floor Guarded Auto-Submit
   // Prevents premature cut-offs: checks microphone audio volume and dynamic thought completion
@@ -253,10 +289,10 @@ export default function App() {
     const effectiveTimeout = currentTimeout + pauseAnalysis.recommendedGraceMs;
 
     const checkAndSubmit = () => {
-      // Guard 1: If candidate is actively talking/making sound (volume > 8), DO NOT SUBMIT!
-      if (candidateVolumeRef.current > 8) {
+      // Guard 1: If candidate is actively talking/making sound (volume > 25), defer briefly
+      if (candidateVolumeRef.current > 25) {
         console.log(`[AutoSubmit Guard] Candidate active speech detected (vol: ${candidateVolumeRef.current}%). Deferring submit.`);
-        speechSilenceTimerRef.current = setTimeout(checkAndSubmit, 2500);
+        speechSilenceTimerRef.current = setTimeout(checkAndSubmit, 800);
         return;
       }
 
@@ -282,6 +318,10 @@ export default function App() {
     import('./services/audioEngine').then(({ audioEngine }) => audioEngine.interrupt()).catch(() => {});
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
+    }
+    // Also notify cloud Agora agent to halt speech
+    if (agoraAgentId) {
+      interruptAgoraAgent(agoraAgentId).catch(() => {});
     }
 
     setIsAISpeaking(false);
@@ -316,14 +356,31 @@ export default function App() {
 
     setErrorToast('Interrupted — Microphone active. Speak now.');
     setTimeout(() => setErrorToast(null), 3000);
-  }, []);
+  }, [agoraAgentId, scheduleSilenceAutoSubmit]);
 
   // Speak interviewer message via Agora Conversational AI Agent (or fallback to Gemini/Browser TTS)
   const speakInterviewerMessage = useCallback(
     async (text: string, interviewer: Interviewer) => {
       const turnId = ++currentTurnIdRef.current;
+      isAISpeakingRef.current = true;
       setIsAISpeaking(true);
       setActiveSpeakerId(interviewer.id);
+
+      // Clean dialogue text of emoji badges, strategy labels, and metadata before synthesis
+      const cleanDialogue = text
+        .replace(/^[💡⚡🛡️👥🎯🧠✨].*$/gm, '')
+        .replace(/^Resume Highlight:.*$/gmi, '')
+        .replace(/\[.*?\]/g, '')
+        .replace(/[*#_`~]/g, '')
+        .replace(/[\u{1F300}-\u{1F9FF}]/gu, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      if (!cleanDialogue) {
+        setIsAISpeaking(false);
+        isAISpeakingRef.current = false;
+        return;
+      }
 
       // Reset candidate interim transcript and speech buffer before interviewer speaks
       if (speechSilenceTimerRef.current) {
@@ -333,23 +390,15 @@ export default function App() {
       agoraVoiceEngine.clearSpeechBuffer();
       setCurrentInterimTranscript('');
 
-      // If Agora Conversational AI cloud agent is active, speak directly through the Agora cloud agent!
-      if (agoraMode === 'conversational-ai' && agoraAgentId) {
-        try {
-          const spoken = await speakWithAgoraAgent(agoraAgentId, text);
-          if (spoken) {
-            console.log(`[Agora ConvoAI] Spoke turn via Agora agent: "${text.slice(0, 60)}..."`);
-            return;
-          }
-        } catch (err) {
-          console.warn('[Agora ConvoAI] Speak failed, falling back to local audio:', err);
-        }
+      // Notify Agora Conversational AI cloud agent in parallel (so cloud session has turn history)
+      if (agoraAgentId) {
+        speakWithAgoraAgent(agoraAgentId, cleanDialogue).catch(() => {});
       }
 
       try {
-        // Race Gemini TTS with a 400ms timeout for instant speech start
-        const ttsPromise = fetchTTSAudio(text, interviewer.voiceName);
-        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 400));
+        // Race Studio TTS with a 1500ms timeout for instant speech response
+        const ttsPromise = fetchTTSAudio(cleanDialogue, interviewer.voiceName);
+        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500));
         
         const fastResult = await Promise.race([ttsPromise, timeoutPromise]);
 
@@ -358,12 +407,14 @@ export default function App() {
         if (fastResult && (fastResult as any).audioBase64) {
           const { audioEngine } = await import('./services/audioEngine');
           if (currentTurnIdRef.current !== turnId) return;
+          agoraVoiceEngine.muteRemoteAudioTrack(true); // Prevent double voice / echo!
           await audioEngine.playGeminiTTS((fastResult as any).audioBase64, (fastResult as any).sampleRate);
         } else {
-          // Instant browser SpeechSynthesis fallback (<50ms start time)
+          // Instant browser SpeechSynthesis fallback (<100ms)
           if (currentTurnIdRef.current !== turnId) return;
+          agoraVoiceEngine.muteRemoteAudioTrack(true);
           await agoraVoiceEngine.speakWithBrowserFallback(
-            text,
+            cleanDialogue,
             interviewer.voiceName,
             interviewer.pitch,
             interviewer.rate
@@ -371,16 +422,19 @@ export default function App() {
         }
       } catch (err) {
         if (currentTurnIdRef.current === turnId) {
+          agoraVoiceEngine.muteRemoteAudioTrack(true);
           await agoraVoiceEngine.speakWithBrowserFallback(
-            text,
+            cleanDialogue,
             interviewer.voiceName,
             interviewer.pitch,
             interviewer.rate
           );
         }
       } finally {
-        if (currentTurnIdRef.current === turnId && agoraMode !== 'conversational-ai') {
+        if (currentTurnIdRef.current === turnId) {
           setIsAISpeaking(false);
+          isAISpeakingRef.current = false;
+          agoraVoiceEngine.muteRemoteAudioTrack(false);
           // Clean speech buffer & clear interim transcript when AI finishes speaking
           agoraVoiceEngine.clearSpeechBuffer();
           setCurrentInterimTranscript('');
@@ -513,7 +567,7 @@ export default function App() {
     setIsSidebarOpen(false); // Automatically hide sidebar for max focus during live interview
     setAssessment(null);
 
-    // ── Join Agora RTC channel + start Conversational AI agent ────────────────
+    // ── Join Agora RTC channel + start Conversational AI agent in background ──
     (async () => {
       try {
         const channelName = `vocalis-${Date.now()}`;
@@ -522,33 +576,33 @@ export default function App() {
           const joined = await agoraVoiceEngine.joinChannel(tokenData.token, channelName, 0);
           if (joined) {
             setAgoraChannelName(channelName);
-            // Start the Agora Conversational AI agent with the active interviewer's identity
             const agentData = await startAgoraAgent({
               channelName,
               uid: 1,
               interviewerName: initialSpeaker.name,
               systemPrompt: initialSpeaker.systemPrompt,
-              voiceName: initialSpeaker.voiceName,  // Pass interviewer voice personality
+              voiceName: initialSpeaker.voiceName,
             });
             if (agentData?.agentId) {
+              // Critical Race Condition Check: Did the candidate finish/cancel/restart while agent was provisioning?
+              if (!inInterviewRef.current) {
+                console.log('[App] Session was ended during agent provisioning. Immediately stopping agent:', agentData.agentId);
+                stopAgoraAgent(agentData.agentId).catch(() => {});
+                return;
+              }
               setAgoraAgentId(agentData.agentId);
               setAgoraMode('conversational-ai');
-              console.log('[App] Agora Conversational AI agent active! Speaking initial prompt via Cloud MiniMax TTS...');
-              // Speak initial prompt directly through the live Agora Conversational AI cloud agent!
-              await speakWithAgoraAgent(agentData.agentId, openingPrompt);
-              return;
+              console.log('[App] Agora Conversational AI agent active! Agent ID:', agentData.agentId);
             }
           }
         }
-        // Fallback: if Agora agent is not active, speak via local audio engine
-        setAgoraMode('offline');
-        speakInterviewerMessage(openingPrompt, initialSpeaker);
       } catch (err) {
-        console.warn('[App] Agora agent setup failed (interview continues with browser audio):', err);
-        setAgoraMode('offline');
-        speakInterviewerMessage(openingPrompt, initialSpeaker);
+        console.warn('[App] Agora agent setup warning:', err);
       }
     })();
+
+    // Speak opening question immediately! No blocking, no silence!
+    speakInterviewerMessage(openingPrompt, initialSpeaker);
   };
 
   // Process Candidate Speech/Submission
@@ -600,6 +654,30 @@ export default function App() {
     }
 
     const candidateMsgId = `turn-cand-${Date.now()}`;
+
+    // ── Voice-Triggered Interview Conclusion Interceptor ──
+    const normalizedSpeech = cleanSpeechText.toLowerCase().replace(/[^a-z0-9 ]/g, ' ');
+    const isVoiceEndInterview =
+      normalizedSpeech.includes('finish the interview') ||
+      normalizedSpeech.includes('finish interview') ||
+      normalizedSpeech.includes('end the interview') ||
+      normalizedSpeech.includes('end interview') ||
+      normalizedSpeech.includes('conclude the interview') ||
+      normalizedSpeech.includes('conclude interview') ||
+      normalizedSpeech.includes('i have finished') ||
+      normalizedSpeech.includes('i am finished') ||
+      normalizedSpeech.includes('i finished the interview') ||
+      normalizedSpeech.includes('wrap up the interview') ||
+      normalizedSpeech.includes('wrap up interview') ||
+      normalizedSpeech.includes('stop the interview') ||
+      normalizedSpeech.includes('done with the interview');
+
+    if (isVoiceEndInterview) {
+      addToast('Concluding Interview', 'Voice request detected: Concluding interview session and generating scorecard...', 'info');
+      handleEndInterview();
+      return;
+    }
+
     const candidateMsg: TranscriptMessage = {
       id: candidateMsgId,
       speakerId: 'candidate',
@@ -916,7 +994,7 @@ export default function App() {
           }
         },
         () => {
-          if (isAISpeaking) {
+          if (isAISpeakingRef.current) {
             handleInterrupt();
           }
         }
@@ -960,12 +1038,16 @@ export default function App() {
     }
 
     // 3. Immediately disconnect and leave Agora RTC channels (avoids consuming credentials/bandwidth)
-    if (agoraAgentId) {
-      stopAgoraAgent(agoraAgentId).catch(() => {});
+    const currentAgentId = agoraAgentIdRef.current;
+    if (currentAgentId) {
+      stopAgoraAgent(currentAgentId).catch(() => {});
       setAgoraAgentId(null);
     }
     setAgoraChannelName(null);
     setAgoraMode('offline');
+
+    // Also stop LiveAvatar session cleanly
+    import('./services/liveAvatarService').then(({ liveAvatarService }) => liveAvatarService.stopSession()).catch(() => {});
 
     if (transcript.length === 0) {
       addToast('Interview Ended', 'Session closed with no transcript recorded.', 'info');
@@ -1000,9 +1082,16 @@ export default function App() {
         console.warn('Could not archive session to history:', saveErr);
       }
     } catch (err: any) {
-      console.error('Assessment generation failed:', err);
-      setErrorToast(err.message || 'Could not generate final evaluation.');
-      setTimeout(() => setErrorToast(null), 4000);
+      console.warn('Final assessment API warning, generating calibrated fallback:', err.message);
+      const fallbackReport = generateHeuristicAssessment(
+        transcript,
+        sharedContext,
+        candidateName,
+        scenario,
+        activePanel
+      );
+      setAssessment(fallbackReport);
+      addToast('Scorecard Calibrated', 'Assessment compiled from session telemetry and question history.', 'success');
     } finally {
       setIsGeneratingAssessment(false);
     }
@@ -1018,8 +1107,9 @@ export default function App() {
     setSessionSeconds(0);
     agoraVoiceEngine.cleanup();
     // Stop Agora agent if running
-    if (agoraAgentId) {
-      stopAgoraAgent(agoraAgentId).catch(() => {});
+    const activeAgent = agoraAgentIdRef.current;
+    if (activeAgent) {
+      stopAgoraAgent(activeAgent).catch(() => {});
       setAgoraAgentId(null);
     }
     setAgoraChannelName(null);
@@ -1079,6 +1169,9 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    if (inInterviewRef.current || agoraAgentIdRef.current) {
+      handleRestart();
+    }
     setCurrentUser(null);
     try {
       localStorage.removeItem('vocalis_user_session');
@@ -1088,6 +1181,14 @@ export default function App() {
     }
     setErrorToast('Signed out — Redirected to landing page');
     setTimeout(() => setErrorToast(null), 2500);
+    setCurrentView('landing');
+  };
+
+  // Safe navigation back to landing with active interview teardown
+  const handleNavigateToLanding = () => {
+    if (inInterviewRef.current || agoraAgentIdRef.current) {
+      handleRestart();
+    }
     setCurrentView('landing');
   };
 
@@ -1103,8 +1204,9 @@ export default function App() {
 
     return () => {
       agoraVoiceEngine.cleanup();
-      if (agoraAgentId) {
-        stopAgoraAgent(agoraAgentId).catch(() => {});
+      const currentAgent = agoraAgentIdRef.current;
+      if (currentAgent) {
+        stopAgoraAgent(currentAgent).catch(() => {});
       }
     };
   }, []);
@@ -1161,7 +1263,7 @@ export default function App() {
 
             <button
               type="button"
-              onClick={() => setCurrentView('landing')}
+              onClick={handleNavigateToLanding}
               className="w-8 h-8 rounded-lg overflow-hidden shadow-sm hover:opacity-90 transition cursor-pointer shrink-0"
               title="Vocalis AI Landing Page"
             >
@@ -1171,7 +1273,7 @@ export default function App() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setCurrentView('landing')}
+                onClick={handleNavigateToLanding}
                 className="text-xs font-bold text-white hover:text-indigo-300 transition cursor-pointer text-left tracking-tight"
               >
                 Vocalis AI Studio

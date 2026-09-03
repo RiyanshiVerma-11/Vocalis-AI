@@ -61,9 +61,13 @@ export class AudioEngine {
   public async playGeminiTTS(base64Data: string, sampleRate = 24000): Promise<void> {
     this.interrupt(); // Halt any existing speech first
 
+    const ctx = this.getOutputContext();
+    if (ctx.state === 'suspended') {
+      await ctx.resume().catch(() => {});
+    }
+
     return new Promise((resolve, reject) => {
       try {
-        const ctx = this.getOutputContext();
         const buffer = this.pcmToAudioBuffer(base64Data, sampleRate);
         const source = ctx.createBufferSource();
         source.buffer = buffer;
@@ -94,35 +98,65 @@ export class AudioEngine {
   }
 
   // Fallback to Web Speech API synthesis
-  public speakWithBrowserFallback(
+  public async speakWithBrowserFallback(
     text: string,
     voiceName: string = 'Kore',
     pitch = 1.0,
     rate = 1.0
   ): Promise<void> {
-    this.interrupt();
-
     if (!('speechSynthesis' in window)) {
       console.warn('SpeechSynthesis not supported by browser.');
       return Promise.resolve();
     }
 
-    return new Promise((resolve) => {
-      // Clean up brackets or formatting before speaking
-      const cleaned = text.replace(/\[.*?\]/g, '').replace(/\*+/g, '').trim();
-      const utterance = new SpeechSynthesisUtterance(cleaned);
+    // Only cancel if actively speaking
+    if (window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
+      await new Promise((resolve) => setTimeout(resolve, 80));
+    }
 
+    // Chromium recovery: resume if stuck in paused state
+    if (window.speechSynthesis.paused) {
+      window.speechSynthesis.resume();
+    }
+
+    return new Promise((resolve) => {
+      // Clean up brackets, strategy badges, emojis or formatting before speaking
+      const cleaned = text
+        .replace(/^[💡⚡🛡️👥🎯🧠✨].*$/gm, '')
+        .replace(/^Resume Highlight:.*$/gmi, '')
+        .replace(/\[.*?\]/g, '')
+        .replace(/[*#_`~]/g, '')
+        .replace(/[\u{1F300}-\u{1F9FF}]/gu, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      if (!cleaned) {
+        resolve();
+        return;
+      }
+
+      const utterance = new SpeechSynthesisUtterance(cleaned);
       const voices = window.speechSynthesis.getVoices();
+
       // Try to find a fitting voice based on personality
       if (voices.length > 0) {
         if (voiceName === 'Kore' || voiceName === 'Aoede') {
           const femaleVoice = voices.find(
-            (v) => v.name.toLowerCase().includes('female') || v.name.toLowerCase().includes('samantha') || v.name.toLowerCase().includes('zira')
+            (v) =>
+              v.name.toLowerCase().includes('female') ||
+              v.name.toLowerCase().includes('samantha') ||
+              v.name.toLowerCase().includes('zira') ||
+              v.name.toLowerCase().includes('google uk english female')
           );
           if (femaleVoice) utterance.voice = femaleVoice;
         } else {
           const maleVoice = voices.find(
-            (v) => v.name.toLowerCase().includes('male') || v.name.toLowerCase().includes('david') || v.name.toLowerCase().includes('george')
+            (v) =>
+              v.name.toLowerCase().includes('male') ||
+              v.name.toLowerCase().includes('david') ||
+              v.name.toLowerCase().includes('george') ||
+              v.name.toLowerCase().includes('google uk english male')
           );
           if (maleVoice) utterance.voice = maleVoice;
         }
@@ -130,18 +164,27 @@ export class AudioEngine {
 
       utterance.pitch = pitch;
       utterance.rate = rate;
-
       this.setSpeaking(true);
 
-      utterance.onend = () => {
+      const heartbeat = setInterval(() => {
+        if (window.speechSynthesis.speaking) {
+          window.speechSynthesis.pause();
+          window.speechSynthesis.resume();
+        } else {
+          clearInterval(heartbeat);
+        }
+      }, 10000);
+
+      const cleanup = () => {
+        clearInterval(heartbeat);
         this.setSpeaking(false);
         resolve();
       };
 
+      utterance.onend = cleanup;
       utterance.onerror = (e) => {
         console.warn('Speech synthesis error or cancelled:', e);
-        this.setSpeaking(false);
-        resolve();
+        cleanup();
       };
 
       window.speechSynthesis.speak(utterance);

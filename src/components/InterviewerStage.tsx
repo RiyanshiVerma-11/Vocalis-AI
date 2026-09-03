@@ -171,8 +171,21 @@ export const InterviewerStage: React.FC<InterviewerStageProps> = ({
         {panel.map((interviewer) => {
           const isSpeakingNow = activeSpeakerId === interviewer.id && isAISpeaking;
           const isTargeted   = selectedTargetInterviewerId === interviewer.id;
-          const isLiveTile   = activeSpeakerId === interviewer.id || (!activeSpeakerId && panel[0]?.id === interviewer.id);
-          const reaction     = ambientReactions[interviewer.id];
+          
+          // LiveAvatar sandbox mode only has "June HR" (a female avatar).
+          // Only attach June HR to female interviewers (e.g. Priya Mehta, Neha Kapoor).
+          // Male interviewers like Rohan Sharma use their high-tech digital architect persona card!
+          const isFemaleInterviewer =
+            interviewer.name.toLowerCase().includes('priya') ||
+            interviewer.name.toLowerCase().includes('neha') ||
+            interviewer.voiceName === 'Kore' ||
+            interviewer.voiceName === 'Aoede';
+
+          const isLiveTile =
+            isFemaleInterviewer &&
+            (activeSpeakerId === interviewer.id || (!activeSpeakerId && panel.find(p => p.name.toLowerCase().includes('priya'))?.id === interviewer.id));
+
+          const reaction = ambientReactions[interviewer.id];
 
           return (
             <div

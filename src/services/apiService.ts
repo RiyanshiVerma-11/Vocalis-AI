@@ -212,3 +212,16 @@ export async function speakWithAgoraAgent(agentId: string, text: string): Promis
   }
 }
 
+export async function interruptAgoraAgent(agentId: string): Promise<void> {
+  try {
+    await fetch('/api/agora/interrupt', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentId }),
+    });
+  } catch (err) {
+    console.warn('[Agora] interrupt error:', err);
+  }
+}
+
+
