@@ -26,7 +26,7 @@
 
   <br />
 
-  [GitHub Repository](https://github.com/RiyanshiVerma-11/Vocalis-AI) · [🚀 Live Demo](https://vocalis-ai-phi.vercel.app/) · [Architecture & Diagrams](#-system-architecture) · [Agora Pipeline](#-agora-conversational-ai-engine) · [API Specification](#-api-specifications) · [Quick Start](#-quick-start--installation)
+  [GitHub Repository](https://github.com/RiyanshiVerma-11/Vocalis-AI) · [Live Demo](https://vocalis-ai-phi.vercel.app/) · [Architecture & Diagrams](#-system-architecture) · [Agora Pipeline](#-agora-conversational-ai-engine) · [API Specification](#-api-specifications) · [Quick Start](#-quick-start--installation)
 
 </div>
 
