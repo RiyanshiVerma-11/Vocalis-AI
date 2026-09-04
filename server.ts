@@ -23,18 +23,22 @@ import {
   OpenAITTS,
 } from 'agora-agents';
 
-// Safe require polyfill for both ESM (dev tsx) and CommonJS (dist/server.cjs)
-const getRequire = () => {
-  if (typeof require !== 'undefined') return require;
-  return createRequire(import.meta.url || 'file:///' + __filename);
-};
-const customRequire = getRequire();
-const { RtcTokenBuilder, RtcRole } = customRequire('agora-token');
+import agoraTokenPkg from 'agora-token';
+const { RtcTokenBuilder, RtcRole } = (agoraTokenPkg as any).default || agoraTokenPkg;
 
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+
+// Enable CORS for cross-origin frontend requests (e.g. Vercel)
+app.use((_req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  if (_req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+});
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.text({ type: ['text/plain', 'text/*'] }));
