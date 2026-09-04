@@ -18,6 +18,7 @@
   [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
   [![Tailwind CSS v4](https://img.shields.io/badge/Tailwind-v4.0-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
   [![License](https://img.shields.io/badge/License-MIT-green.svg?style=for-the-badge)](LICENSE)
+  [![Live Demo](https://img.shields.io/badge/Live%20Demo-vocalis--ai--phi.vercel.app-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://vocalis-ai-phi.vercel.app/)
 
   <br />
 
@@ -25,7 +26,7 @@
 
   <br />
 
-  [GitHub Repository](https://github.com/RiyanshiVerma-11/Vocalis-AI) · [Live Demo](http://localhost:3000) · [Architecture & Diagrams](#-system-architecture) · [Agora Pipeline](#-agora-conversational-ai-engine) · [API Specification](#-api-specifications) · [Quick Start](#-quick-start--installation)
+  [GitHub Repository](https://github.com/RiyanshiVerma-11/Vocalis-AI) · [🚀 Live Demo](https://vocalis-ai-phi.vercel.app/) · [Architecture & Diagrams](#-system-architecture) · [Agora Pipeline](#-agora-conversational-ai-engine) · [API Specification](#-api-specifications) · [Quick Start](#-quick-start--installation)
 
 </div>
 
@@ -34,6 +35,7 @@
 ## 📌 Table of Contents
 
 - [Executive Summary](#-executive-summary)
+- [Live Production Deployments](#-live-production-deployments)
 - [Agora Conversational AI Engine](#-agora-conversational-ai-engine)
 - [System Architecture](#-system-architecture)
   - [High-Level Component Architecture](#high-level-component-architecture)
@@ -57,6 +59,15 @@
 **Vocalis AI** is an enterprise-ready, autonomous multi-role AI voice interviewing platform built with Agora's official **Conversational AI Agent SDK (`agora-agents` v2.7.0)**. Traditional AI interview tools deploy a single static persona that listens passively to one-off text prompts. In contrast, **Vocalis AI** deploys a dynamic panel of 5 specialized AI personas—**Lead Systems Architect**, **Principal Product Manager**, **VP of Engineering**, **Enterprise Client Director**, and **Lead Org Psychologist**.
 
 The audio engine streams over the **Agora Software-Defined Real-Time Network (SDRTN)** with sub-100ms Voice Activity Detection (VAD) barge-in. The live voice pipeline orchestrates **Deepgram Nova-3 (ASR)** ➔ **Groq Qwen 3.8 27B / Compound Mini (Sub-100ms LLM)** ➔ **MiniMax / ElevenLabs (TTS)** directly in the cloud. After every response, the AI committee deliberates backstage to evaluate answer depth, detect vague buzzwords or resume contradictions, adjust interview difficulty dynamically (Foundational → Staff/Principal), and generate an **executive evaluation scorecard backed by verbatim transcript quote citations**.
+
+---
+
+## 🌐 Live Production Deployments
+
+| Component | Platform | Direct URL | Status |
+| :--- | :--- | :--- | :---: |
+| **Frontend Application** | **Vercel** | **[https://vocalis-ai-phi.vercel.app](https://vocalis-ai-phi.vercel.app/)** | 🟢 **Live** |
+| **Backend API & Real-Time Engine** | **Render** | **[https://vocalis-ai-ty8j.onrender.com](https://vocalis-ai-ty8j.onrender.com/)** | 🟢 **Live** |
 
 ---
 
