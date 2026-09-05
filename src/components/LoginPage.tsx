@@ -186,6 +186,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
         if (data.otpCodeSimulated) {
           setSimulatedOtpCode(data.otpCodeSimulated);
+          setOtpInput(data.otpCodeSimulated);
         }
 
         setStep('otp');
@@ -255,6 +256,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
       if (data.otpCodeSimulated) {
         setSimulatedOtpCode(data.otpCodeSimulated);
+        setOtpInput(data.otpCodeSimulated);
       }
 
       setSuccessInfoMessage('6-digit OTP login code sent to your email!');
