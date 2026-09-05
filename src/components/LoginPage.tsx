@@ -162,6 +162,28 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           localStorage.setItem('vocalis_jwt_token', data.token);
         }
 
+        // Direct instant login upon account registration
+        if (data.user) {
+          const initials = (data.user.name || fullName || email)
+            .split(' ')
+            .map((n: string) => n[0])
+            .join('')
+            .substring(0, 2)
+            .toUpperCase();
+
+          const user: UserSession = {
+            id: data.user.id,
+            name: data.user.name || fullName || email.split('@')[0],
+            email: data.user.email,
+            role: data.user.role,
+            avatarInitials: initials || 'US',
+            isLoggedIn: true,
+          };
+
+          onLoginSuccess(user);
+          return;
+        }
+
         if (data.otpCodeSimulated) {
           setSimulatedOtpCode(data.otpCodeSimulated);
         }
@@ -357,11 +379,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 )}
 
                 {simulatedOtpCode && (
-                  <div className="p-3 rounded-xl bg-indigo-950/60 border border-indigo-500/30 text-indigo-300 text-xs font-mono text-center space-y-1">
-                    <span className="text-[10px] text-slate-400 uppercase font-bold block">
-                      SMTP Demo Mode Active — Simulated OTP Code
+                  <div className="p-3.5 rounded-xl bg-indigo-950/60 border border-indigo-500/30 text-indigo-300 text-xs font-mono text-center space-y-2">
+                    <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">
+                      Verification Code (Instant Demo / Cloud Backup)
                     </span>
-                    <strong className="text-xl text-white font-mono tracking-widest">{simulatedOtpCode}</strong>
+                    <strong className="text-2xl text-white font-mono tracking-widest block">{simulatedOtpCode}</strong>
+                    <button
+                      type="button"
+                      onClick={() => setOtpInput(simulatedOtpCode)}
+                      className="inline-block text-[11px] font-sans font-bold text-indigo-300 hover:text-white bg-indigo-600/30 hover:bg-indigo-600/50 px-2.5 py-1 rounded-lg transition border border-indigo-500/40 cursor-pointer"
+                    >
+                      Click to Auto-fill Code
+                    </button>
                   </div>
                 )}
               </div>
@@ -404,12 +433,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 type="button"
                 onClick={() => {
                   setStep('form');
+                  setAuthTab('signin');
                   setSuccessInfoMessage(null);
                   setErrorMessage(null);
                 }}
-                className="w-full text-center text-xs text-slate-400 hover:text-white pt-2 transition cursor-pointer"
+                className="w-full text-center text-xs text-indigo-400 hover:text-indigo-300 font-semibold pt-2 transition cursor-pointer"
               >
-                ← Back to Login Form
+                ← Or Sign In with Password Instead
               </button>
             </form>
           ) : (

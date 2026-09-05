@@ -303,7 +303,7 @@ app.post('/api/auth/register', async (req, res) => {
         isVerified: newUser.isVerified,
       },
       emailSent,
-      otpCodeSimulated: process.env.NODE_ENV !== 'production' && !process.env.SMTP_USER ? otpCode : undefined,
+      otpCodeSimulated: otpCode,
     });
   } catch (err: any) {
     console.error('[Auth Register Error]', err);
@@ -471,7 +471,7 @@ app.post('/api/auth/request-otp', async (req, res) => {
     return res.json({
       message: 'Login OTP code generated successfully',
       emailSent,
-      otpCodeSimulated: process.env.NODE_ENV !== 'production' && !process.env.SMTP_USER ? otpCode : undefined,
+      otpCodeSimulated: otpCode,
     });
   } catch (err: any) {
     return res.status(500).json({ error: err.message || 'Failed to request OTP code' });
