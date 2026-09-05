@@ -438,32 +438,52 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
 
           {/* Right 1 Col: Active Candidate Profile Summary */}
           <div className="space-y-2.5 bg-slate-50 p-4 rounded-xl border border-slate-200">
-            <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-              <UserCheck className="w-4 h-4 text-indigo-600" />
-              <span>Parsed Profile Overview:</span>
-            </span>
+            {(() => {
+              const isStarterProfile = currentResume.id.startsWith('user-profile-') || currentResume.id === 'default-resume';
+              return (
+                <>
+                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <UserCheck className="w-4 h-4 text-indigo-600" />
+                    <span>{isStarterProfile ? 'Candidate Profile (Default Starter):' : 'Parsed Profile Overview:'}</span>
+                  </span>
 
-            <div className="p-3 bg-white rounded-xl border border-indigo-200 shadow-2xs space-y-1.5">
-              <div className="flex items-center justify-between">
-                <p className="font-extrabold text-slate-900 text-xs">{currentResume.fullName}</p>
-                <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  ✓ Active
-                </span>
-              </div>
-              <p className="text-[11px] text-indigo-700 font-semibold">{currentResume.headline}</p>
-              <p className="text-[10px] text-slate-500 leading-relaxed line-clamp-2">
-                {currentResume.summary}
-              </p>
-              {currentResume.notableProjects && currentResume.notableProjects.length > 0 && (
-                <div className="pt-1 flex flex-wrap gap-1">
-                  {currentResume.notableProjects.map((p, idx) => (
-                    <span key={idx} className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-800 border border-indigo-200 font-mono font-bold">
-                      {p.name.split('(')[0].trim()}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
+                  <div className="p-3 bg-white rounded-xl border border-indigo-200 shadow-2xs space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <p className="font-extrabold text-slate-900 text-xs">{currentResume.fullName}</p>
+                      {isStarterProfile ? (
+                        <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-300">
+                          ⚠️ Starter Profile
+                        </span>
+                      ) : (
+                        <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          ✓ Custom Parsed
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-indigo-700 font-semibold">{currentResume.headline}</p>
+                    <p className="text-[10px] text-slate-500 leading-relaxed line-clamp-2">
+                      {currentResume.summary}
+                    </p>
+
+                    {isStarterProfile && (
+                      <p className="text-[10px] text-amber-800 bg-amber-50/80 p-1.5 rounded-lg border border-amber-200 leading-tight">
+                        💡 <em>No resume uploaded yet. Using starter template so you can test right away. Paste or upload your resume to tailor interview questions.</em>
+                      </p>
+                    )}
+
+                    {currentResume.notableProjects && currentResume.notableProjects.length > 0 && (
+                      <div className="pt-1 flex flex-wrap gap-1">
+                        {currentResume.notableProjects.map((p, idx) => (
+                          <span key={idx} className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-800 border border-indigo-200 font-mono font-bold">
+                            {p.name.split('(')[0].trim()}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
 
             <div className="pt-1 space-y-1">
                 {isDemoUser ? (

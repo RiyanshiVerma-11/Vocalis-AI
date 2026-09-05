@@ -167,6 +167,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
           {/* Clean Navigation Links (Desktop) */}
           <nav className="hidden lg:flex items-center gap-6 text-xs font-semibold text-slate-300">
+            <a href="#agora-engine" className="text-indigo-400 hover:text-white transition flex items-center gap-1.5 font-bold bg-indigo-950/60 px-2.5 py-1 rounded-lg border border-indigo-800/60">
+              <Radio className="w-3 h-3 text-emerald-400 animate-pulse" />
+              <span>Agora AI Engine</span>
+            </a>
             <a href="#dual-workflows" className="hover:text-white transition">
               Workflows
             </a>
@@ -191,7 +195,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <a href="#faqs" className="hover:text-white transition">
               FAQs
             </a>
-
           </nav>
 
           {/* Right Action Buttons & Mobile Menu Toggle */}
@@ -246,6 +249,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         {isMobileMenuOpen && (
           <div className="lg:hidden bg-slate-900 border-b border-slate-800 px-4 py-4 space-y-3 animate-fadeIn">
             <nav className="flex flex-col space-y-2.5 text-sm font-semibold text-slate-300">
+              <button type="button" onClick={() => scrollToSection('agora-engine')} className="text-left text-indigo-400 font-bold py-1 flex items-center gap-2">
+                <Radio className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+                <span>Agora AI Engine</span>
+              </button>
               <button type="button" onClick={() => scrollToSection('dual-workflows')} className="text-left hover:text-white py-1">
                 Workflows
               </button>
@@ -270,7 +277,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <button type="button" onClick={() => scrollToSection('faqs')} className="text-left hover:text-white py-1">
                 FAQs
               </button>
-
             </nav>
           </div>
         )}
@@ -283,9 +289,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             {/* Left Side: Badge, Headline, Subtitle, Actions & Stats */}
             <div className="lg:col-span-7 space-y-6 text-left">
               {/* Sub-badge */}
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-700">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Agora SD-RTN™ Engine • Dynamic AI Committee</span>
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-50 border border-indigo-200 text-xs font-semibold text-indigo-900 shadow-xs">
+                <Radio className="w-3.5 h-3.5 text-indigo-600 animate-pulse" />
+                <span>Agora Conversational AI SDK (v2.7.0) • SDRTN™ Cloud</span>
               </div>
 
               {/* Colorful Gradient Headline */}
@@ -299,9 +305,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 </span>
               </h1>
 
-              {/* High Contrast Subtitle */}
+              {/* High Contrast Subtitle featuring Agora Conversational AI SDK */}
               <p className="text-sm sm:text-base lg:text-[17px] text-slate-700 leading-relaxed max-w-3xl font-normal">
-                Vocalis AI powers an autonomous committee of AI personas that deliberate backstage in real time, negotiate adaptive turn-taking, probe deep technical depth, and output quote-indexed scorecards.
+                Built with the <strong className="font-semibold text-indigo-950">Agora Conversational AI SDK</strong>, <strong className="font-semibold text-indigo-950">sub-100ms real-time audio</strong>, and an <strong className="font-semibold text-indigo-950">autonomous 5-persona committee</strong>—Vocalis AI deliberates backstage in real time, negotiates adaptive turn-taking, probes deep technical depth, and outputs quote-indexed scorecards.
               </p>
 
               {/* Action Buttons for Both Roles (Compact on Mobile) */}
@@ -370,12 +376,126 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   <div className="mt-5 relative z-10 text-center space-y-1">
                     <span className="text-xs font-bold text-indigo-400 tracking-wider uppercase flex items-center justify-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-indigo-400 animate-ping"></span>
-                      Vocalis AI Product Engine Logo
+                      Agora Conversational AI
                     </span>
                     <p className="text-[11px] text-slate-400 font-medium">
-                      Dynamic Committee • Sub-100ms Voice Orchestration
+                      Sub-100ms SDRTN Audio • Autonomous Committee
                     </p>
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* AGORA CONVERSATIONAL AI ENGINE SHOWCASE SECTION */}
+      <section id="agora-engine" className="py-12 border-b border-indigo-100 bg-gradient-to-b from-indigo-50/60 via-white to-slate-50 relative overflow-hidden">
+        <div className="w-full max-w-[1700px] mx-auto px-4 sm:px-8 lg:px-12 relative z-10">
+          <div className="space-y-8">
+            {/* Section Header */}
+            <div className="text-center space-y-3 max-w-3xl mx-auto">
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-100/80 border border-indigo-300 text-xs font-bold text-indigo-900 shadow-xs">
+                <Radio className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
+                <span>OFFICIAL AGORA CONVERSATIONAL AI AGENT SDK (v2.7.0)</span>
+              </div>
+              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black text-slate-900 tracking-tight">
+                Agora Conversational AI SDK, Sub-100ms Real-Time Audio &amp; Autonomous 5-Persona Committee
+              </h2>
+              <p className="text-xs sm:text-sm lg:text-base text-slate-700 leading-relaxed">
+                Vocalis AI orchestrates Agora's real-time media network to conduct high-stakes interviews with sub-100ms barge-in interruption, zero latency collisions, and multi-agent deliberation.
+              </p>
+            </div>
+
+            {/* 3 Core Architecture Highlights */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Feature 1: Agora Conversational AI SDK */}
+              <div className="bg-white p-6 sm:p-7 rounded-2xl border border-indigo-200/80 shadow-xs hover:shadow-md transition space-y-4 flex flex-col justify-between">
+                <div className="space-y-3">
+                  <div className="w-12 h-12 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold shadow-md shadow-indigo-200">
+                    <Radio className="w-6 h-6" />
+                  </div>
+                  <span className="text-[10px] font-extrabold text-indigo-600 uppercase tracking-wider">Cloud Engine Integration</span>
+                  <h3 className="text-lg font-extrabold text-slate-900">Agora Conversational AI SDK</h3>
+                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                    Deploys autonomous voice agents directly onto the <strong>Agora Software-Defined Real-Time Network (SDRTN™)</strong> using official <code className="text-xs bg-slate-100 px-1 py-0.5 rounded font-mono text-indigo-700">agora-agents</code> v2.7.0. Dynamic token management guarantees enterprise-grade audio encryption and session isolation.
+                  </p>
+                </div>
+                <div className="pt-3 border-t border-slate-100 flex items-center gap-2 text-xs font-semibold text-emerald-700">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>SDRTN™ Ultra-Low Latency Media Mesh</span>
+                </div>
+              </div>
+
+              {/* Feature 2: Sub-100ms Real-Time Audio & Barge-In */}
+              <div className="bg-white p-6 sm:p-7 rounded-2xl border border-indigo-200/80 shadow-xs hover:shadow-md transition space-y-4 flex flex-col justify-between">
+                <div className="space-y-3">
+                  <div className="w-12 h-12 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold shadow-md shadow-emerald-200">
+                    <Zap className="w-6 h-6" />
+                  </div>
+                  <span className="text-[10px] font-extrabold text-emerald-600 uppercase tracking-wider">Zero Collision Turn-Taking</span>
+                  <h3 className="text-lg font-extrabold text-slate-900">Sub-100ms Real-Time Audio</h3>
+                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                    True conversational flow requires natural interruption. With sub-100ms Voice Activity Detection (VAD), candidate barge-ins instantly mute active AI speech. No awkward robotic talking-over or laggy websocket queues.
+                  </p>
+                </div>
+                <div className="pt-3 border-t border-slate-100 flex items-center gap-2 text-xs font-semibold text-emerald-700">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Instant Audio Track Muting &amp; Floor Transfer</span>
+                </div>
+              </div>
+
+              {/* Feature 3: Autonomous 5-Persona Committee */}
+              <div className="bg-white p-6 sm:p-7 rounded-2xl border border-indigo-200/80 shadow-xs hover:shadow-md transition space-y-4 flex flex-col justify-between">
+                <div className="space-y-3">
+                  <div className="w-12 h-12 rounded-xl bg-purple-600 text-white flex items-center justify-center font-bold shadow-md shadow-purple-200">
+                    <Users className="w-6 h-6" />
+                  </div>
+                  <span className="text-[10px] font-extrabold text-purple-600 uppercase tracking-wider">Multi-Agent Deliberation</span>
+                  <h3 className="text-lg font-extrabold text-slate-900">Autonomous 5-Persona Committee</h3>
+                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                    Instead of a flat single-prompt bot, 5 specialized personas—Lead Systems Architect, Principal PM, VP of Engineering, Enterprise Client Director, and Org Psychologist—deliberate backstage to challenge answers from every dimension.
+                  </p>
+                </div>
+                <div className="pt-3 border-t border-slate-100 flex items-center gap-2 text-xs font-semibold text-purple-700">
+                  <CheckCircle2 className="w-4 h-4 text-purple-600 shrink-0" />
+                  <span>Cross-Functional Technical &amp; Cultural Calibration</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Cloud Audio Pipeline Strip */}
+            <div className="bg-slate-900 text-white p-5 sm:p-6 rounded-2xl border border-slate-800 shadow-xl space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <Cpu className="w-4 h-4 text-indigo-400" />
+                  <span className="text-xs font-bold text-slate-200 uppercase tracking-wider">End-to-End Agora Cloud Real-Time Pipeline</span>
+                </div>
+                <span className="text-[11px] font-mono text-emerald-400 bg-emerald-950/80 px-2.5 py-0.5 rounded-full border border-emerald-800 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                  Sub-100ms Turn Latency
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-2 text-center">
+                <div className="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700/80">
+                  <p className="text-[10px] text-slate-400 uppercase font-mono font-bold">Input</p>
+                  <p className="text-xs font-bold text-white mt-0.5">Candidate Mic (Opus)</p>
+                </div>
+                <div className="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700/80">
+                  <p className="text-[10px] text-indigo-400 uppercase font-mono font-bold">Transport</p>
+                  <p className="text-xs font-bold text-white mt-0.5">Agora SDRTN™ Cloud</p>
+                </div>
+                <div className="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700/80">
+                  <p className="text-[10px] text-emerald-400 uppercase font-mono font-bold">ASR (STT)</p>
+                  <p className="text-xs font-bold text-white mt-0.5">Deepgram Nova-3</p>
+                </div>
+                <div className="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700/80">
+                  <p className="text-[10px] text-purple-400 uppercase font-mono font-bold">Inference</p>
+                  <p className="text-xs font-bold text-white mt-0.5">Groq Qwen 3.8 / Compound</p>
+                </div>
+                <div className="col-span-2 sm:col-span-1 bg-slate-800/80 p-2.5 rounded-xl border border-slate-700/80">
+                  <p className="text-[10px] text-pink-400 uppercase font-mono font-bold">Cloud Voice</p>
+                  <p className="text-xs font-bold text-white mt-0.5">MiniMax / ElevenLabs</p>
                 </div>
               </div>
             </div>
