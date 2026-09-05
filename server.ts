@@ -57,16 +57,19 @@ const JWT_SECRET = process.env.JWT_SECRET || 'vocalis_ai_jwt_secret_key_2026_sup
 // Nodemailer Transporter Setup
 function getMailTransporter() {
   const host = process.env.SMTP_HOST || 'smtp.gmail.com';
-  const port = parseInt(process.env.SMTP_PORT || '587', 10);
-  const user = process.env.SMTP_USER || '';
-  const pass = process.env.SMTP_PASS || '';
+  const port = parseInt(process.env.SMTP_PORT || '465', 10);
+  const user = process.env.SMTP_USER || 'riyanshi.verma.5356@gmail.com';
+  const pass = process.env.SMTP_PASS || 'jcdvxxnbijifjpdq';
 
   if (user && pass) {
     return nodemailer.createTransport({
       host,
       port,
-      secure: port === 465, // true for 465, false for 587
+      secure: port === 465,
       auth: { user, pass },
+      tls: {
+        rejectUnauthorized: false,
+      },
     });
   }
 
@@ -128,6 +131,17 @@ function loadUsersDb(): Map<string, UserRecord> {
       passwordHash: defaultDemoPassword,
       name: 'Neha Kapoor',
       role: 'recruiter',
+      isVerified: true,
+      createdAt: new Date().toISOString(),
+    });
+  }
+  if (!map.has('mail.zalphatechspin@gmail.com')) {
+    map.set('mail.zalphatechspin@gmail.com', {
+      id: 'usr_geeta_001',
+      email: 'mail.zalphatechspin@gmail.com',
+      passwordHash: bcrypt.hashSync('geeta@12345', 10),
+      name: 'geeta',
+      role: 'candidate',
       isVerified: true,
       createdAt: new Date().toISOString(),
     });
@@ -267,7 +281,7 @@ app.post('/api/auth/register', async (req, res) => {
     let emailSent = false;
     try {
       const transporter = getMailTransporter();
-      const fromAddr = process.env.SMTP_FROM || 'Vocalis AI Auth <noreply@vocalis.ai>';
+      const fromAddr = process.env.SMTP_FROM || `"Vocalis AI Auth" <${process.env.SMTP_USER || 'riyanshi.verma.5356@gmail.com'}>`;
       transporter.sendMail({
         from: fromAddr,
         to: cleanEmail,
@@ -446,7 +460,7 @@ app.post('/api/auth/request-otp', async (req, res) => {
     try {
       const transporter = getMailTransporter();
       transporter.sendMail({
-        from: `"Vocalis AI Security" <${process.env.SMTP_USER || 'noreply@vocalis.ai'}>`,
+        from: `"Vocalis AI Security" <${process.env.SMTP_USER || 'riyanshi.verma.5356@gmail.com'}>`,
         to: user.email,
         subject: `${otpCode} is your Passwordless Login OTP Code - Vocalis AI`,
         html: `
