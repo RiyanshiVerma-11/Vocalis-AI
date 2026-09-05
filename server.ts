@@ -262,18 +262,19 @@ app.post('/api/auth/register', async (req, res) => {
       { expiresIn: '7d' }
     );
 
-    // Send SMTP Verification Email
+    // Send SMTP Verification Email asynchronously in background so response completes in <100ms
+    // This prevents Vercel serverless proxy timeout and SMTP connection delay issues
     let emailSent = false;
     try {
       const transporter = getMailTransporter();
       const fromAddr = process.env.SMTP_FROM || 'Vocalis AI Auth <noreply@vocalis.ai>';
-      await transporter.sendMail({
+      transporter.sendMail({
         from: fromAddr,
         to: cleanEmail,
         subject: 'Welcome to Vocalis AI — Verification Code',
         text: `Hello ${newUser.name},\n\nWelcome to Vocalis AI! Your 6-digit verification code is: ${otpCode}\n\nThis code expires in 15 minutes.`,
         html: `
-          <div style="font-family: sans-serif; max-width: 500px; padding: 20px; border: 1px solid #e2e8f0; rounded: 12px;">
+          <div style="font-family: sans-serif; max-width: 500px; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
             <h2 style="color: #4f46e5; margin-top: 0;">Welcome to Vocalis AI</h2>
             <p>Hello <strong>${newUser.name}</strong>,</p>
             <p>Thank you for signing up for Vocalis AI's Autonomous Multi-Role AI Voice Interview Panel.</p>
@@ -283,10 +284,12 @@ app.post('/api/auth/register', async (req, res) => {
             <p style="font-size: 12px; color: #64748b; margin-top: 15px;">This code will expire in 15 minutes.</p>
           </div>
         `,
+      }).catch((mailErr: any) => {
+        console.warn(`[SMTP Warning] Failed to send email: ${mailErr.message}`);
       });
       emailSent = true;
     } catch (mailErr: any) {
-      console.warn(`[SMTP Warning] Failed to send email: ${mailErr.message}`);
+      console.warn(`[SMTP Warning] Failed to dispatch email: ${mailErr.message}`);
     }
 
     return res.json({
@@ -441,17 +444,8 @@ app.post('/api/auth/request-otp', async (req, res) => {
 
     let emailSent = false;
     try {
-      const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST || 'smtp.gmail.com',
-        port: Number(process.env.SMTP_PORT) || 587,
-        secure: process.env.SMTP_SECURE === 'true',
-        auth: {
-          user: process.env.SMTP_USER || '',
-          pass: process.env.SMTP_PASS || '',
-        },
-      });
-
-      await transporter.sendMail({
+      const transporter = getMailTransporter();
+      transporter.sendMail({
         from: `"Vocalis AI Security" <${process.env.SMTP_USER || 'noreply@vocalis.ai'}>`,
         to: user.email,
         subject: `${otpCode} is your Passwordless Login OTP Code - Vocalis AI`,
@@ -466,10 +460,12 @@ app.post('/api/auth/request-otp', async (req, res) => {
             <p style="font-size: 12px; color: #64748b; margin-top: 15px;">This code will expire in 15 minutes.</p>
           </div>
         `,
+      }).catch((mailErr: any) => {
+        console.warn(`[SMTP Warning] OTP email send failed: ${mailErr.message}`);
       });
       emailSent = true;
     } catch (mailErr: any) {
-      console.warn(`[SMTP Warning] OTP email send failed: ${mailErr.message}`);
+      console.warn(`[SMTP Warning] OTP email dispatch failed: ${mailErr.message}`);
     }
 
     return res.json({

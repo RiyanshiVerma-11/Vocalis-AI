@@ -48,6 +48,23 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [otpInput, setOtpInput] = useState('');
   const [simulatedOtpCode, setSimulatedOtpCode] = useState<string | null>(null);
 
+  // Helper to safely parse JSON responses and provide clear error messages for gateway/proxy timeouts
+  const safeParseJson = async (res: Response) => {
+    const text = await res.text();
+    if (!text) return {};
+    try {
+      return JSON.parse(text);
+    } catch (_e) {
+      if (res.status === 504 || res.status === 502 || res.status === 503) {
+        throw new Error('Backend server is waking up. Please retry in a few seconds.');
+      }
+      if (text.includes('An error occurred') || text.includes('FUNCTION_INVOCATION_TIMEOUT') || text.includes('Gateway')) {
+        throw new Error('Server connection timed out. Your account may already be created; please try Sign In.');
+      }
+      throw new Error(`Server returned unexpected status (${res.status}). Please try again.`);
+    }
+  };
+
   const handleDemoLogin = async (preset: {
     name: string;
     email: string;
@@ -67,7 +84,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         }),
       });
 
-      const data = await res.json();
+      const data = await safeParseJson(res);
       if (!res.ok) {
         throw new Error(data.error || 'Demo login failed');
       }
@@ -133,8 +150,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           }),
         });
 
-        const data = await res.json();
+        const data = await safeParseJson(res);
         if (!res.ok) {
+          if (data.error && data.error.toLowerCase().includes('already exists')) {
+            throw new Error('An account with this email already exists. Please switch to Sign In.');
+          }
           throw new Error(data.error || 'Registration failed');
         }
 
@@ -154,7 +174,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           body: JSON.stringify({ email, password }),
         });
 
-        const data = await res.json();
+        const data = await safeParseJson(res);
         if (!res.ok) {
           throw new Error(data.error || 'Invalid credentials');
         }
@@ -206,7 +226,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         body: JSON.stringify({ email }),
       });
 
-      const data = await res.json();
+      const data = await safeParseJson(res);
       if (!res.ok) {
         throw new Error(data.error || 'Failed to send OTP code');
       }
@@ -239,7 +259,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         body: JSON.stringify({ email, otpCode: otpInput.trim() }),
       });
 
-      const data = await res.json();
+      const data = await safeParseJson(res);
       if (!res.ok) {
         throw new Error(data.error || 'OTP Verification failed');
       }
@@ -430,8 +450,20 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 </div>
 
                 {errorMessage && (
-                  <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-medium">
-                    {errorMessage}
+                  <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-medium space-y-1.5">
+                    <div>{errorMessage}</div>
+                    {errorMessage.toLowerCase().includes('already exists') && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAuthTab('signin');
+                          setErrorMessage(null);
+                        }}
+                        className="inline-flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 underline font-semibold cursor-pointer"
+                      >
+                        Click here to Sign In with your password →
+                      </button>
+                    )}
                   </div>
                 )}
 
