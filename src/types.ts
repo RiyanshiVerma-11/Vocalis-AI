@@ -320,5 +320,13 @@ export interface UserSession {
   state?: string;
   country?: string;
   location?: string;
+  // Recruiter & Hiring Team Profile Specs
+  companyName?: string;
+  companySize?: string;
+  industry?: string;
+  hiringRole?: string;
+  experienceRequired?: string;
+  salaryBudget?: string;
+  diversityGoal?: string;
 }
 

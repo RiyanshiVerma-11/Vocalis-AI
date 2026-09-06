@@ -5,10 +5,13 @@ import {
   ArrowRight,
   MapPin,
   Compass,
+  Scale,
+  Sparkles,
 } from 'lucide-react';
 import { EnrichedCandidate, ExperienceBreakdownItem, ExperienceTier } from './types';
 import { StateProportionVisualizer } from './StateProportionVisualizer';
 import { ExperienceRatioVisualizer } from './ExperienceRatioVisualizer';
+import { UserSession } from '../../types';
 
 interface TopPerformersShowcaseProps {
   analytics: {
@@ -40,6 +43,9 @@ interface TopPerformersShowcaseProps {
   hoveredTier?: ExperienceTier | null;
   onHoverTier?: (tier: ExperienceTier | null) => void;
   selectedExperienceFilter?: string;
+  currentUser?: UserSession | null;
+  onOpenDemographicAudit?: () => void;
+  onOpenParityShortlist?: () => void;
 }
 
 export const TopPerformersShowcase: React.FC<TopPerformersShowcaseProps> = ({
@@ -52,6 +58,9 @@ export const TopPerformersShowcase: React.FC<TopPerformersShowcaseProps> = ({
   hoveredTier,
   onHoverTier,
   selectedExperienceFilter,
+  currentUser,
+  onOpenDemographicAudit,
+  onOpenParityShortlist,
 }) => {
   return (
     <div className="space-y-6">
@@ -67,40 +76,47 @@ export const TopPerformersShowcase: React.FC<TopPerformersShowcaseProps> = ({
               Highest scoring female and male candidates evaluated across distributed systems, leadership, and STAR methodology.
             </p>
           </div>
-          <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-3 py-1 rounded-full self-start sm:self-auto">
-            Verified Quote-Backed Bar Raisers
+          <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-3 py-1 rounded-full self-start sm:self-auto flex items-center gap-1.5">
+            <span>Verified Quote-Backed Bar Raisers</span>
+            {currentUser?.diversityGoal && (
+              <>
+                <span className="text-slate-400">•</span>
+                <span className="text-pink-600 font-extrabold">Target: {currentUser.diversityGoal}</span>
+              </>
+            )}
           </span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {/* TOP FEMALE PERFORMER (GIRLS CHAMPION) */}
           {analytics.topFemaleCandidate && (
-            <div className="bg-gradient-to-br from-pink-500/5 via-white to-purple-500/5 rounded-2xl border-2 border-pink-300 p-5 shadow-sm hover:shadow-md transition relative overflow-hidden flex flex-col justify-between">
-              <div className="absolute top-0 right-0 bg-gradient-to-l from-pink-600 to-purple-600 text-white font-extrabold text-[10px] px-3 py-1 rounded-bl-xl uppercase tracking-wider flex items-center gap-1 shadow-xs">
-                <Crown className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
-                <span>#1 Top Female Candidate (Girls Champion)</span>
+            <div className="bg-gradient-to-br from-pink-500/5 via-white to-purple-500/5 rounded-2xl border border-pink-300 p-3.5 sm:p-4 shadow-xs hover:shadow-md transition relative overflow-hidden flex flex-col justify-between">
+              <div className="absolute top-0 right-0 bg-gradient-to-l from-pink-600 to-purple-600 text-white font-extrabold text-[9px] px-2.5 py-0.5 rounded-bl-lg uppercase tracking-wider flex items-center gap-1 shadow-2xs">
+                <Crown className="w-3 h-3 text-amber-300 fill-amber-300" />
+                <span>#1 Top Female Candidate</span>
               </div>
 
-              <div className="space-y-3 pt-2">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-pink-500 to-purple-600 text-white font-black text-lg flex items-center justify-center shadow-md">
+              <div className="space-y-2 pt-1">
+                {/* Header: Avatar, Name, Role, Score */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-pink-500 to-purple-600 text-white font-black text-sm flex items-center justify-center shadow-xs shrink-0">
                       AP
                     </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-lg font-black text-slate-900">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <h4 className="text-sm font-black text-slate-900 leading-tight truncate">
                           {analytics.topFemaleCandidate.name}
                         </h4>
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-pink-100 text-pink-700 border border-pink-200">
+                        <span className="px-1.5 py-0.2 rounded-full text-[9px] font-black bg-pink-100 text-pink-700 border border-pink-200 shrink-0">
                           ♀ Female
                         </span>
                       </div>
-                      <p className="text-xs font-bold text-indigo-600">
+                      <p className="text-[11px] font-bold text-indigo-600 truncate leading-tight mt-0.5">
                         {analytics.topFemaleCandidate.role}
                       </p>
-                      <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
-                        <MapPin className="w-3 h-3 text-rose-500" />
+                      <p className="text-[10px] text-slate-500 flex items-center gap-1 leading-tight mt-0.5">
+                        <MapPin className="w-2.5 h-2.5 text-rose-500 shrink-0" />
                         <span>
                           {analytics.topFemaleCandidate.city}, {analytics.topFemaleCandidate.state}
                         </span>
@@ -108,40 +124,40 @@ export const TopPerformersShowcase: React.FC<TopPerformersShowcaseProps> = ({
                     </div>
                   </div>
 
-                  <div className="text-right">
-                    <div className="text-3xl font-black text-pink-600 font-mono leading-none">
-                      {analytics.topFemaleCandidate.overallScore}
-                    </div>
-                    <span className="text-[10px] font-bold text-slate-400">/ 100 Committee Score</span>
-                    <div className="mt-1">
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-extrabold">
-                        Top 1% in Tech
+                  <div className="text-right shrink-0">
+                    <div className="flex items-baseline justify-end gap-1 leading-none">
+                      <span className="text-2xl font-black text-pink-600 font-mono">
+                        {analytics.topFemaleCandidate.overallScore}
                       </span>
+                      <span className="text-[9px] font-bold text-slate-400">/100</span>
                     </div>
+                    <span className="inline-block mt-0.5 text-[8px] font-mono px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 font-extrabold">
+                      Top 1% in Tech
+                    </span>
                   </div>
                 </div>
 
                 {/* Standout Quote Card */}
-                <div className="bg-white/80 p-3 rounded-xl border border-pink-200 space-y-1.5 shadow-2xs">
-                  <span className="text-[9px] font-bold text-pink-700 uppercase tracking-wider flex items-center gap-1">
-                    <Quote className="w-3 h-3 text-pink-500" />
-                    <span>Verbatim Interview Transcript Highlight:</span>
+                <div className="bg-white/90 p-2 rounded-lg border border-pink-200 space-y-0.5 shadow-2xs">
+                  <span className="text-[8px] font-bold text-pink-700 uppercase tracking-wider flex items-center gap-1">
+                    <Quote className="w-2.5 h-2.5 text-pink-500" />
+                    <span>Transcript Highlight:</span>
                   </span>
-                  <p className="text-xs text-slate-700 italic leading-relaxed">
+                  <p className="text-[11px] text-slate-700 italic leading-snug line-clamp-2">
                     "{analytics.topFemaleCandidate.quoteEvidence.replace(/^"|"$/g, '')}"
                   </p>
                 </div>
 
                 {/* Key Competencies Badges */}
-                <div className="space-y-1.5">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                <div className="space-y-1">
+                  <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
                     Top Evaluated Strengths:
                   </span>
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="flex flex-wrap gap-1">
                     {analytics.topFemaleCandidate.keyStrengths.map((str, sIdx) => (
                       <span
                         key={sIdx}
-                        className="text-[10px] font-semibold bg-pink-50 text-pink-800 border border-pink-200 px-2 py-0.5 rounded-md"
+                        className="text-[9px] font-semibold bg-pink-50 text-pink-800 border border-pink-200 px-1.5 py-0.2 rounded"
                       >
                         ✓ {str}
                       </span>
@@ -150,16 +166,16 @@ export const TopPerformersShowcase: React.FC<TopPerformersShowcaseProps> = ({
                 </div>
               </div>
 
-              <div className="pt-4 mt-3 border-t border-pink-100 flex items-center justify-between">
-                <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
-                  Recommendation: {analytics.topFemaleCandidate.recommendation}
+              <div className="pt-2 mt-2 border-t border-pink-100 flex items-center justify-between">
+                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  {analytics.topFemaleCandidate.recommendation}
                 </span>
                 <button
                   type="button"
                   onClick={() => onSelectCandidate(analytics.topFemaleCandidate!)}
-                  className="px-3 py-1.5 rounded-lg bg-pink-600 hover:bg-pink-500 text-white font-bold text-xs transition cursor-pointer shadow-xs flex items-center gap-1"
+                  className="px-2.5 py-1 rounded-lg bg-pink-600 hover:bg-pink-500 text-white font-bold text-[11px] transition cursor-pointer shadow-xs flex items-center gap-1"
                 >
-                  <span>View Full Scorecard</span>
+                  <span>View Scorecard</span>
                   <ArrowRight className="w-3 h-3" />
                 </button>
               </div>
@@ -168,32 +184,33 @@ export const TopPerformersShowcase: React.FC<TopPerformersShowcaseProps> = ({
 
           {/* TOP MALE PERFORMER (BOYS CHAMPION) */}
           {analytics.topMaleCandidate && (
-            <div className="bg-gradient-to-br from-sky-500/5 via-white to-indigo-500/5 rounded-2xl border-2 border-sky-300 p-5 shadow-sm hover:shadow-md transition relative overflow-hidden flex flex-col justify-between">
-              <div className="absolute top-0 right-0 bg-gradient-to-l from-sky-600 to-indigo-600 text-white font-extrabold text-[10px] px-3 py-1 rounded-bl-xl uppercase tracking-wider flex items-center gap-1 shadow-xs">
-                <Crown className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
-                <span>#1 Top Male Candidate (Boys Champion)</span>
+            <div className="bg-gradient-to-br from-sky-500/5 via-white to-indigo-500/5 rounded-2xl border border-sky-300 p-3.5 sm:p-4 shadow-xs hover:shadow-md transition relative overflow-hidden flex flex-col justify-between">
+              <div className="absolute top-0 right-0 bg-gradient-to-l from-sky-600 to-indigo-600 text-white font-extrabold text-[9px] px-2.5 py-0.5 rounded-bl-lg uppercase tracking-wider flex items-center gap-1 shadow-2xs">
+                <Crown className="w-3 h-3 text-amber-300 fill-amber-300" />
+                <span>#1 Top Male Candidate</span>
               </div>
 
-              <div className="space-y-3 pt-2">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-sky-500 to-indigo-600 text-white font-black text-lg flex items-center justify-center shadow-md">
+              <div className="space-y-2 pt-1">
+                {/* Header: Avatar, Name, Role, Score */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 text-white font-black text-sm flex items-center justify-center shadow-xs shrink-0">
                       JR
                     </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-lg font-black text-slate-900">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <h4 className="text-sm font-black text-slate-900 leading-tight truncate">
                           {analytics.topMaleCandidate.name}
                         </h4>
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-700 border border-sky-200">
+                        <span className="px-1.5 py-0.2 rounded-full text-[9px] font-black bg-sky-100 text-sky-700 border border-sky-200 shrink-0">
                           ♂ Male
                         </span>
                       </div>
-                      <p className="text-xs font-bold text-indigo-600">
+                      <p className="text-[11px] font-bold text-indigo-600 truncate leading-tight mt-0.5">
                         {analytics.topMaleCandidate.role}
                       </p>
-                      <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
-                        <MapPin className="w-3 h-3 text-sky-500" />
+                      <p className="text-[10px] text-slate-500 flex items-center gap-1 leading-tight mt-0.5">
+                        <MapPin className="w-2.5 h-2.5 text-sky-500 shrink-0" />
                         <span>
                           {analytics.topMaleCandidate.city}, {analytics.topMaleCandidate.state}
                         </span>
@@ -201,40 +218,40 @@ export const TopPerformersShowcase: React.FC<TopPerformersShowcaseProps> = ({
                     </div>
                   </div>
 
-                  <div className="text-right">
-                    <div className="text-3xl font-black text-sky-600 font-mono leading-none">
-                      {analytics.topMaleCandidate.overallScore}
-                    </div>
-                    <span className="text-[10px] font-bold text-slate-400">/ 100 Committee Score</span>
-                    <div className="mt-1">
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-extrabold">
-                        Top 2% in Tech
+                  <div className="text-right shrink-0">
+                    <div className="flex items-baseline justify-end gap-1 leading-none">
+                      <span className="text-2xl font-black text-sky-600 font-mono">
+                        {analytics.topMaleCandidate.overallScore}
                       </span>
+                      <span className="text-[9px] font-bold text-slate-400">/100</span>
                     </div>
+                    <span className="inline-block mt-0.5 text-[8px] font-mono px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 font-extrabold">
+                      Top 2% in Tech
+                    </span>
                   </div>
                 </div>
 
                 {/* Standout Quote Card */}
-                <div className="bg-white/80 p-3 rounded-xl border border-sky-200 space-y-1.5 shadow-2xs">
-                  <span className="text-[9px] font-bold text-sky-700 uppercase tracking-wider flex items-center gap-1">
-                    <Quote className="w-3 h-3 text-sky-500" />
-                    <span>Verbatim Interview Transcript Highlight:</span>
+                <div className="bg-white/90 p-2 rounded-lg border border-sky-200 space-y-0.5 shadow-2xs">
+                  <span className="text-[8px] font-bold text-sky-700 uppercase tracking-wider flex items-center gap-1">
+                    <Quote className="w-2.5 h-2.5 text-sky-500" />
+                    <span>Transcript Highlight:</span>
                   </span>
-                  <p className="text-xs text-slate-700 italic leading-relaxed">
+                  <p className="text-[11px] text-slate-700 italic leading-snug line-clamp-2">
                     "{analytics.topMaleCandidate.quoteEvidence.replace(/^"|"$/g, '')}"
                   </p>
                 </div>
 
                 {/* Key Competencies Badges */}
-                <div className="space-y-1.5">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                <div className="space-y-1">
+                  <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
                     Top Evaluated Strengths:
                   </span>
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="flex flex-wrap gap-1">
                     {analytics.topMaleCandidate.keyStrengths.map((str, sIdx) => (
                       <span
                         key={sIdx}
-                        className="text-[10px] font-semibold bg-sky-50 text-sky-800 border border-sky-200 px-2 py-0.5 rounded-md"
+                        className="text-[9px] font-semibold bg-sky-50 text-sky-800 border border-sky-200 px-1.5 py-0.2 rounded"
                       >
                         ✓ {str}
                       </span>
@@ -243,16 +260,16 @@ export const TopPerformersShowcase: React.FC<TopPerformersShowcaseProps> = ({
                 </div>
               </div>
 
-              <div className="pt-4 mt-3 border-t border-sky-100 flex items-center justify-between">
-                <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
-                  Recommendation: {analytics.topMaleCandidate.recommendation}
+              <div className="pt-2 mt-2 border-t border-sky-100 flex items-center justify-between">
+                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  {analytics.topMaleCandidate.recommendation}
                 </span>
                 <button
                   type="button"
                   onClick={() => onSelectCandidate(analytics.topMaleCandidate!)}
-                  className="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs transition cursor-pointer shadow-xs flex items-center gap-1"
+                  className="px-2.5 py-1 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold text-[11px] transition cursor-pointer shadow-xs flex items-center gap-1"
                 >
-                  <span>View Full Scorecard</span>
+                  <span>View Scorecard</span>
                   <ArrowRight className="w-3 h-3" />
                 </button>
               </div>
@@ -269,8 +286,33 @@ export const TopPerformersShowcase: React.FC<TopPerformersShowcaseProps> = ({
               Pipeline Gender Parity & Meritocracy Analytics
             </h3>
             <p className="text-xs text-slate-500">
-              Audited by autonomous AI without demographic bias.
+              Audited by autonomous AI without demographic bias. Target Goal: <strong className="text-slate-800">{currentUser?.diversityGoal || 'Balanced Pipeline (~50:50)'}</strong>
             </p>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {onOpenDemographicAudit && (
+              <button
+                type="button"
+                onClick={onOpenDemographicAudit}
+                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer border border-slate-300 flex items-center gap-1.5 shadow-2xs"
+              >
+                <Scale className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Demographic Audit & Formula</span>
+              </button>
+            )}
+
+            {onOpenParityShortlist && (
+              <button
+                type="button"
+                onClick={onOpenParityShortlist}
+                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-bold text-xs transition cursor-pointer flex items-center gap-1.5 shadow-xs"
+                title="Curate top performers matching target gender ratio"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                <span>Shortlist by Gender Ratio</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -304,11 +346,8 @@ export const TopPerformersShowcase: React.FC<TopPerformersShowcaseProps> = ({
             {(() => {
               const diff = Math.abs(analytics.femalePct - analytics.malePct);
               const isBalanced = diff <= 20; // 40:60 to 60:40 range
-              const statusLabel = isBalanced
-                ? `Diversity Parity: Balanced (${analytics.femalePct}:${analytics.malePct} Ratio)`
-                : analytics.femalePct > analytics.malePct
-                ? `Diversity Status: Female-Led (${analytics.femalePct}:${analytics.malePct} Ratio)`
-                : `Diversity Status: Male-Led (${analytics.femalePct}:${analytics.malePct} Ratio)`;
+              const targetGoal = currentUser?.diversityGoal || '~50:50';
+              const statusLabel = `Intake: ${analytics.femalePct}% ♀ : ${analytics.malePct}% ♂ (Target: ${targetGoal})`;
 
               return (
                 <span className={`font-bold px-2.5 py-0.5 rounded border text-[11px] font-mono ${

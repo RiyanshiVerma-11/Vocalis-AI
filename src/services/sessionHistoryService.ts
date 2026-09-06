@@ -371,6 +371,9 @@ export const sessionHistoryService = {
     const key = getStorageKey(userId);
     try {
       localStorage.setItem(key, JSON.stringify(sessions));
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('vocalis_sessions_updated', { detail: { count: sessions.length } }));
+      }
     } catch (e) {
       console.warn('[SessionHistoryService] Failed to write storage:', e);
     }

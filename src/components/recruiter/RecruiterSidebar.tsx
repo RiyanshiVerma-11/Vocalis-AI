@@ -12,6 +12,8 @@ import {
   Sliders,
   TrendingUp,
   Briefcase,
+  Scale,
+  Sparkles,
 } from 'lucide-react';
 import { UserSession } from '../../types';
 
@@ -23,7 +25,13 @@ export interface RecruiterSidebarProps {
   activeTab: 'analytics' | 'candidates' | 'requisitions';
   onSelectTab: (tab: 'analytics' | 'candidates' | 'requisitions') => void;
   candidateCount?: number;
+  femalePct?: number;
+  malePct?: number;
+  femaleCount?: number;
+  maleCount?: number;
   onOpenResumeDrawer?: () => void;
+  onOpenDemographicAudit?: () => void;
+  onOpenParityShortlist?: () => void;
 }
 
 export const RecruiterSidebar: React.FC<RecruiterSidebarProps> = ({
@@ -33,8 +41,14 @@ export const RecruiterSidebar: React.FC<RecruiterSidebarProps> = ({
   onLogout,
   activeTab,
   onSelectTab,
-  candidateCount = 18,
+  candidateCount = 24,
+  femalePct = 67,
+  malePct = 33,
+  femaleCount = 16,
+  maleCount = 8,
   onOpenResumeDrawer,
+  onOpenDemographicAudit,
+  onOpenParityShortlist,
 }) => {
   const userInitials = (
     currentUser?.avatarInitials ||
@@ -121,6 +135,28 @@ export const RecruiterSidebar: React.FC<RecruiterSidebarProps> = ({
 
         <div className="w-7 h-px bg-slate-800" />
 
+        {onOpenDemographicAudit && (
+          <button
+            type="button"
+            onClick={onOpenDemographicAudit}
+            className="w-9 h-9 rounded-xl bg-slate-800/50 hover:bg-slate-800 text-indigo-400 hover:text-indigo-300 flex items-center justify-center transition cursor-pointer border border-indigo-500/30"
+            title="Inspect Demographic Parity Audit"
+          >
+            <Scale className="w-4 h-4" />
+          </button>
+        )}
+
+        {onOpenParityShortlist && (
+          <button
+            type="button"
+            onClick={onOpenParityShortlist}
+            className="w-9 h-9 rounded-xl bg-slate-800/50 hover:bg-slate-800 text-pink-400 hover:text-pink-300 flex items-center justify-center transition cursor-pointer border border-pink-500/30"
+            title="Shortlist by Gender Ratio"
+          >
+            <Sparkles className="w-4 h-4" />
+          </button>
+        )}
+
         {onOpenResumeDrawer && (
           <button
             type="button"
@@ -194,6 +230,15 @@ export const RecruiterSidebar: React.FC<RecruiterSidebarProps> = ({
                 </span>
               </div>
               <p className="text-[9px] text-slate-400 truncate">{userEmail}</p>
+              {currentUser?.companyName && (
+                <div className="flex items-center gap-1 text-[9px] text-indigo-300 font-medium truncate pt-0.5">
+                  <Building2 className="w-2.5 h-2.5 text-indigo-400 shrink-0" />
+                  <span className="truncate">{currentUser.companyName}</span>
+                  {currentUser.companySize && (
+                    <span className="text-[8px] text-slate-500">({currentUser.companySize.split(' ')[0]})</span>
+                  )}
+                </div>
+              )}
             </div>
 
             {onLogout && (
@@ -304,9 +349,33 @@ export const RecruiterSidebar: React.FC<RecruiterSidebarProps> = ({
             </div>
             <div className="p-2 rounded-lg bg-slate-900/60 border border-slate-800/60">
               <span className="text-slate-500 text-[9px] block">Diversity Ratio</span>
-              <span className="font-mono font-bold text-pink-400 text-xs">72% Female</span>
+              <span className="font-mono font-bold text-pink-400 text-xs">
+                {femalePct}% ♀ · {malePct}% ♂
+              </span>
             </div>
           </div>
+
+          {onOpenDemographicAudit && (
+            <button
+              type="button"
+              onClick={onOpenDemographicAudit}
+              className="w-full py-1.5 px-2 rounded-lg bg-indigo-950/40 hover:bg-indigo-900/60 text-indigo-300 hover:text-white border border-indigo-500/30 transition text-[10px] font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+            >
+              <Scale className="w-3 h-3 text-indigo-400" />
+              <span>Inspect Demographic Audit</span>
+            </button>
+          )}
+
+          {onOpenParityShortlist && (
+            <button
+              type="button"
+              onClick={onOpenParityShortlist}
+              className="w-full py-1.5 px-2 rounded-lg bg-gradient-to-r from-pink-950/40 via-purple-950/30 to-sky-950/40 hover:from-pink-900/60 hover:to-sky-900/60 text-pink-300 hover:text-white border border-pink-500/30 transition text-[10px] font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+            >
+              <Sparkles className="w-3 h-3 text-amber-400" />
+              <span>Shortlist by Gender Ratio</span>
+            </button>
+          )}
         </div>
 
         {/* ── FOOTER ACTIONS ── */}

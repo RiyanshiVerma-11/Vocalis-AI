@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   BarChart3,
   Users,
@@ -21,6 +21,7 @@ import { RubricImporterModal } from '../RubricImporterModal';
 import { ENTERPRISE_RUBRIC_TEMPLATES } from '../../utils/rubricParser';
 import { sessionHistoryService } from '../../services/sessionHistoryService';
 import { DEMO_ENRICHED_CANDIDATES } from './demoCandidates';
+import { computeCohortAnalytics } from '../../services/recruiterPipelineService';
 import { RecruiterHeaderStats } from './RecruiterHeaderStats';
 import { RecruiterFilterSortToolbar } from './RecruiterFilterSortToolbar';
 import { StateProportionVisualizer } from './StateProportionVisualizer';
@@ -28,6 +29,8 @@ import { CandidatePipelineTable } from './CandidatePipelineTable';
 import { CandidateScorecardDrawer } from './CandidateScorecardDrawer';
 import { TopPerformersShowcase } from './TopPerformersShowcase';
 import { CommitteeRubricsManager } from './CommitteeRubricsManager';
+import { DemographicTransparencyModal } from './DemographicTransparencyModal';
+import { ParityShortlistModal } from './ParityShortlistModal';
 import { CustomCompanyRubric, DifficultyLevel } from '../../types';
 
 export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({
@@ -35,6 +38,13 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({
   onOpenResumeDrawer: _onOpenResumeDrawer,
   activeTab: controlledActiveTab,
   onTabChange,
+  currentUser,
+  onOpenDemographicAudit: externalOpenDemographicAudit,
+  onOpenParityShortlist: externalOpenParityShortlist,
+  isDemographicAuditOpen: externalIsDemographicAuditOpen,
+  onCloseDemographicAudit: externalOnCloseDemographicAudit,
+  isParityShortlistOpen: externalIsParityShortlistOpen,
+  onCloseParityShortlist: externalOnCloseParityShortlist,
 }) => {
   const [internalActiveTab, setInternalActiveTab] = useState<
     'analytics' | 'candidates' | 'requisitions'
@@ -47,6 +57,37 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({
     } else {
       setInternalActiveTab(tab);
     }
+  };
+
+  const [internalDemographicAuditOpen, setInternalDemographicAuditOpen] = useState(false);
+  const [internalParityShortlistOpen, setInternalParityShortlistOpen] = useState(false);
+
+  const isDemographicAuditOpen = externalIsDemographicAuditOpen !== undefined
+    ? externalIsDemographicAuditOpen
+    : internalDemographicAuditOpen;
+
+  const isParityShortlistOpen = externalIsParityShortlistOpen !== undefined
+    ? externalIsParityShortlistOpen
+    : internalParityShortlistOpen;
+
+  const handleOpenDemographicAudit = () => {
+    if (externalOpenDemographicAudit) externalOpenDemographicAudit();
+    setInternalDemographicAuditOpen(true);
+  };
+
+  const handleCloseDemographicAudit = () => {
+    if (externalOnCloseDemographicAudit) externalOnCloseDemographicAudit();
+    setInternalDemographicAuditOpen(false);
+  };
+
+  const handleOpenParityShortlist = () => {
+    if (externalOpenParityShortlist) externalOpenParityShortlist();
+    setInternalParityShortlistOpen(true);
+  };
+
+  const handleCloseParityShortlist = () => {
+    if (externalOnCloseParityShortlist) externalOnCloseParityShortlist();
+    setInternalParityShortlistOpen(false);
   };
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -124,6 +165,7 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({
             state: candState || 'Karnataka',
             country: candCountry,
             role: s.targetRole || 'Software Engineer',
+            targetRole: s.targetRole,
             yearsOfExperience: years,
             experienceTier: expTier,
             previousCompany: prevComp,
@@ -198,130 +240,12 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({
     return DEMO_ENRICHED_CANDIDATES;
   });
 
-  // Analytics computations
-  const analytics = useMemo(() => {
-    const total = candidatePipeline.length;
-    if (total === 0) {
-      return {
-        total: 0,
-        femaleCount: 0,
-        maleCount: 0,
-        femalePct: 0,
-        malePct: 0,
-        femaleAvgScore: 0,
-        maleAvgScore: 0,
-        overallAvgScore: 0,
-        topFemaleCandidate: null,
-        topMaleCandidate: null,
-        stateBreakdown: [],
-        strongHireCount: 0,
-        passRate: 0,
-      };
-    }
+  // Shortlist by Gender Ratio filter state directly in table toolbar
+  const [selectedRatioFilter, setSelectedRatioFilter] = useState<string>('all');
+  const [customFemaleRatio, setCustomFemaleRatio] = useState<number>(50);
+  const [cohortLimit, setCohortLimit] = useState<number>(10);
 
-    const females = candidatePipeline.filter((c) => c.gender === 'Female');
-    const males = candidatePipeline.filter((c) => c.gender === 'Male');
-
-    const femaleCount = females.length;
-    const maleCount = males.length;
-    const femalePct = Math.round((femaleCount / total) * 100);
-    const malePct = Math.round((maleCount / total) * 100);
-
-    const femaleAvgScore = females.length > 0 ? Math.round((females.reduce((acc, c) => acc + c.overallScore, 0) / females.length) * 10) / 10 : 0;
-    const maleAvgScore = males.length > 0 ? Math.round((males.reduce((acc, c) => acc + c.overallScore, 0) / males.length) * 10) / 10 : 0;
-    const overallAvgScore = Math.round((candidatePipeline.reduce((acc, c) => acc + c.overallScore, 0) / total) * 10) / 10;
-
-    const sortedFemales = [...females].sort((a, b) => b.overallScore - a.overallScore);
-    const sortedMales = [...males].sort((a, b) => b.overallScore - a.overallScore);
-
-    const topFemaleCandidate = sortedFemales[0] || null;
-    const topMaleCandidate = sortedMales[0] || null;
-
-    const stateMap = new Map<string, { state: string; count: number; totalScore: number; strongHires: number; topCandidate: EnrichedCandidate }>();
-
-    candidatePipeline.forEach((c) => {
-      const st = c.state || 'Other';
-      const existing = stateMap.get(st);
-      if (!existing) {
-        stateMap.set(st, {
-          state: st,
-          count: 1,
-          totalScore: c.overallScore,
-          strongHires: c.recommendation === 'Strong Hire' || c.recommendation === 'Hire' ? 1 : 0,
-          topCandidate: c,
-        });
-      } else {
-        existing.count += 1;
-        existing.totalScore += c.overallScore;
-        if (c.recommendation === 'Strong Hire' || c.recommendation === 'Hire') existing.strongHires += 1;
-        if (c.overallScore > existing.topCandidate.overallScore) existing.topCandidate = c;
-      }
-    });
-
-    const stateBreakdown = Array.from(stateMap.values())
-      .map((item) => ({
-        state: item.state,
-        count: item.count,
-        percentage: Math.round((item.count / total) * 100),
-        avgScore: Math.round((item.totalScore / item.count) * 10) / 10,
-        passRate: Math.round((item.strongHires / item.count) * 100),
-        topCandidateName: item.topCandidate.name,
-        topCandidateScore: item.topCandidate.overallScore,
-      }))
-      .sort((a, b) => b.count - a.count);
-
-    const strongHires = candidatePipeline.filter((c) => c.recommendation === 'Strong Hire' || c.recommendation === 'Hire').length;
-    const passRate = Math.round((strongHires / total) * 100);
-
-    const tierOrder: ExperienceTier[] = ['fresher', 'beginner', 'mid', 'senior', 'expert'];
-    const experienceBreakdown: ExperienceBreakdownItem[] = tierOrder.map((tierKey) => {
-      const info = EXPERIENCE_TIERS[tierKey];
-      const matching = candidatePipeline.filter((c) => {
-        const cTier = c.experienceTier || getExperienceTier(c.yearsOfExperience ?? 0);
-        return cTier === tierKey;
-      });
-      const count = matching.length;
-      const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
-      const avgScore =
-        count > 0 ? Math.round((matching.reduce((acc, c) => acc + c.overallScore, 0) / count) * 10) / 10 : 0;
-      const hires = matching.filter((c) => c.recommendation === 'Strong Hire' || c.recommendation === 'Hire').length;
-      const tierPassRate = count > 0 ? Math.round((hires / count) * 100) : 0;
-      const sortedMatching = [...matching].sort((a, b) => b.overallScore - a.overallScore);
-
-      return {
-        ...info,
-        count,
-        percentage,
-        avgScore,
-        passRate: tierPassRate,
-        topCandidateName: sortedMatching[0]?.name,
-        topCandidateScore: sortedMatching[0]?.overallScore,
-      };
-    });
-
-    const experienceCounts: Record<string, number> = {};
-    experienceBreakdown.forEach((b) => {
-      experienceCounts[b.tier] = b.count;
-    });
-
-    return {
-      total,
-      femaleCount,
-      maleCount,
-      femalePct,
-      malePct,
-      femaleAvgScore,
-      maleAvgScore,
-      overallAvgScore,
-      topFemaleCandidate,
-      topMaleCandidate,
-      stateBreakdown,
-      experienceBreakdown,
-      experienceCounts,
-      strongHireCount: strongHires,
-      passRate,
-    };
-  }, [candidatePipeline]);
+  const analytics = useMemo(() => computeCohortAnalytics(candidatePipeline), [candidatePipeline]);
 
   // Filtered and sorted candidates for table
   const filteredCandidates = useMemo(() => {
@@ -362,6 +286,26 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({
       return matchesSearch && matchesGender && matchesState && matchesRec && matchesDateRange && matchesExperience;
     });
 
+    // If Shortlist by Gender Ratio is active, curate top performers matching the ratio
+    if (selectedRatioFilter !== 'all') {
+      const femaleRatio = customFemaleRatio;
+      const targetFemaleCount = Math.round((cohortLimit * femaleRatio) / 100);
+      const targetMaleCount = Math.max(0, cohortLimit - targetFemaleCount);
+
+      const meritSort = (a: EnrichedCandidate, b: EnrichedCandidate) => {
+        if (b.overallScore !== a.overallScore) return b.overallScore - a.overallScore;
+        const bTech = b.technicalScore ?? 0;
+        const aTech = a.technicalScore ?? 0;
+        if (bTech !== aTech) return bTech - aTech;
+        return (b.timestamp ?? 0) - (a.timestamp ?? 0);
+      };
+
+      const females = list.filter((c) => c.gender === 'Female').sort(meritSort).slice(0, targetFemaleCount);
+      const males = list.filter((c) => c.gender === 'Male').sort(meritSort).slice(0, targetMaleCount);
+
+      return [...females, ...males].sort(meritSort);
+    }
+
     return list.sort((a, b) => {
       if (sortBy === 'date-desc') {
         return getCandidateTimestamp(b) - getCandidateTimestamp(a);
@@ -388,6 +332,9 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({
     selectedRecommendationFilter,
     selectedDateRangeFilter,
     selectedExperienceFilter,
+    selectedRatioFilter,
+    customFemaleRatio,
+    cohortLimit,
     sortBy,
   ]);
 
@@ -428,6 +375,7 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({
     selectedRecommendationFilter !== 'all' ||
     selectedDateRangeFilter !== 'all' ||
     selectedExperienceFilter !== 'all' ||
+    selectedRatioFilter !== 'all' ||
     Boolean(searchQuery) ||
     sortBy !== 'date-desc';
 
@@ -437,6 +385,7 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({
     setSelectedRecommendationFilter('all');
     setSelectedDateRangeFilter('all');
     setSelectedExperienceFilter('all');
+    setSelectedRatioFilter('all');
     setSearchQuery('');
     setSortBy('date-desc');
   };
@@ -493,13 +442,18 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({
         totalEvaluated={analytics.total}
         femalePct={analytics.femalePct}
         malePct={analytics.malePct}
+        femaleCount={analytics.femaleCount}
+        maleCount={analytics.maleCount}
         overallAvgScore={analytics.overallAvgScore}
         passRate={analytics.passRate}
         strongHireCount={analytics.strongHireCount}
+        currentUser={currentUser}
         onOpenRubricModal={() => {
           setSelectedEditingRubric(null);
           setIsRubricModalOpen(true);
         }}
+        onOpenDemographicAudit={handleOpenDemographicAudit}
+        onOpenParityShortlist={handleOpenParityShortlist}
       />
 
       {/* ── SECTION HEADER & SEARCH (Tab navigation is handled directly in sidebar to avoid duplicate controls) ── */}
@@ -564,6 +518,9 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({
           hoveredTier={hoveredTier}
           onHoverTier={setHoveredTier}
           selectedExperienceFilter={selectedExperienceFilter}
+          currentUser={currentUser}
+          onOpenDemographicAudit={handleOpenDemographicAudit}
+          onOpenParityShortlist={handleOpenParityShortlist}
         />
       )}
 
@@ -594,6 +551,14 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({
             onToggleStateCharts={() => setShowStateCharts((prev) => !prev)}
             onClearFilters={handleClearFilters}
             hasActiveFilters={hasActiveFilters}
+            onOpenDemographicAudit={handleOpenDemographicAudit}
+            onOpenParityShortlist={handleOpenParityShortlist}
+            selectedRatioFilter={selectedRatioFilter}
+            onRatioFilterChange={setSelectedRatioFilter}
+            customFemaleRatio={customFemaleRatio}
+            onCustomFemaleRatioChange={setCustomFemaleRatio}
+            cohortLimit={cohortLimit}
+            onCohortLimitChange={setCohortLimit}
           />
 
           {/* Interactive State Proportion Chart */}
@@ -622,6 +587,9 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({
             onSelectScorecardCandidate={setSelectedScorecardCandidate}
             onClearFilters={handleClearFilters}
             onExportCSV={handleExportCSV}
+            isRatioFilterActive={selectedRatioFilter !== 'all'}
+            ratioFilterLabel={`${customFemaleRatio}% ♀ : ${100 - customFemaleRatio}% ♂ (Top ${cohortLimit})`}
+            onResetRatioFilter={() => setSelectedRatioFilter('all')}
           />
         </div>
       )}
@@ -631,6 +599,7 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({
       {activeTab === 'requisitions' && (
         <CommitteeRubricsManager
           customRubrics={customRubrics}
+          currentUser={currentUser}
           onOpenRubricModal={(rubric) => {
             setSelectedEditingRubric(rubric || null);
             setIsRubricModalOpen(true);
@@ -666,6 +635,26 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({
           initialRubric={selectedEditingRubric || undefined}
         />
       )}
+
+      {/* ── DEMOGRAPHIC TRANSPARENCY & PARITY AUDIT MODAL ── */}
+      <DemographicTransparencyModal
+        isOpen={isDemographicAuditOpen}
+        onClose={handleCloseDemographicAudit}
+        analytics={analytics}
+        candidates={candidatePipeline}
+        currentUser={currentUser}
+        onSelectCandidate={(cand) => setSelectedScorecardCandidate(cand)}
+        onOpenParityShortlist={handleOpenParityShortlist}
+      />
+
+      {/* ── SIDE-BY-SIDE TARGET PARITY SHORTLIST MODAL ── */}
+      <ParityShortlistModal
+        isOpen={isParityShortlistOpen}
+        onClose={handleCloseParityShortlist}
+        candidates={candidatePipeline}
+        currentUser={currentUser}
+        onSelectCandidate={(cand) => setSelectedScorecardCandidate(cand)}
+      />
     </div>
   );
 };

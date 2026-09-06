@@ -1,4 +1,4 @@
-import { Interviewer, InterviewScenario, CandidateResume, DifficultyLevel, CustomCompanyRubric } from '../../types';
+import { Interviewer, InterviewScenario, CandidateResume, DifficultyLevel, CustomCompanyRubric, UserSession } from '../../types';
 
 export interface RecruiterDashboardProps {
   onStartInterview: (config: {
@@ -13,6 +13,13 @@ export interface RecruiterDashboardProps {
   onOpenResumeDrawer: () => void;
   activeTab?: 'analytics' | 'candidates' | 'requisitions';
   onTabChange?: (tab: 'analytics' | 'candidates' | 'requisitions') => void;
+  currentUser?: UserSession | null;
+  onOpenDemographicAudit?: () => void;
+  onOpenParityShortlist?: () => void;
+  isDemographicAuditOpen?: boolean;
+  onCloseDemographicAudit?: () => void;
+  isParityShortlistOpen?: boolean;
+  onCloseParityShortlist?: () => void;
 }
 
 export interface EnrichedCandidate {
@@ -23,6 +30,7 @@ export interface EnrichedCandidate {
   state: string;
   country: string;
   role: string;
+  targetRole?: string;
   date: string;
   timestamp?: number;
   overallScore: number;

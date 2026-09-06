@@ -9,6 +9,8 @@ import {
   Clock,
   ArrowUpDown,
   GraduationCap,
+  Scale,
+  Sparkles,
 } from 'lucide-react';
 
 interface RecruiterFilterSortToolbarProps {
@@ -34,6 +36,14 @@ interface RecruiterFilterSortToolbarProps {
   onToggleStateCharts: () => void;
   onClearFilters: () => void;
   hasActiveFilters: boolean;
+  onOpenParityShortlist?: () => void;
+  onOpenDemographicAudit?: () => void;
+  selectedRatioFilter?: string;
+  onRatioFilterChange?: (ratio: string) => void;
+  customFemaleRatio?: number;
+  onCustomFemaleRatioChange?: (female: number) => void;
+  cohortLimit?: number;
+  onCohortLimitChange?: (limit: number) => void;
 }
 
 export const RecruiterFilterSortToolbar: React.FC<RecruiterFilterSortToolbarProps> = ({
@@ -59,6 +69,14 @@ export const RecruiterFilterSortToolbar: React.FC<RecruiterFilterSortToolbarProp
   onToggleStateCharts,
   onClearFilters,
   hasActiveFilters,
+  onOpenParityShortlist,
+  onOpenDemographicAudit,
+  selectedRatioFilter = 'all',
+  onRatioFilterChange,
+  customFemaleRatio = 50,
+  onCustomFemaleRatioChange,
+  cohortLimit = 10,
+  onCohortLimitChange,
 }) => {
   return (
     <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
@@ -77,9 +95,41 @@ export const RecruiterFilterSortToolbar: React.FC<RecruiterFilterSortToolbarProp
               Filtered
             </span>
           )}
+          {selectedRatioFilter !== 'all' && (
+            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-gradient-to-r from-pink-500/15 to-purple-500/15 text-purple-700 border border-purple-300 flex items-center gap-1 font-mono">
+              <Sparkles className="w-3 h-3 text-pink-500" />
+              <span>Ratio Active: {customFemaleRatio}% ♀ : {100 - customFemaleRatio}% ♂ (Top {cohortLimit})</span>
+            </span>
+          )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Smart Shortlist by Gender Ratio Button */}
+          {onOpenParityShortlist && (
+            <button
+              type="button"
+              onClick={onOpenParityShortlist}
+              className="text-[11px] font-bold px-2.5 py-1 rounded-lg border transition cursor-pointer flex items-center gap-1.5 bg-gradient-to-r from-pink-50 to-purple-50 hover:from-pink-100 hover:to-purple-100 text-purple-700 border-purple-200 shadow-2xs"
+              title="Open full Side-by-Side Shortlist by Gender Ratio modal"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-pink-500" />
+              <span>Shortlist by Gender Ratio</span>
+            </button>
+          )}
+
+          {/* Demographic Parity Audit Button */}
+          {onOpenDemographicAudit && (
+            <button
+              type="button"
+              onClick={onOpenDemographicAudit}
+              className="text-[11px] font-bold px-2.5 py-1 rounded-lg border transition cursor-pointer flex items-center gap-1.5 bg-slate-50 text-slate-700 hover:bg-slate-100 border-slate-200"
+              title="Inspect Demographic Audit & Calculation"
+            >
+              <Scale className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Demographic Audit</span>
+            </button>
+          )}
+
           {/* State Proportion Chart Quick Toggle */}
           <button
             type="button"
@@ -236,6 +286,113 @@ export const RecruiterFilterSortToolbar: React.FC<RecruiterFilterSortToolbarProp
               <option value="name-asc">Name (A-Z)</option>
             </select>
             <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
+        </div>
+
+        {/* 7. Shortlist by Gender Ratio Filter (Requested right where state/gender filters are) */}
+        <div className="space-y-1 col-span-2 sm:col-span-3 lg:col-span-6 bg-gradient-to-r from-pink-50/60 via-indigo-50/30 to-sky-50/60 p-2.5 rounded-xl border border-indigo-200/80 shadow-2xs">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <label className="text-[10px] font-black text-indigo-900 uppercase tracking-wider flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-pink-500" />
+                <span>Shortlist by Gender Ratio (Meritocracy Filter):</span>
+              </label>
+              <span className="text-[10px] text-slate-500">
+                Filters & ranks top performers side-by-side matching chosen ratio
+              </span>
+            </div>
+
+            {selectedRatioFilter !== 'all' && (
+              <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-indigo-600 text-white font-mono shadow-2xs">
+                Active Ratio: {customFemaleRatio}% ♀ : {100 - customFemaleRatio}% ♂
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            {/* Target Ratio Dropdown */}
+            <div className="relative min-w-[160px] sm:min-w-[200px]">
+              <select
+                value={selectedRatioFilter}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  onRatioFilterChange && onRatioFilterChange(val);
+                  if (val === '50-50') onCustomFemaleRatioChange && onCustomFemaleRatioChange(50);
+                  if (val === '60-40') onCustomFemaleRatioChange && onCustomFemaleRatioChange(60);
+                  if (val === '70-30') onCustomFemaleRatioChange && onCustomFemaleRatioChange(70);
+                  if (val === '45-55') onCustomFemaleRatioChange && onCustomFemaleRatioChange(45);
+                  if (val === '10-90') onCustomFemaleRatioChange && onCustomFemaleRatioChange(10);
+                  if (val === '20-80') onCustomFemaleRatioChange && onCustomFemaleRatioChange(20);
+                  if (val === '30-70') onCustomFemaleRatioChange && onCustomFemaleRatioChange(30);
+                }}
+                className="w-full appearance-none bg-white border border-indigo-300 hover:border-indigo-500 rounded-lg px-3 py-1.5 pr-7 text-xs font-bold text-indigo-950 focus:border-indigo-600 outline-none cursor-pointer shadow-2xs"
+              >
+                <option value="all">Off (Show All Pipeline Candidates)</option>
+                <option value="50-50">50:50 Parity (50% ♀ : 50% ♂)</option>
+                <option value="60-40">60:40 Focus (60% ♀ : 40% ♂)</option>
+                <option value="70-30">70:30 Women (70% ♀ : 30% ♂)</option>
+                <option value="45-55">45:55 Balanced (45% ♀ : 55% ♂)</option>
+                <option value="10-90">10:90 Tech Pipeline (10% ♀ : 90% ♂)</option>
+                <option value="20-80">20:80 Tech Intake (20% ♀ : 80% ♂)</option>
+                <option value="30-70">30:70 Engineering (30% ♀ : 70% ♂)</option>
+                <option value="custom">Custom Ratio (Editable Input Below)...</option>
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+
+            {/* Editable Input for Recruiter's exact criteria (e.g. 10 90, 15 85, etc.) */}
+            {selectedRatioFilter !== 'all' && (
+              <div className="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-lg border border-indigo-200 shadow-2xs">
+                <span className="text-[10px] font-bold text-slate-500">Edit Ratio:</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={customFemaleRatio}
+                  onChange={(e) => {
+                    const num = Math.min(100, Math.max(0, Number(e.target.value) || 0));
+                    onCustomFemaleRatioChange && onCustomFemaleRatioChange(num);
+                    if (onRatioFilterChange) onRatioFilterChange('custom');
+                  }}
+                  className="w-11 text-center font-black text-pink-600 text-xs font-mono bg-pink-50 border border-pink-300 rounded py-0.5 outline-none focus:ring-1 focus:ring-pink-500"
+                  title="Type any Female percentage (0-100)"
+                />
+                <span className="text-xs font-extrabold text-pink-500 font-mono">% ♀</span>
+                <span className="text-slate-400 font-bold">:</span>
+                <span className="w-11 text-center font-black text-sky-600 text-xs font-mono bg-sky-50 border border-sky-300 rounded py-0.5 select-none inline-block">
+                  {100 - customFemaleRatio}
+                </span>
+                <span className="text-xs font-extrabold text-sky-500 font-mono">% ♂</span>
+              </div>
+            )}
+
+            {/* Cohort Size Limit */}
+            {selectedRatioFilter !== 'all' && (
+              <div className="flex items-center gap-1 bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-2xs">
+                <span className="text-[10px] font-bold text-slate-500">Cohort Size:</span>
+                <select
+                  value={cohortLimit}
+                  onChange={(e) => onCohortLimitChange && onCohortLimitChange(Number(e.target.value))}
+                  className="bg-transparent text-xs font-black text-indigo-700 outline-none cursor-pointer"
+                >
+                  <option value={6}>Top 6 Performers</option>
+                  <option value={10}>Top 10 Performers</option>
+                  <option value={14}>Top 14 Performers</option>
+                  <option value={20}>Top 20 Performers</option>
+                </select>
+              </div>
+            )}
+
+            {/* Fast Reset button for Ratio Filter */}
+            {selectedRatioFilter !== 'all' && (
+              <button
+                type="button"
+                onClick={() => onRatioFilterChange && onRatioFilterChange('all')}
+                className="text-[10px] font-bold text-slate-500 hover:text-rose-600 px-2 py-1 rounded hover:bg-white transition cursor-pointer"
+              >
+                ✕ Reset Ratio
+              </button>
+            )}
           </div>
         </div>
       </div>

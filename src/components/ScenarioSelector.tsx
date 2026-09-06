@@ -68,6 +68,16 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
   const [panelStrictness, setPanelStrictness] = useState<'Supportive' | 'Balanced' | 'Strict' | 'Relentless Bar Raiser'>('Balanced');
   const [customTradeOffConstraints, setCustomTradeOffConstraints] = useState<string>('');
 
+  // Active hiring requisition from recruiter
+  const [activeReq] = useState<any>(() => {
+    try {
+      const saved = localStorage.getItem('vocalis_active_requisition');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
   // Collapsible dropdown map for scenario panel dynamics
   const [expandedDynamicsMap, setExpandedDynamicsMap] = useState<Record<string, boolean>>({});
 
@@ -75,6 +85,17 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
     e.stopPropagation();
     setExpandedDynamicsMap((prev) => ({ ...prev, [id]: !prev[id] }));
   };
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const applyParam = params.get('apply');
+      const roleParam = params.get('role');
+      if (applyParam && roleParam) {
+        setTargetRole(decodeURIComponent(roleParam));
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (currentCandidateResume) {
@@ -359,6 +380,62 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
           </div>
         </div>
       </div>
+
+      {/* ── FEATURED ACTIVE REQUISITION BANNER (When Hiring Team Requisition is Active) ── */}
+      {activeReq && activeReq.companyName && (
+        <div className="bg-gradient-to-r from-indigo-950 via-slate-900 to-purple-950 p-4 sm:p-5 rounded-2xl border border-indigo-500/40 shadow-xl text-white space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>Verified Requisition Open</span>
+                </span>
+                <span className="text-xs font-bold text-slate-300">
+                  {activeReq.companyName} {activeReq.companySize ? `• ${activeReq.companySize}` : ''}
+                </span>
+                {activeReq.industry && (
+                  <span className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                    {activeReq.industry}
+                  </span>
+                )}
+              </div>
+              <h3 className="text-base sm:text-lg font-black text-white">
+                Applying for: <span className="text-indigo-300">{activeReq.hiringRole || 'Senior Engineer'}</span>
+              </h3>
+              <div className="text-xs text-slate-300 flex items-center gap-3 flex-wrap">
+                <span>Required Experience: <strong className="text-white">{activeReq.experienceRequired || '3+ Years'}</strong></span>
+                <span className="text-slate-500">•</span>
+                <span>CTC Budget: <strong className="text-emerald-400 font-mono">{activeReq.salaryBudget || 'Competitive'}</strong></span>
+                <span className="text-slate-500">•</span>
+                <span>Inclusion Bar: <strong className="text-pink-300">{activeReq.diversityGoal || 'Balanced (50:50)'}</strong></span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setTargetRole(activeReq.hiringRole || 'Senior Engineer');
+                if (activeReq.experienceRequired?.includes('Staff') || activeReq.experienceRequired?.includes('8+')) {
+                  setSelectedDifficulty('Staff/Principal');
+                } else if (activeReq.experienceRequired?.includes('Senior') || activeReq.experienceRequired?.includes('5-8')) {
+                  setSelectedDifficulty('Senior');
+                } else {
+                  setSelectedDifficulty('Intermediate');
+                }
+                const launchBtn = document.getElementById('step3-launch-section');
+                if (launchBtn) {
+                  launchBtn.scrollIntoView({ behavior: 'smooth' });
+                }
+              }}
+              className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs shadow-md transition flex items-center justify-center gap-2 cursor-pointer shrink-0"
+            >
+              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              <span>Calibrate Voice Interview for this JD →</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* STEP 1: Submit & Parse Resume */}
       <div id="step1-resume-section" className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs space-y-3">

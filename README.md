@@ -127,45 +127,115 @@ Vocalis AI implements all 11 core requirements specified in the **EchoSphere PS1
 
 ## 🏗️ System Architecture
 
-### High-Level Component Architecture
+### 1. High-Level Dual-Workspace Component Architecture
 
 ```mermaid
 graph TD
-    subgraph Client ["Client Layer (Browser / PWA)"]
-        UI["React 19 + Tailwind v4 UI"]
-        RTC_Client["Agora RTC SDK Client Engine"]
-        VAD_Engine["Web Audio VAD & Volume Analyzer"]
-        Store["Local State & Session Storage"]
+    subgraph Client ["Client Presentation & State Layer (Browser / PWA)"]
+        subgraph CandidateStudio ["Candidate Practice Studio"]
+            Stage["InterviewerStage & TalkingFaceAvatar"]
+            DiffChart["DifficultyChart (SVG Sparkline)"]
+            TranscriptFeed["TranscriptView & Live Alerts"]
+            VoiceCtrl["VoiceController (VAD & Mic Engine)"]
+            Whiteboard["SystemDesignWhiteboardModal (Live Sync)"]
+            ScorecardModal["FinalAssessmentModal (Quote Citations)"]
+        end
+
+        subgraph RecruiterHub ["Recruiter Talent Intelligence Hub"]
+            HeaderStats["RecruiterHeaderStats (KPIs, Pass Rate)"]
+            Showcase["TopPerformersShowcase (Female/Male)"]
+            StateVis["StateProportionVisualizer (Origin Chart)"]
+            TierVis["ExperienceRatioVisualizer (5-Tier Ratio)"]
+            Table["CandidatePipelineTable (Sort, Filter, CSV)"]
+            Drawer["CandidateScorecardDrawer (360° Review & Radar)"]
+            RubricsMgr["CommitteeRubricsManager (FAANG/L5/L6)"]
+            DemoModal["DemographicTransparencyModal (Audit Report)"]
+            ParityModal["ParityShortlistModal (Merit+Parity)"]
+        end
+
+        subgraph ClientServices ["Client Services & Storage"]
+            RTC_Engine["agoraVoiceEngine.ts (Agora RTC SDK NG)"]
+            PipelineService["recruiterPipelineService.ts (Cohort Analytics)"]
+            SessionHistory["sessionHistoryService.ts (Persistence)"]
+            ApiClient["apiService.ts (REST Client)"]
+        end
     end
 
-    subgraph Transport ["Media & Signal Transport"]
-        Agora_Cloud["Agora SD-RTN™ Media Cloud"]
-        REST_API["Express Node.js Server (Port 3000)"]
+    subgraph MediaTransport ["Real-Time Media Transport (Agora SD-RTN™)"]
+        Agora_Cloud["Agora SD-RTN™ Global Edge Network"]
+        AgoraAgentCloud["Agora Conversational AI Cloud Engine (Area.US)"]
     end
 
-    subgraph Intelligence ["AI Intelligence Layer"]
-        Gemini["Google Gemini 2.5 Flash Engine"]
+    subgraph BackendServer ["Server Layer (Express Node.js Port 3000 / Render)"]
+        AgoraAgentsSDK["agora-agents v2.7.0 SDK Orchestrator"]
+        DeliberationRouter["Turn Deliberation Engine (/api/interview/turn)"]
+        ScorecardEngine["Quote-Backed Scorecard Generator (/api/interview/final-assessment)"]
+        AuthSystem["Nodemailer SMTP OTP & JWT Session Store (.vocalis_users.json)"]
+    end
+
+    subgraph AICloud ["AI Intelligence & Voice Models"]
+        Gemini["Google Gemini 2.5 Flash (Deliberation, Depth & Quotes)"]
         Groq["Groq Qwen 3.8 27B / Compound Mini (Sub-100ms Inference)"]
-        Parser["PDF & Text Resume Parser Engine"]
-        ScorecardEngine["Quote-Backed Scorecard Generator"]
+        DeepgramNova["Deepgram Nova-3 ASR (Speech-to-Text via Agora)"]
+        MiniMaxTTS["MiniMax Speech-2.6-Turbo TTS (Voice via Agora)"]
     end
 
-    UI <--> Store
-    UI <--> VAD_Engine
-    VAD_Engine -->|Audio Stream| RTC_Client
-    RTC_Client <-->|Opus WebRTC Tracks| Agora_Cloud
+    VoiceCtrl <--> RTC_Engine
+    RTC_Engine <-->|WebRTC Opus Audio| Agora_Cloud
+    CandidateStudio <--> SessionHistory
+    SessionHistory --> PipelineService
+    PipelineService <--> RecruiterHub
     
-    UI <-->|REST / JSON| REST_API
-    REST_API <-->|Token Request| Agora_Cloud
-    REST_API <-->|Deliberation Prompt| Gemini
-    REST_API <-->|Fast Probes| Groq
-    REST_API --> Parser
-    REST_API --> ScorecardEngine
+    CandidateStudio <--> ApiClient
+    RecruiterHub <--> ApiClient
+    ApiClient <--> BackendServer
+
+    AgoraAgentsSDK <--> AgoraAgentCloud
+    AgoraAgentCloud <--> DeepgramNova
+    AgoraAgentCloud <--> MiniMaxTTS
+    
+    DeliberationRouter <--> Gemini
+    DeliberationRouter <--> Groq
+    Whiteboard -.->|Architecture Canvas Sync| DeliberationRouter
+    ScorecardEngine <--> Gemini
+    ScorecardModal <--> ScorecardEngine
 ```
 
 ---
 
-### Sub-100ms VAD Barge-In & Deliberation Sequence
+### 2. Agora Conversational AI Cloud Pipeline (`agora-agents` v2.7.0)
+
+```mermaid
+flowchart LR
+    subgraph Candidate ["Candidate Browser"]
+        Mic["🎤 Candidate Mic"]
+        Speaker["🔊 Candidate Speaker"]
+    end
+
+    subgraph AgoraCloud ["Agora SD-RTN™ Cloud AI Pipeline (agora-agents v2.7.0)"]
+        direction TB
+        ASR["<b>Deepgram Nova-3 ASR</b><br/><i>Cloud Speech Recognition</i>"]
+        LLM["<b>Groq Qwen 3.8 27B / Webhook</b><br/><i>Sub-100ms Adaptive Reasoning</i>"]
+        TTS["<b>MiniMax Speech-2.6-Turbo</b><br/><i>Ultra-Realistic Voice Synthesis</i>"]
+        
+        ASR -->|Live Speech Stream| LLM
+        LLM -->|Streamed Response Text| TTS
+    end
+
+    subgraph AppServer ["Express Server Orchestrator"]
+        AgentSession["<b>AgentSession Controller</b><br/><code>startAgent()</code> · <code>session.say()</code> · <code>stopAgent()</code>"]
+        SharedMemory["<b>Shared Committee Context</b><br/>Resume · Whiteboard · Turn History"]
+    end
+
+    Mic -->|WebRTC Opus Stream| ASR
+    TTS -->|Low-Latency Opus Stream| Speaker
+    AgentSession <-->|RPC Session Protocol| AgoraCloud
+    LLM <-->|Deliberation & Context| SharedMemory
+```
+
+---
+
+### 3. Sub-100ms VAD Barge-In & Deliberation Sequence
 
 ```mermaid
 sequenceDiagram
@@ -175,33 +245,42 @@ sequenceDiagram
     participant Agora as Agora RTC Engine
     participant App as React State Manager
     participant Server as Express Server
+    participant AgoraAgent as Agora Cloud Agent (agora-agents v2.7.0)
     participant LLM as Gemini / Groq LLM
+    participant Store as sessionHistoryService
 
-    Candidate->>VAD: Speaks response ("I implemented Redis write-through...")
+    Candidate->>VAD: Speaks response ("We enforced write-through caching with Redis...")
     VAD->>Agora: Stream Opus Audio Chunk
-    VAD->>App: Update Interim Transcript
+    VAD->>App: Update Interim Transcript & Waveform
     
-    alt Candidate Interrupts AI Playback
+    alt Candidate Interrupts AI Playback (Barge-In)
         Candidate->>VAD: Barge-in Speech Detected
         App->>Agora: agoraVoiceEngine.interrupt()
-        Agora->>Agora: Mute Active AI Audio Track immediately
+        Agora->>Agora: Mute Active AI Audio Track immediately (<100ms)
         App->>App: Reset AI Floor & Set Floor Status: Candidate Speaking
     end
 
     Candidate->>App: Silence Detected (Pause Tolerance Reached)
-    App->>Server: POST /api/interview/turn (Transcript + SharedContext)
+    App->>Server: POST /api/interview/turn (Transcript + SharedContext + Whiteboard)
     
-    Server->>LLM: Deliberation Prompt (Panel State + Resume Memory)
-    LLM-->>Server: JSON (TurnTakingReason, InternalThought, AnswerDepth, Flag)
+    Server->>LLM: Deliberation Prompt (Panel State + Resume Memory + Architecture Canvas)
+    LLM-->>Server: JSON (nextSpeakerId, turnTakingReason, internalThought, answerDepth, flags)
     
-    Server-->>App: Return Next Speaker + Text + Audio Signal
-    App->>Agora: Publish Next Speaker Audio Track
-    Agora-->>Candidate: Play AI Interviewer Voice Response
+    Server-->>App: Return Next Speaker + Text + Analysis
+    Server->>AgoraAgent: session.say(speechText)
+    AgoraAgent-->>Candidate: Play Next Interviewer Voice Response (MiniMax/ElevenLabs)
+    
+    opt Interview Concluded
+        App->>Server: POST /api/interview/final-assessment
+        Server->>LLM: Generate 360° Scorecard with Quote Citations
+        Server-->>App: Full Executive Scorecard
+        App->>Store: Persist Session into Recruiter Pipeline & History
+    end
 ```
 
 ---
 
-### Dynamic Calibration State Machine
+### 4. Dynamic Calibration State Machine
 
 ```mermaid
 flowchart TD
@@ -243,19 +322,78 @@ flowchart TD
 
 ---
 
-## 👥 The AI Interview Committee
-
-Vocalis AI deploys a balanced, 5-persona cross-functional panel. Each persona maintains a distinct voice profile, focus area, and evaluation bias:
+### 5. Recruiter Hiring Intelligence & Merit-Plus-Parity Pipeline
 
 ```mermaid
-graph LR
-    subgraph Panel ["Vocalis AI Interview Committee"]
-        Rohan["Rohan Sharma<br/><b>Technical Architect</b><br/><i>Systems, Idempotency & Scale</i>"]
-        Priya["Priya Mehta<br/><b>Principal PM</b><br/><i>UX, ROI & Conversion Impact</i>"]
-        Vikram["Vikram Malhotra<br/><b>VP of Engineering</b><br/><i>Delivery, Velocity & Debt</i>"]
-        Neha["Neha Kapoor<br/><b>Enterprise Director</b><br/><i>SLAs, Zero-Downtime & Security</i>"]
-        Meera["Dr. Meera Rao<br/><b>Org Psychologist</b><br/><i>STAR EQ, Leadership & Culture</i>"]
+flowchart TD
+    FinishInterview([★ Candidate Interview Finished]) --> GenScorecard["Generate 360° Executive Scorecard<br/><i>Competency Radar & Verbatim Quote Citations</i>"]
+    GenScorecard --> LocalPersist["sessionHistoryService<br/><i>Persist Real Evaluation to Pipeline Store</i>"]
+
+    subgraph RecruiterEngine ["Recruiter Hiring Intelligence Engine (recruiterPipelineService)"]
+        LocalPersist --> Aggregator["Cohort Analytics Aggregator<br/><i>Pass Rate, Avg Score, Tier Distribution, Gender Ratios</i>"]
+        
+        subgraph View1 ["Tab 1: Analytics & Demographics"]
+            Aggregator --> KpiBanner["RecruiterHeaderStats (Overall KPIs & Org Context)"]
+            Aggregator --> TopCards["TopPerformersShowcase (Top ♀ & ♂ Profiles)"]
+            Aggregator --> StateChart["StateProportionVisualizer (Origin Breakdown)"]
+            Aggregator --> TierChart["ExperienceRatioVisualizer (5 Experience Tiers)"]
+        end
+
+        subgraph View2 ["Tab 2: Pipeline & Scorecards"]
+            Aggregator --> FilterBar["RecruiterFilterSortToolbar (Gender, Tier, State, Ratio)"]
+            FilterBar --> PipeTable["CandidatePipelineTable (Sortable Grid + CSV Export)"]
+            PipeTable --> Drawer360["CandidateScorecardDrawer (Q&A Review + Bar-Raiser)"]
+        end
+
+        subgraph View3 ["Tab 3: Rubrics & Requisitions"]
+            RubricsMgr["CommitteeRubricsManager (L5/L6, Bar Raiser Templates)"]
+            RubricModal["RubricImporterModal (AI JD Signal Extraction)"]
+            ApplyLink["Shareable Requisition Candidate Link"]
+        end
+
+        subgraph FairnessTools ["Fairness & Diversity Compliance"]
+            DemoAudit["DemographicTransparencyModal<br/><i>Cohort Gender Audit vs Diversity Goal Tracking</i>"]
+            ParityEngine["ParityShortlistModal<br/><i>Merit-Plus-Parity Algorithm (e.g. 50/50, 60/40 Top N)</i>"]
+        end
+
+        Aggregator --> DemoAudit
+        Aggregator --> ParityEngine
     end
+```
+
+---
+
+## 👥 The AI Interview Committee & Deliberation Bus
+
+Vocalis AI deploys a balanced, 5-persona cross-functional panel. Each persona maintains a distinct voice profile, focus area, and evaluation bias, interconnected through a shared deliberation bus:
+
+```mermaid
+graph TD
+    subgraph Committee ["The 5-Persona AI Interview Committee"]
+        Rohan["<b>Rohan Sharma</b><br/>Technical Architect<br/><i>Systems, Concurrency & Scale</i>"]
+        Priya["<b>Priya Mehta</b><br/>Principal PM<br/><i>UX, ROI & Conversion Impact</i>"]
+        Vikram["<b>Vikram Malhotra</b><br/>VP of Engineering<br/><i>Delivery, Velocity & Tech Debt</i>"]
+        Neha["<b>Neha Kapoor</b><br/>Enterprise Director<br/><i>SLAs, Security & Zero-Downtime</i>"]
+        Meera["<b>Dr. Meera Rao</b><br/>Org Psychologist<br/><i>STAR EQ, Leadership & Culture</i>"]
+    end
+
+    subgraph Bus ["Backstage Deliberation Bus & Shared Context"]
+        Context["<b>Shared Candidate Context</b><br/>Resume Memory · Whiteboard Sketch · Turn History · Difficulty Trajectory"]
+        Router{"<b>Turn-Taking Router</b><br/>LLM Deliberation Reason"}
+    end
+
+    Context --> Router
+    Router -->|Distributed Systems Depth| Rohan
+    Router -->|Challenging Business Trade-offs| Priya
+    Router -->|Pragmatic Delivery & Timelines| Vikram
+    Router -->|Enterprise Risk & Breaking Changes| Neha
+    Router -->|STAR Behavioral & Conflict Signals| Meera
+
+    Rohan -->|Flags & Observations| Context
+    Priya -->|Flags & Observations| Context
+    Vikram -->|Flags & Observations| Context
+    Neha -->|Flags & Observations| Context
+    Meera -->|Flags & Observations| Context
 ```
 
 | Interviewer Persona | Role | Focus Area | Probing Strategy |

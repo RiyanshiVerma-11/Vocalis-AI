@@ -1,6 +1,6 @@
-import React from 'react';
-import { Plus, Play } from 'lucide-react';
-import { CustomCompanyRubric, InterviewScenario, Interviewer, CandidateResume, DifficultyLevel } from '../../types';
+import React, { useState } from 'react';
+import { Plus, Play, Copy, Check, Sparkles, Building2, Briefcase } from 'lucide-react';
+import { CustomCompanyRubric, InterviewScenario, Interviewer, CandidateResume, DifficultyLevel, UserSession } from '../../types';
 import { INTERVIEW_SCENARIOS } from '../../data/scenarios';
 import { ALL_INTERVIEWERS } from '../../data/interviewers';
 import { createDefaultCandidateResume } from '../../data/resumes';
@@ -18,6 +18,7 @@ interface CommitteeRubricsManagerProps {
     candidateResume: CandidateResume;
     customRubric?: CustomCompanyRubric;
   }) => void;
+  currentUser?: UserSession | null;
 }
 
 export const CommitteeRubricsManager: React.FC<CommitteeRubricsManagerProps> = ({
@@ -25,9 +26,123 @@ export const CommitteeRubricsManager: React.FC<CommitteeRubricsManagerProps> = (
   onOpenRubricModal,
   onApplyCustomRubric,
   onStartInterview,
+  currentUser,
 }) => {
+  const [copiedLink, setCopiedLink] = useState(false);
+
   return (
     <div className="space-y-6">
+      {/* ── ACTIVE RECRUITER CUSTOM OPENING & SHAREABLE APPLY LINK ── */}
+      {(currentUser?.companyName || currentUser?.hiringRole) && (
+        <div className="p-5 rounded-2xl bg-gradient-to-br from-indigo-900 via-slate-900 to-slate-950 border border-indigo-500/40 shadow-xl text-white space-y-4 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-48 h-48 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none" />
+
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 flex items-center gap-1.5">
+                  <Sparkles className="w-3 h-3 text-indigo-400" />
+                  <span>Your Live Requisition</span>
+                </span>
+                {currentUser?.companySize && (
+                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700">
+                    {currentUser.companySize}
+                  </span>
+                )}
+                {currentUser?.industry && (
+                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-900/60 text-indigo-300 border border-indigo-700/60">
+                    {currentUser.industry}
+                  </span>
+                )}
+              </div>
+
+              <h2 className="text-xl font-black tracking-tight text-white flex items-center gap-2">
+                <span>{currentUser?.companyName}</span>
+                <span className="text-slate-500">—</span>
+                <span className="text-indigo-300">{currentUser?.hiringRole || 'Senior Staff Software Engineer'}</span>
+              </h2>
+
+              <div className="flex flex-wrap items-center gap-3 text-xs text-slate-300 pt-1">
+                <span>Experience Bar: <strong className="text-white">{currentUser?.experienceRequired || '5+ Years'}</strong></span>
+                <span className="text-slate-600">•</span>
+                <span>Budget / CTC: <strong className="text-emerald-400 font-mono">{currentUser?.salaryBudget || '₹25 - ₹45 LPA'}</strong></span>
+                <span className="text-slate-600">•</span>
+                <span>Inclusion Target: <strong className="text-pink-400">{currentUser?.diversityGoal || 'Balanced Pipeline (~50:50)'}</strong></span>
+              </div>
+            </div>
+
+            {/* Actions: Copy Link & Launch Round */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  const url = `${window.location.origin}/?apply=true&company=${encodeURIComponent(currentUser?.companyName || 'Company')}&role=${encodeURIComponent(currentUser?.hiringRole || 'Software Engineer')}`;
+                  navigator.clipboard?.writeText(url);
+                  setCopiedLink(true);
+                  setTimeout(() => setCopiedLink(false), 3000);
+                }}
+                className={`px-4 py-2.5 rounded-xl font-bold text-xs border transition flex items-center justify-center gap-2 cursor-pointer shadow-sm ${
+                  copiedLink
+                    ? 'bg-emerald-600 text-white border-emerald-500'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-100 border-slate-700 hover:border-slate-600'
+                }`}
+              >
+                {copiedLink ? (
+                  <>
+                    <Check className="w-4 h-4 text-emerald-300" />
+                    <span>Apply Link Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4 text-indigo-400" />
+                    <span>Copy Candidate Apply Link</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const roleName = currentUser?.hiringRole || 'Senior Platform Architect';
+                  onStartInterview({
+                    scenario: {
+                      ...INTERVIEW_SCENARIOS[0],
+                      id: `req-${currentUser?.companyName || 'custom'}-${Date.now()}`,
+                      title: `${currentUser?.companyName || 'Company'} - ${roleName}`,
+                      targetRole: roleName,
+                      context: `Candidate applying for ${roleName} at ${currentUser?.companyName || 'the hiring company'}. Budget: ${currentUser?.salaryBudget || 'Standard'}. Exp Bar: ${currentUser?.experienceRequired || '5+ Years'}.`,
+                      customConstraints: `Target Diversity: ${currentUser?.diversityGoal || 'Balanced'}. Assess technical depth, trade-offs, and communication.`,
+                    },
+                    activePanel: ALL_INTERVIEWERS.slice(0, 3),
+                    candidateName: 'Candidate',
+                    targetRole: roleName,
+                    initialDifficulty: (currentUser?.experienceRequired?.includes('Staff') || currentUser?.experienceRequired?.includes('8+')) ? 'Staff/Principal' : 'Senior',
+                    candidateResume: createDefaultCandidateResume('Candidate', roleName),
+                  });
+                }}
+                className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Play className="w-3.5 h-3.5 fill-current" />
+                <span>Simulate / Test Candidate Round</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Shareable Link Box */}
+          <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800/90 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-2 min-w-0 text-slate-400">
+              <span className="font-mono text-[10px] text-indigo-400 uppercase font-bold shrink-0">Direct Candidate URL:</span>
+              <span className="font-mono text-[11px] text-slate-300 truncate">
+                {window.location.origin}/?apply=true&company={encodeURIComponent(currentUser?.companyName || 'Org')}&role={encodeURIComponent(currentUser?.hiringRole || 'Role')}
+              </span>
+            </div>
+            <span className="text-[10px] text-emerald-400 font-semibold shrink-0">
+              Candidates who open this link take this exact customized interview.
+            </span>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <div>
           <h3 className="text-base font-extrabold text-slate-900">

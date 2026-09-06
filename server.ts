@@ -99,6 +99,14 @@ interface UserRecord {
   otpCode?: string;
   otpExpires?: number;
   createdAt: string;
+  // Recruiter fields
+  companyName?: string;
+  companySize?: string;
+  industry?: string;
+  hiringRole?: string;
+  experienceRequired?: string;
+  salaryBudget?: string;
+  diversityGoal?: string;
 }
 
 const USERS_FILE = path.join(process.cwd(), '.vocalis_users.json');
@@ -135,6 +143,13 @@ function loadUsersDb(): Map<string, UserRecord> {
       passwordHash: defaultDemoPassword,
       name: 'Neha Kapoor',
       role: 'recruiter',
+      companyName: 'Stripe Payments',
+      companySize: '1000+ (Enterprise)',
+      industry: 'Fintech & Cloud Platforms',
+      hiringRole: 'Senior Platform Architect',
+      experienceRequired: '5-8 Years (Senior)',
+      salaryBudget: '₹40 - ₹60 LPA',
+      diversityGoal: 'Balanced Pipeline (~50:50 Ratio)',
       isVerified: true,
       createdAt: new Date().toISOString(),
     });
@@ -243,7 +258,22 @@ function authenticateToken(req: express.Request, res: express.Response, next: ex
 // Auth API 1: Register User & Send SMTP Verification Email
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { email, password, name, role = 'candidate', city, state, country = 'India' } = req.body;
+    const {
+      email,
+      password,
+      name,
+      role = 'candidate',
+      city,
+      state,
+      country = 'India',
+      companyName,
+      companySize,
+      industry,
+      hiringRole,
+      experienceRequired,
+      salaryBudget,
+      diversityGoal,
+    } = req.body;
 
     if (!email || !password || !name) {
       return res.status(400).json({ error: 'Email, password, and name are required' });
@@ -273,6 +303,13 @@ app.post('/api/auth/register', async (req, res) => {
       state: cleanState,
       country: cleanCountry,
       location: computedLocation,
+      companyName: companyName ? String(companyName).trim() : undefined,
+      companySize: companySize ? String(companySize).trim() : undefined,
+      industry: industry ? String(industry).trim() : undefined,
+      hiringRole: hiringRole ? String(hiringRole).trim() : undefined,
+      experienceRequired: experienceRequired ? String(experienceRequired).trim() : undefined,
+      salaryBudget: salaryBudget ? String(salaryBudget).trim() : undefined,
+      diversityGoal: diversityGoal ? String(diversityGoal).trim() : undefined,
       isVerified: false,
       otpCode,
       otpExpires: Date.now() + 15 * 60 * 1000, // 15 mins
@@ -331,6 +368,13 @@ app.post('/api/auth/register', async (req, res) => {
         state: newUser.state,
         country: newUser.country,
         location: newUser.location,
+        companyName: newUser.companyName,
+        companySize: newUser.companySize,
+        industry: newUser.industry,
+        hiringRole: newUser.hiringRole,
+        experienceRequired: newUser.experienceRequired,
+        salaryBudget: newUser.salaryBudget,
+        diversityGoal: newUser.diversityGoal,
         isVerified: newUser.isVerified,
       },
       emailSent,
@@ -386,6 +430,13 @@ app.post('/api/auth/login', async (req, res) => {
         state: user.state,
         country: user.country,
         location: user.location,
+        companyName: user.companyName,
+        companySize: user.companySize,
+        industry: user.industry,
+        hiringRole: user.hiringRole,
+        experienceRequired: user.experienceRequired,
+        salaryBudget: user.salaryBudget,
+        diversityGoal: user.diversityGoal,
         isVerified: user.isVerified,
       },
     });
@@ -432,6 +483,13 @@ app.post('/api/auth/verify-otp', async (req, res) => {
         email: user.email,
         name: user.name,
         role: user.role,
+        companyName: user.companyName,
+        companySize: user.companySize,
+        industry: user.industry,
+        hiringRole: user.hiringRole,
+        experienceRequired: user.experienceRequired,
+        salaryBudget: user.salaryBudget,
+        diversityGoal: user.diversityGoal,
         isVerified: true,
       },
     });
@@ -557,6 +615,13 @@ app.post('/api/auth/login-with-otp', async (req, res) => {
         email: user.email,
         name: user.name,
         role: user.role,
+        companyName: user.companyName,
+        companySize: user.companySize,
+        industry: user.industry,
+        hiringRole: user.hiringRole,
+        experienceRequired: user.experienceRequired,
+        salaryBudget: user.salaryBudget,
+        diversityGoal: user.diversityGoal,
         isVerified: true,
       },
     });
@@ -587,6 +652,13 @@ app.get('/api/auth/me', (req, res) => {
         email: user.email,
         name: user.name,
         role: user.role,
+        companyName: user.companyName,
+        companySize: user.companySize,
+        industry: user.industry,
+        hiringRole: user.hiringRole,
+        experienceRequired: user.experienceRequired,
+        salaryBudget: user.salaryBudget,
+        diversityGoal: user.diversityGoal,
         isVerified: user.isVerified,
       },
     });

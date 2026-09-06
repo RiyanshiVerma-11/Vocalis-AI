@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Interviewer,
   TranscriptMessage,
@@ -42,6 +42,7 @@ import { ArrowLeft, Sparkles, ShieldCheck, FileText, Home, User, LogOut, LogIn, 
 import { PWAInstallPrompt } from './components/PWAInstallPrompt';
 import { ToastNotification, ToastMessage } from './components/ToastNotification';
 import { LaunchSessionModal } from './components/LaunchSessionModal';
+import { getUnifiedCandidatePipeline, computeCohortAnalytics } from './services/recruiterPipelineService';
 
 export default function App() {
   // Navigation View State ('landing' | 'login' | 'studio')
@@ -70,6 +71,13 @@ export default function App() {
   };
 
   const [activeRecruiterTab, setActiveRecruiterTab] = useState<'analytics' | 'candidates' | 'requisitions'>('candidates');
+  const [isDemographicAuditOpen, setIsDemographicAuditOpen] = useState(false);
+  const [isParityShortlistOpen, setIsParityShortlistOpen] = useState(false);
+
+  const recruiterCohortAnalytics = useMemo(() => {
+    const pipeline = getUnifiedCandidatePipeline();
+    return computeCohortAnalytics(pipeline);
+  }, []);
 
   // Session State
   const [inInterview, setInInterview] = useState(false);
@@ -1316,11 +1324,79 @@ export default function App() {
     };
   }, []);
 
+  // Handlers for instant role-specific launch from Landing Page
+  const handleLaunchRecruiterMode = () => {
+    const demoRecruiter: UserSession = {
+      id: 'usr_rec_102',
+      name: 'Neha Kapoor',
+      email: 'recruiter@vocalis.ai',
+      role: 'recruiter',
+      avatarInitials: 'NK',
+      isLoggedIn: true,
+      isDemo: true,
+      city: 'Bengaluru',
+      state: 'Karnataka',
+      location: 'Bengaluru, Karnataka',
+      companyName: 'Stripe Payments',
+      companySize: '1000+ (Enterprise)',
+      industry: 'Fintech & Cloud Platforms',
+      hiringRole: 'Senior Platform Architect',
+      experienceRequired: '5-8 Years (Senior)',
+      salaryBudget: '₹40 - ₹60 LPA',
+      diversityGoal: 'Balanced Pipeline (~50:50 Ratio)',
+    };
+    setCurrentUser(demoRecruiter);
+    try {
+      localStorage.setItem('vocalis_user_session', JSON.stringify(demoRecruiter));
+      localStorage.setItem(
+        'vocalis_active_requisition',
+        JSON.stringify({
+          companyName: 'Stripe Payments',
+          companySize: '1000+ (Enterprise)',
+          industry: 'Fintech & Cloud Platforms',
+          hiringRole: 'Senior Platform Architect',
+          experienceRequired: '5-8 Years (Senior)',
+          salaryBudget: '₹40 - ₹60 LPA',
+          diversityGoal: 'Balanced Pipeline (~50:50 Ratio)',
+        })
+      );
+    } catch {}
+    setWorkspaceMode('recruiter');
+    setActiveRecruiterTab('candidates');
+    setCurrentView('studio');
+  };
+
+  const handleLaunchCandidateMode = () => {
+    const demoCandidate: UserSession = {
+      id: 'usr_cand_101',
+      name: 'Jordan Reed',
+      email: 'candidate@vocalis.ai',
+      role: 'candidate',
+      avatarInitials: 'JR',
+      isLoggedIn: true,
+      isDemo: true,
+      city: 'Bengaluru',
+      state: 'Karnataka',
+      location: 'Bengaluru, Karnataka',
+    };
+    setCurrentUser(demoCandidate);
+    try {
+      localStorage.setItem('vocalis_user_session', JSON.stringify(demoCandidate));
+    } catch {}
+    setCandidateResume(DEFAULT_RESUME);
+    setCandidateName(DEFAULT_RESUME.fullName);
+    setTargetRole(DEFAULT_RESUME.headline || 'Senior / Staff Software Engineer');
+    setWorkspaceMode('candidate');
+    setCurrentView('studio');
+  };
+
   // 1. Landing Page View
   if (currentView === 'landing') {
     return (
       <LandingPage
         onOpenStudio={() => setCurrentView('studio')}
+        onLaunchRecruiterMode={handleLaunchRecruiterMode}
+        onLaunchCandidateMode={handleLaunchCandidateMode}
         onOpenLogin={() => setCurrentView('login')}
         isLoggedIn={!!currentUser}
         userName={currentUser?.name}
@@ -1584,7 +1660,13 @@ export default function App() {
             setActiveRecruiterTab(tab);
             setShowProgressionHub(false);
           }}
-          candidateCount={18}
+          candidateCount={recruiterCohortAnalytics.total}
+          femalePct={recruiterCohortAnalytics.femalePct}
+          malePct={recruiterCohortAnalytics.malePct}
+          femaleCount={recruiterCohortAnalytics.femaleCount}
+          maleCount={recruiterCohortAnalytics.maleCount}
+          onOpenDemographicAudit={() => setIsDemographicAuditOpen(true)}
+          onOpenParityShortlist={() => setIsParityShortlistOpen(true)}
         />
 
         {/* Main Center Content Workspace */}
@@ -1615,6 +1697,11 @@ export default function App() {
                 onOpenResumeDrawer={() => setIsResumeDrawerOpen(true)}
                 activeTab={activeRecruiterTab}
                 onTabChange={setActiveRecruiterTab}
+                currentUser={currentUser}
+                isDemographicAuditOpen={isDemographicAuditOpen}
+                onCloseDemographicAudit={() => setIsDemographicAuditOpen(false)}
+                isParityShortlistOpen={isParityShortlistOpen}
+                onCloseParityShortlist={() => setIsParityShortlistOpen(false)}
               />
             ) : (
               <ScenarioSelector

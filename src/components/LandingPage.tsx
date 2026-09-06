@@ -40,6 +40,8 @@ import { renderAvatarIcon, getAvatarGradientClass, InterviewerAvatar } from '../
 
 interface LandingPageProps {
   onOpenStudio: () => void;
+  onLaunchRecruiterMode?: () => void;
+  onLaunchCandidateMode?: () => void;
   onOpenLogin: () => void;
   isLoggedIn: boolean;
   userName?: string;
@@ -48,6 +50,8 @@ interface LandingPageProps {
 
 export const LandingPage: React.FC<LandingPageProps> = ({
   onOpenStudio,
+  onLaunchRecruiterMode,
+  onLaunchCandidateMode,
   onOpenLogin,
   isLoggedIn,
   userName,
@@ -314,7 +318,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3">
                 <button
                   type="button"
-                  onClick={onOpenStudio}
+                  onClick={onLaunchRecruiterMode || onOpenStudio}
                   className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs sm:text-sm px-4 py-2.5 sm:px-6 sm:py-3.5 rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer transform hover:-translate-y-0.5"
                 >
                   <Building2 className="w-4 h-4" />
@@ -323,7 +327,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
                 <button
                   type="button"
-                  onClick={onOpenStudio}
+                  onClick={onLaunchCandidateMode || onOpenStudio}
                   className="bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs sm:text-sm px-4 py-2.5 sm:px-6 sm:py-3.5 rounded-xl border border-slate-300 shadow-xs transition flex items-center justify-center gap-2 cursor-pointer hover:border-slate-400 transform hover:-translate-y-0.5"
                 >
                   <GraduationCap className="w-4 h-4 text-purple-600" />
@@ -551,7 +555,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
                 <button
                   type="button"
-                  onClick={onOpenStudio}
+                  onClick={onLaunchRecruiterMode || onOpenStudio}
                   className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs transition cursor-pointer flex items-center justify-center gap-2 shadow-xs"
                 >
                   <span>Launch Recruiter Dashboard</span>
@@ -590,7 +594,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
                 <button
                   type="button"
-                  onClick={onOpenStudio}
+                  onClick={onLaunchCandidateMode || onOpenStudio}
                   className="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-extrabold text-xs transition cursor-pointer flex items-center justify-center gap-2 shadow-xs"
                 >
                   <span>Start Candidate Voice Practice</span>

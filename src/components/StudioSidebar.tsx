@@ -31,6 +31,12 @@ export interface StudioSidebarProps {
   activeRecruiterTab?: 'analytics' | 'candidates' | 'requisitions';
   onSelectRecruiterTab?: (tab: 'analytics' | 'candidates' | 'requisitions') => void;
   candidateCount?: number;
+  femalePct?: number;
+  malePct?: number;
+  femaleCount?: number;
+  maleCount?: number;
+  onOpenDemographicAudit?: () => void;
+  onOpenParityShortlist?: () => void;
 }
 
 export const StudioSidebar: React.FC<StudioSidebarProps> = ({
@@ -55,7 +61,13 @@ export const StudioSidebar: React.FC<StudioSidebarProps> = ({
   workspaceMode,
   activeRecruiterTab = 'candidates',
   onSelectRecruiterTab,
-  candidateCount = 18,
+  candidateCount = 24,
+  femalePct = 67,
+  malePct = 33,
+  femaleCount = 16,
+  maleCount = 8,
+  onOpenDemographicAudit,
+  onOpenParityShortlist,
 }) => {
   const isRecruiter =
     workspaceMode === 'recruiter' ||
@@ -72,7 +84,13 @@ export const StudioSidebar: React.FC<StudioSidebarProps> = ({
         activeTab={activeRecruiterTab}
         onSelectTab={(tab) => onSelectRecruiterTab?.(tab)}
         candidateCount={candidateCount}
+        femalePct={femalePct}
+        malePct={malePct}
+        femaleCount={femaleCount}
+        maleCount={maleCount}
         onOpenResumeDrawer={onOpenResumeDrawer}
+        onOpenDemographicAudit={onOpenDemographicAudit}
+        onOpenParityShortlist={onOpenParityShortlist}
       />
     );
   }
