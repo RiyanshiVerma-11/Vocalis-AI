@@ -69,6 +69,8 @@ export default function App() {
     setWorkspaceMode(mode);
   };
 
+  const [activeRecruiterTab, setActiveRecruiterTab] = useState<'analytics' | 'candidates' | 'requisitions'>('candidates');
+
   // Session State
   const [inInterview, setInInterview] = useState(false);
   const [scenario, setScenario] = useState<InterviewScenario>(INTERVIEW_SCENARIOS[0]);
@@ -1140,11 +1142,22 @@ export default function App() {
       // Auto-save session to longitudinal history for Skill Progression Hub
       try {
         const sessionMinutes = Math.round(sessionSeconds / 60) || 1;
+        const candCity = candidateResume?.city || currentUser?.city;
+        const candState = candidateResume?.state || currentUser?.state;
+        const candCountry = candidateResume?.country || currentUser?.country || 'India';
+        const candLocation = candidateResume?.location || currentUser?.location;
+
         sessionHistoryService.saveSession(
           finalReport,
           scenario.title,
           sessionMinutes,
-          sharedContext.currentDifficulty || 'Intermediate'
+          sharedContext.currentDifficulty || 'Intermediate',
+          {
+            city: candCity,
+            state: candState,
+            country: candCountry,
+            location: candLocation,
+          }
         );
       } catch (saveErr) {
         console.warn('Could not archive session to history:', saveErr);
@@ -1336,19 +1349,17 @@ export default function App() {
       {/* Mandatory AI Disclosure Banner */}
       <AIDisclosureBanner />
 
-      {/* Main Top Navigation */}
-      <header className="border-b border-slate-800 bg-slate-900 sticky top-0 z-40 shadow-md">
-        <div className="w-full max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 py-2.5 flex items-center justify-between gap-3">
-          {/* Left Brand Section */}
-          <div className="flex items-center gap-2.5">
-            {/* Mobile Hamburger Menu Toggle */}
+      {/* Main Top Navigation — Premium */}
+      <header className="border-b border-slate-800/80 bg-[#0a0e1a] sticky top-0 z-40" style={{ boxShadow: '0 1px 24px rgba(0,0,0,0.45)' }}>
+        <div className="w-full px-3 sm:px-5 flex items-center justify-between gap-2" style={{ height: '57px' }}>
+          {/* Left Brand */}
+          <div className="flex items-center gap-3">
             <button
               type="button"
               id="btn-toggle-mobile-menu"
               onClick={() => setIsSidebarOpen((prev) => !prev)}
-              className="md:hidden p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer flex items-center justify-center border border-slate-700"
-              title={isSidebarOpen ? 'Close Control Panel' : 'Open Control Panel'}
-              aria-label="Toggle menu navigation"
+              className="md:hidden w-8 h-8 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer flex items-center justify-center border border-slate-700/60"
+              aria-label="Toggle navigation"
             >
               <Menu className="w-4 h-4 text-indigo-400" />
             </button>
@@ -1356,28 +1367,42 @@ export default function App() {
             <button
               type="button"
               onClick={handleNavigateToLanding}
-              className="w-8 h-8 rounded-lg overflow-hidden shadow-sm hover:opacity-90 transition cursor-pointer shrink-0"
-              title="Vocalis AI Landing Page"
+              className="w-8 h-8 rounded-lg overflow-hidden hover:opacity-90 transition cursor-pointer shrink-0 ring-1 ring-indigo-500/20 shadow-md"
             >
-              <img src="/logo.jpg" alt="Vocalis AI Logo" className="w-full h-full object-cover" />
+              <img src="/logo.jpg" alt="Vocalis AI" className="w-full h-full object-cover" />
             </button>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5">
               <button
                 type="button"
                 onClick={handleNavigateToLanding}
-                className="text-xs font-bold text-white hover:text-indigo-300 transition cursor-pointer text-left tracking-tight"
+                className="text-sm font-extrabold text-white hover:text-indigo-300 transition cursor-pointer tracking-tight"
               >
-                Vocalis AI Studio
+                Vocalis <span className="text-indigo-400">AI</span>
               </button>
-              <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-mono font-bold uppercase tracking-wider hidden sm:inline-block">
-                Multi-Role Panel
+              <span className="hidden sm:inline-flex items-center text-[9px] px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-mono font-black uppercase tracking-widest">
+                Studio
               </span>
             </div>
+
+            <div className="hidden md:block w-px h-5 bg-slate-800" />
+
+            {inInterview ? (
+              <div className="hidden md:flex items-center gap-2 bg-rose-500/10 border border-rose-500/25 px-3 py-1.5 rounded-lg text-rose-400 text-xs font-mono font-bold">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
+                <span>LIVE</span>
+                <span className="text-white ml-1">{formatTimer(sessionSeconds)}</span>
+              </div>
+            ) : (
+              <div className="hidden md:flex items-center gap-1.5 text-xs text-slate-500">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-500/50" />
+                <span>{currentUser?.name || candidateName}{currentUser?.role === 'recruiter' ? <span className="text-amber-500 ml-1"> · Recruiter</span> : ''}</span>
+              </div>
+            )}
           </div>
 
-          {/* Right Controls & Navigation */}
-          <div className="flex items-center gap-2 sm:gap-3">
+          {/* Right Controls */}
+          <div className="flex items-center gap-2 sm:gap-2.5">
             {/* Mode Switcher: Recruiter vs Candidate (Strictly restricted to verified recruiters/interviewers) */}
             {!inInterview && currentUser && (currentUser.role === 'recruiter' || currentUser.role === 'interviewer') && (
               <div className="flex rounded-lg bg-slate-800/90 p-0.5 border border-slate-700/80">
@@ -1498,14 +1523,7 @@ export default function App() {
                   <span>End Session</span>
                 </button>
               </div>
-            ) : (
-              <div className="hidden lg:flex text-xs font-semibold text-slate-300 items-center gap-2 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700/80">
-                <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                <span>
-                  Profile: <strong className="text-white">{currentUser?.name || candidateName}</strong> {currentUser?.role === 'recruiter' ? '(Recruiter)' : '(Synced)'}
-                </span>
-              </div>
-            )}
+            ) : null}
           </div>
         </div>
       </header>
@@ -1560,10 +1578,17 @@ export default function App() {
           currentUser={currentUser}
           onLogout={handleLogout}
           onOpenProgressionHub={() => setShowProgressionHub(true)}
+          workspaceMode={workspaceMode}
+          activeRecruiterTab={activeRecruiterTab}
+          onSelectRecruiterTab={(tab) => {
+            setActiveRecruiterTab(tab);
+            setShowProgressionHub(false);
+          }}
+          candidateCount={18}
         />
 
         {/* Main Center Content Workspace */}
-        <main className="flex-1 min-w-0 p-2 sm:p-3 space-y-3">
+        <main className="flex-1 min-w-0 p-1 sm:p-2 space-y-2.5">
           {showProgressionHub ? (
             <SkillProgressionHub
               onSelectAssessment={(a) => {
@@ -1572,12 +1597,24 @@ export default function App() {
               onBackToStudio={() => setShowProgressionHub(false)}
               candidateName={candidateName}
               targetRole={targetRole}
+              candidateLocation={
+                candidateResume?.city && candidateResume?.state
+                  ? `${candidateResume.city}, ${candidateResume.state}`
+                  : candidateResume?.location ||
+                    currentUser?.location ||
+                    (currentUser?.city && currentUser?.state
+                      ? `${currentUser.city}, ${currentUser.state}`
+                      : undefined)
+              }
+              viewerRole={workspaceMode === 'recruiter' ? 'recruiter' : 'candidate'}
             />
           ) : !inInterview ? (
             workspaceMode === 'recruiter' ? (
               <RecruiterDashboard
                 onStartInterview={handleStartInterview}
                 onOpenResumeDrawer={() => setIsResumeDrawerOpen(true)}
+                activeTab={activeRecruiterTab}
+                onTabChange={setActiveRecruiterTab}
               />
             ) : (
               <ScenarioSelector

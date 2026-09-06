@@ -1,13 +1,22 @@
 import React, { useState } from 'react';
-import { ShieldCheck, Info, Sparkles, Bot, Scale, BrainCircuit, FileCheck, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, Info, Sparkles, Bot, Scale, BrainCircuit, FileCheck, CheckCircle2, X } from 'lucide-react';
 
 export const AIDisclosureBanner: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDismissed, setIsDismissed] = useState(() => {
+    try {
+      return sessionStorage.getItem('vocalis_ai_disclosure_dismissed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  if (isDismissed && !isModalOpen) return null;
 
   return (
     <>
       <div id="ai-disclosure-banner" className="bg-slate-950 text-slate-300 border-b border-indigo-900/40 text-xs shadow-inner">
-        <div className="w-full max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 py-2 flex items-center justify-between gap-3 flex-wrap">
+        <div className="w-full px-2 sm:px-4 py-1.5 flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-2.5 flex-wrap">
             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 uppercase tracking-wider shadow-xs">
               <Bot className="w-3.5 h-3.5 text-indigo-400" /> Mandatory AI Disclosure
@@ -17,7 +26,7 @@ export const AIDisclosureBanner: React.FC = () => {
             </p>
           </div>
 
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-2.5 shrink-0">
             <span className="hidden md:inline-flex items-center gap-1 text-[11px] text-emerald-400 font-mono">
               <ShieldCheck className="w-3.5 h-3.5" /> 100% Evidence & Quote-Backed Scoring
             </span>
@@ -28,6 +37,21 @@ export const AIDisclosureBanner: React.FC = () => {
             >
               <Info className="w-3.5 h-3.5 text-indigo-400" />
               <span>AI System & Ethics Specs</span>
+            </button>
+            <button
+              id="btn-dismiss-ai-disclosure"
+              type="button"
+              onClick={() => {
+                setIsDismissed(true);
+                try {
+                  sessionStorage.setItem('vocalis_ai_disclosure_dismissed', 'true');
+                } catch {}
+              }}
+              className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+              title="Close disclosure banner"
+              aria-label="Close AI disclosure banner"
+            >
+              <X className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>

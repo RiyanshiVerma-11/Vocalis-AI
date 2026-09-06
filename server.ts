@@ -91,6 +91,10 @@ interface UserRecord {
   passwordHash: string;
   name: string;
   role: 'candidate' | 'recruiter' | 'interviewer';
+  city?: string;
+  state?: string;
+  country?: string;
+  location?: string;
   isVerified: boolean;
   otpCode?: string;
   otpExpires?: number;
@@ -239,7 +243,7 @@ function authenticateToken(req: express.Request, res: express.Response, next: ex
 // Auth API 1: Register User & Send SMTP Verification Email
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { email, password, name, role = 'candidate' } = req.body;
+    const { email, password, name, role = 'candidate', city, state, country = 'India' } = req.body;
 
     if (!email || !password || !name) {
       return res.status(400).json({ error: 'Email, password, and name are required' });
@@ -254,12 +258,21 @@ app.post('/api/auth/register', async (req, res) => {
     const otpCode = crypto.randomInt(100000, 1000000).toString(); // Cryptographic 6-digit OTP
     const userId = `usr_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
 
+    const cleanCity = city ? String(city).trim() : undefined;
+    const cleanState = state ? String(state).trim() : undefined;
+    const cleanCountry = country ? String(country).trim() : 'India';
+    const computedLocation = cleanCity && cleanState ? `${cleanCity}, ${cleanState}` : cleanCity || cleanState || undefined;
+
     const newUser: UserRecord = {
       id: userId,
       email: cleanEmail,
       passwordHash,
       name: String(name).trim(),
       role: role as any,
+      city: cleanCity,
+      state: cleanState,
+      country: cleanCountry,
+      location: computedLocation,
       isVerified: false,
       otpCode,
       otpExpires: Date.now() + 15 * 60 * 1000, // 15 mins
@@ -314,6 +327,10 @@ app.post('/api/auth/register', async (req, res) => {
         email: newUser.email,
         name: newUser.name,
         role: newUser.role,
+        city: newUser.city,
+        state: newUser.state,
+        country: newUser.country,
+        location: newUser.location,
         isVerified: newUser.isVerified,
       },
       emailSent,
@@ -365,6 +382,10 @@ app.post('/api/auth/login', async (req, res) => {
         email: user.email,
         name: user.name,
         role: user.role,
+        city: user.city,
+        state: user.state,
+        country: user.country,
+        location: user.location,
         isVerified: user.isVerified,
       },
     });
@@ -1498,29 +1519,61 @@ The interview panel MUST immediately acknowledge with warm human grace and pivot
    - **Keywords**: Extract 2-5 core technical or domain keywords actually spoken by the candidate (or [] if brief clarification request).
    - **Sentiment**: Determine candidate confidence (Confident & Structured, Hesitant / Uncertain, Deflective / Evasive, Analytical & Deep, Enthusiastic & Collaborative).
    - **Depth Assessment**: Evaluate depth (Surface (Hand-waving), Intermediate (Practical), Deep (Architectural / Nuanced), or Principal (Multi-Dimensional)).
-2. **Formulate Adaptive Follow-Up Question**:
-   - Choose the most relevant **Adaptive Strategy**:
-     * **Deep Probe**: If they gave a high-level solution without explaining failure semantics, edge cases, cache eviction, or exact algorithms.
-     * **Challenge Assumption**: If they assumed 100% network uptime, instant DB writes, infinite budget, or no legacy constraints, introduce a real-world crisis (e.g. 10x traffic spike, split-brain, budget cut).
-     * **Explore Alternative**: If they chose a particular stack (e.g. Kafka, Redis, PostgreSQL), ask why they preferred it over alternative approaches and what trade-offs they accepted.
-     * **Off-Script Pivot**: If the candidate referenced an interesting past project, metric, or company from their resume, pivot dynamically off-script to probe their genuine hands-on experience!
-     * **Cross-Role Handoff**: If technical depth was established, another interviewer (e.g. Product Manager or Customer Director) takes over to probe business ROI, user conversion, or SLA compliance.
-3. **Distinct Persona Fidelity**:
-   - The selected interviewer MUST speak strictly in their unique tone, signature jargon, and questioning lens.
-4. **Conversational Naturalness & Human Speech Inflection**:
-   - The spoken dialogue MUST be concise and sound like real human speech (2 to 3 natural sentences).
-   - Always open with an organic, human conversational reaction to the candidate's last answer (e.g. "Got it, that's a sharp distinction.", "Fair point on the database choice.", "Right, I see why you chose that approach.", "Interesting angle on the sync pipeline.").
-   - Conclude with ONE clear, punchy, engaging question. Never ask multiple questions in one turn.
 
-5. **MULTI-AGENT CROSS-ROLE TENSIONS & COMMITTEE DEBATES (SHOWSTOPPER)**:
-   - When the candidate's answer touches on an architectural, product, or organizational trade-off (e.g. speed vs consistency, fast shipping vs paying down tech debt, strict SLAs vs cloud cost):
-     * Set isDebateExchange: true and generate 2 rapid sequential dialogue steps!
-     * Speaker 1 (e.g. Technical Architect Rohan) explains the engineering constraint.
-     * Speaker 2 (e.g. Principal PM Priya or Client Director Neha) immediately counters from the business/user/SLA perspective!
-     * Then they ask the candidate to resolve the tension! This demonstrates authentic 5-agent multi-role collaborative intelligence to hackathon judges.
+2. **IDENTIFICATION OF VAGUE, CONTRADICTORY, OR MISSING-IMPACT ANSWERS (CRITICAL FOR PS11)**:
+   You MUST scrutinize the candidate's speech and output accurate items in "detectedFlags":
+   - **type: "vague"**: When candidate relies on superficial buzzwords without concrete technical mechanics, eviction policies, indexing plans, partition keys, or specific metrics (e.g. saying "we just scale it with Redis and microservices" without detailing eviction or cache stampede mitigation).
+     * quote: The exact vague phrase spoken by candidate.
+     * explanation: Why this is hand-waving and what depth is missing.
+     * severity: "medium" or "high".
+     * suggestedProbe: Concrete technical question to force specifics.
+   - **type: "contradiction"**: When candidate's latest claim directly conflicts with what they stated earlier in the interview (e.g., claiming linearizable strong consistency earlier, but now admitting eventual consistency with 5-second replica lag, or claiming zero downtime while accepting table-locking migrations).
+     * quote: The exact contradictory phrase.
+     * explanation: Exact contrast between statement A and statement B.
+     * severity: "high".
+     * suggestedProbe: Challenge them to resolve the contradiction.
+   - **type: "missing_impact" (THE PS11 EXAMPLE SCENARIO)**:
+     * TRIGGER: When the candidate provides a technically sound or architecturally correct solution (e.g. caching, sharding, replication, asynchronous queues) BUT completely fails to explain its impact on real users, customers, conversion rates, business ROI, or contractual downtime SLAs!
+     * quote: Candidate's technical claim.
+     * explanation: Candidate gave a technically viable implementation but neglected customer user experience and business impact.
+     * severity: "medium".
+     * suggestedProbe: "How does this technical optimization translate into customer retention or business revenue during peak events?"
+   - **type: "strong_insight"**: When candidate demonstrates exceptional engineering maturity, cites real failure boundaries, or accurately quantifies p99 latency trade-offs.
+
+3. **DYNAMIC DIFFICULTY ADJUSTMENT LOGIC (PS11 REQUIREMENT)**:
+   Update "updatedDifficulty" and provide "difficultyAdjustmentReason":
+   - **PROMOTION (Difficulty Up)**:
+     * If candidate displays "Deep (Architectural / Nuanced)" or "Principal (Multi-Dimensional)" depth in 2 consecutive turns with sound trade-offs, RAISE the difficulty: Foundational → Intermediate → Senior → Staff/Principal!
+     * State exact reason in "difficultyAdjustmentReason" (e.g. "Candidate demonstrated rigorous mastery of p99 latency boundaries and distributed cache eviction; raising bar to Senior tier.").
+   - **DEMOTION / CALIBRATION (Difficulty Down)**:
+     * If candidate gives "Surface (Hand-waving)" answers, deflects questions, or repeatedly asks to skip technical depth, LOWER the difficulty: Staff/Principal → Senior → Intermediate → Foundational to test basic CS fundamentals.
+     * State reason in "difficultyAdjustmentReason" (e.g. "Candidate struggled with distributed consensus failure modes; calibrating to Intermediate tier to validate practical implementation.").
+
+4. **THE PS11 COMMITTEE DEBATE ENFORCEMENT (SHOWSTOPPER)**:
+   - When candidate's response provides a technical solution without business/customer context (or triggers a "missing_impact" flag), OR when the interview scenario is "ps11-missing-business-impact" / system design:
+     * Set isDebateExchange: true and generate 2 rapid sequential dialogue steps:
+     * **Step 1 (Technical Interviewer - Rohan)**: Acknowledges and accepts the technical mechanics ("The Redis write-through cache with a 10-minute TTL is technically viable for handling 50k req/sec...").
+     * **Step 2 (Product Manager - Priya or Customer Director - Neha)**: Immediately challenges the missing business/customer implications ("Thanks Rohan, but from a product perspective, a 10-minute stale cache during a flash sale means customers see wrong prices at checkout, killing conversion. What is your strategy to protect customer trust and revenue?").
+     * This directly demonstrates the PS11 benchmark scenario to hackathon judges!
    - Otherwise, set isDebateExchange: false and debateDialogue: [].
 
-6. **NON-VERBAL AMBIENT REACTIONS FOR INACTIVE PANELISTS**:
+5. **Formulate Adaptive Follow-Up Question**:
+   - Choose the most relevant **Adaptive Strategy**:
+     * **Deep Probe**: Probes failure semantics, edge cases, cache eviction, or memory limits.
+     * **Challenge Assumption**: Introduces real-world chaos (10x spike, split-brain, network partition).
+     * **Explore Alternative**: Asks candidate why they picked X over Y and what trade-offs they accepted.
+     * **Off-Script Pivot**: Pivots to probe an unverified claim or metric from their resume.
+     * **Cross-Role Handoff**: Hands off to Product, Hiring Manager, Customer, or Behavioral.
+
+6. **Distinct Persona Fidelity**:
+   - The selected interviewer MUST speak strictly in their unique tone, signature jargon, and questioning lens.
+
+7. **Conversational Naturalness & Human Speech Inflection**:
+   - Spoken dialogue MUST be concise (2 to 3 natural sentences).
+   - Open with an organic reaction to candidate's answer ("Fair point on the replication scheme.", "Got it, that explains the cache layer.").
+   - Conclude with ONE clear, punchy, engaging question. Never ask multiple questions in one turn.
+
+8. **NON-VERBAL AMBIENT REACTIONS FOR INACTIVE PANELISTS**:
    - For all active panel members who are currently IDLE/INACTIVE, provide realistic ambient non-verbal cues (nodding, taking_notes, skeptical, intrigued, concerned).
 `;
 

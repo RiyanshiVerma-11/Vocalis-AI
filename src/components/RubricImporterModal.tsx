@@ -27,21 +27,23 @@ import {
 } from 'lucide-react';
 
 interface RubricImporterModalProps {
-  isOpen: boolean;
+  isOpen?: boolean;
   onClose: () => void;
   onApplyRubric: (rubric: CustomCompanyRubric, launchImmediately?: boolean) => void;
   initialRubric?: CustomCompanyRubric | null;
 }
 
 export const RubricImporterModal: React.FC<RubricImporterModalProps> = ({
-  isOpen,
+  isOpen = true,
   onClose,
   onApplyRubric,
   initialRubric,
 }) => {
   if (!isOpen) return null;
 
-  const [activeTab, setActiveTab] = useState<'upload' | 'templates' | 'paste'>('upload');
+  const [activeTab, setActiveTab] = useState<'upload' | 'templates' | 'paste'>(
+    initialRubric ? 'templates' : 'upload'
+  );
   const [isParsing, setIsParsing] = useState(false);
   const [parsingStatus, setParsingStatus] = useState<string>('');
   const [rawTextPaste, setRawTextPaste] = useState('');
@@ -51,6 +53,12 @@ export const RubricImporterModal: React.FC<RubricImporterModalProps> = ({
   const [rubric, setRubric] = useState<CustomCompanyRubric>(
     initialRubric || ENTERPRISE_RUBRIC_TEMPLATES[0]
   );
+
+  React.useEffect(() => {
+    if (initialRubric) {
+      setRubric(initialRubric);
+    }
+  }, [initialRubric]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 

@@ -19,6 +19,7 @@ import {
   Building2,
   GraduationCap,
   ArrowRight,
+  MapPin,
 } from 'lucide-react';
 
 interface LoginPageProps {
@@ -36,6 +37,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [city, setCity] = useState('');
+  const [state, setState] = useState('');
   const [role, setRole] = useState<'candidate' | 'interviewer' | 'recruiter'>('candidate');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
@@ -102,6 +105,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         avatarInitials: preset.initials,
         isLoggedIn: true,
         isDemo: true,
+        city: data.user.city || (preset.role === 'candidate' ? 'Bengaluru' : 'San Francisco'),
+        state: data.user.state || (preset.role === 'candidate' ? 'Karnataka' : 'CA'),
+        location: data.user.location || (preset.role === 'candidate' ? 'Bengaluru, Karnataka' : 'San Francisco, CA'),
       };
 
       onLoginSuccess(user);
@@ -115,6 +121,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         targetTitle: preset.targetTitle,
         avatarInitials: preset.initials,
         isLoggedIn: true,
+        city: preset.role === 'candidate' ? 'Bengaluru' : 'San Francisco',
+        state: preset.role === 'candidate' ? 'Karnataka' : 'CA',
+        location: preset.role === 'candidate' ? 'Bengaluru, Karnataka' : 'San Francisco, CA',
       };
       onLoginSuccess(user);
     } finally {
@@ -147,6 +156,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             password,
             name: fullName.trim() || email.split('@')[0],
             role,
+            city: city.trim() || undefined,
+            state: state.trim() || undefined,
           }),
         });
 
@@ -171,6 +182,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             .substring(0, 2)
             .toUpperCase();
 
+          const locStr =
+            data.user.location ||
+            (city.trim() && state.trim()
+              ? `${city.trim()}, ${state.trim()}`
+              : city.trim() || state.trim() || undefined);
+
           const user: UserSession = {
             id: data.user.id,
             name: data.user.name || fullName || email.split('@')[0],
@@ -178,6 +195,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             role: data.user.role,
             avatarInitials: initials || 'US',
             isLoggedIn: true,
+            city: data.user.city || city.trim() || undefined,
+            state: data.user.state || state.trim() || undefined,
+            location: locStr,
           };
 
           onLoginSuccess(user);
@@ -213,6 +233,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           .substring(0, 2)
           .toUpperCase();
 
+        const locStr =
+          data.user.location ||
+          (data.user.city && data.user.state
+            ? `${data.user.city}, ${data.user.state}`
+            : data.user.city || data.user.state || undefined);
+
         const user: UserSession = {
           id: data.user.id,
           name: data.user.name,
@@ -220,6 +246,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           role: data.user.role,
           avatarInitials: initials || 'US',
           isLoggedIn: true,
+          city: data.user.city,
+          state: data.user.state,
+          country: data.user.country,
+          location: locStr,
         };
 
         onLoginSuccess(user);
@@ -299,6 +329,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         .substring(0, 2)
         .toUpperCase();
 
+      const locStr =
+        data.user.location ||
+        (data.user.city && data.user.state
+          ? `${data.user.city}, ${data.user.state}`
+          : data.user.city || data.user.state || undefined);
+
       const user: UserSession = {
         id: data.user.id,
         name: data.user.name || fullName || email.split('@')[0],
@@ -306,6 +342,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         role: data.user.role,
         avatarInitials: initials || 'US',
         isLoggedIn: true,
+        city: data.user.city,
+        state: data.user.state,
+        country: data.user.country,
+        location: locStr,
       };
 
       onLoginSuccess(user);
@@ -547,20 +587,52 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   /* Standard Password Login or Registration Form */
                   <form onSubmit={handlePasswordSubmit} className="space-y-3">
                     {authTab === 'signup' && (
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-300">Full Name</label>
-                        <div className="relative">
-                          <User className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-                          <input
-                            type="text"
-                            required
-                            value={fullName}
-                            onChange={(e) => setFullName(e.target.value)}
-                            placeholder="e.g. Jordan Reed"
-                            className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white focus:border-indigo-500 outline-none transition"
-                          />
+                      <>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-300">Full Name</label>
+                          <div className="relative">
+                            <User className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                            <input
+                              type="text"
+                              required
+                              value={fullName}
+                              onChange={(e) => setFullName(e.target.value)}
+                              placeholder="e.g. Jordan Reed"
+                              className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white focus:border-indigo-500 outline-none transition"
+                            />
+                          </div>
                         </div>
-                      </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-300">City / Location</label>
+                            <div className="relative">
+                              <MapPin className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                              <input
+                                type="text"
+                                value={city}
+                                onChange={(e) => setCity(e.target.value)}
+                                placeholder="e.g. Bengaluru"
+                                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white focus:border-indigo-500 outline-none transition"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-300">State / Region</label>
+                            <div className="relative">
+                              <Building2 className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                              <input
+                                type="text"
+                                value={state}
+                                onChange={(e) => setState(e.target.value)}
+                                placeholder="e.g. Karnataka"
+                                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white focus:border-indigo-500 outline-none transition"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </>
                     )}
 
                     <div className="space-y-1">

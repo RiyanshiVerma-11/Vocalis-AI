@@ -21,6 +21,13 @@ export interface ArchivedSession {
   keyStrengths: string[];
   keyGaps: string[];
   fullAssessment: StructuredAssessment;
+  city?: string;
+  state?: string;
+  country?: string;
+  location?: string;
+  yearsOfExperience?: number;
+  previousCompany?: string;
+  workMode?: 'Remote' | 'Onsite' | 'Hybrid';
 }
 
 export interface CompetencyEvolution {
@@ -334,7 +341,11 @@ export const sessionHistoryService = {
       if (data) {
         const parsed = JSON.parse(data);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          // Filter out accidental 0-score or aborted quick-exit test runs (< 20%)
+          const valid = parsed.filter((s: ArchivedSession) => (s.overallScore ?? 0) >= 20);
+          if (valid.length > 0) {
+            return valid;
+          }
         }
       }
       // Check legacy shared key fallback
@@ -342,7 +353,10 @@ export const sessionHistoryService = {
       if (legacyData) {
         const parsed = JSON.parse(legacyData);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          const valid = parsed.filter((s: ArchivedSession) => (s.overallScore ?? 0) >= 20);
+          if (valid.length > 0) {
+            return valid;
+          }
         }
       }
     } catch (e) {
@@ -366,7 +380,8 @@ export const sessionHistoryService = {
     assessment: StructuredAssessment,
     scenarioTitle: string = 'System Design & Product Impact',
     durationMinutes: number = 25,
-    difficultyLevel: DifficultyLevel = 'Senior'
+    difficultyLevel: DifficultyLevel = 'Senior',
+    locationMeta?: { city?: string; state?: string; country?: string; location?: string }
   ): ArchivedSession {
     const sessions = this.getStoredSessions();
     const newId = `arch-session-${Date.now()}`;
@@ -407,6 +422,11 @@ export const sessionHistoryService = {
       keyGaps.push(`${g.topic}: ${g.actualContradictionOrGap}`);
     });
 
+    const candCity = locationMeta?.city || (assessment as any).city;
+    const candState = locationMeta?.state || (assessment as any).state;
+    const candCountry = locationMeta?.country || (assessment as any).country || 'India';
+    const candLocation = locationMeta?.location || (candCity && candState ? `${candCity}, ${candState}` : (assessment as any).location);
+
     const newSession: ArchivedSession = {
       id: newId,
       candidateName: assessment.candidateName || 'Candidate',
@@ -422,6 +442,10 @@ export const sessionHistoryService = {
       keyStrengths: keyStrengths.slice(0, 4),
       keyGaps: keyGaps.slice(0, 4),
       fullAssessment: assessment,
+      city: candCity,
+      state: candState,
+      country: candCountry,
+      location: candLocation,
     };
 
     const updated = [...sessions, newSession];
@@ -441,7 +465,10 @@ export const sessionHistoryService = {
   },
 
   getAggregatedGrowthMetrics(): AggregatedGrowthMetrics {
-    const sessions = this.getStoredSessions().sort((a, b) => a.timestamp - b.timestamp);
+    const rawSessions = this.getStoredSessions().sort((a, b) => a.timestamp - b.timestamp);
+    // Ignore aborted test runs or zero-score attempts so candidate trajectory reflects real evaluations
+    const validSessions = rawSessions.filter((s) => (s.overallScore ?? 0) >= 20);
+    const sessions = validSessions.length > 0 ? validSessions : rawSessions;
 
     if (sessions.length === 0) {
       return {

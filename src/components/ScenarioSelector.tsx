@@ -22,6 +22,7 @@ import {
   User as UserIcon,
   ChevronDown,
   ChevronUp,
+  MapPin,
 } from 'lucide-react';
 
 interface ScenarioSelectorProps {
@@ -228,6 +229,17 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
       ...currentResume,
       fullName: candidateName.trim() || currentResume.fullName,
       headline: targetRole.trim() || currentResume.headline,
+      city: currentResume.city || currentUser?.city,
+      state: currentResume.state || currentUser?.state,
+      country: currentResume.country || currentUser?.country,
+      location:
+        currentResume.city && currentResume.state
+          ? `${currentResume.city}, ${currentResume.state}`
+          : currentResume.location ||
+            currentUser?.location ||
+            (currentUser?.city && currentUser?.state
+              ? `${currentUser.city}, ${currentUser.state}`
+              : 'Remote'),
     };
 
     const finalScenario: InterviewScenario = {
@@ -377,7 +389,7 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
                   You are exploring in Demo Mode with a prefilled engineering resume profile (<strong>{currentResume.fullName}</strong> — <em>{currentResume.headline}</em>). You can start the interview directly!
                 </p>
                 <div className="text-[10px] text-slate-500 italic pt-1 border-t border-indigo-100">
-                  💡 Note: Custom resume parsing and PDF uploads are enabled for registered user accounts.
+                  Note: Custom resume parsing and PDF uploads are enabled for registered user accounts.
                 </div>
               </div>
             ) : (
@@ -461,6 +473,18 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
                       )}
                     </div>
                     <p className="text-[11px] text-indigo-700 font-semibold">{currentResume.headline}</p>
+                    <div className="flex items-center gap-1.5 text-[10px] text-slate-600 font-medium">
+                      <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                      <span>
+                        {currentResume.city && currentResume.state
+                          ? `${currentResume.city}, ${currentResume.state}`
+                          : currentResume.location ||
+                            currentUser?.location ||
+                            (currentUser?.city && currentUser?.state
+                              ? `${currentUser.city}, ${currentUser.state}`
+                              : 'Remote')}
+                      </span>
+                    </div>
                     <p className="text-[10px] text-slate-500 leading-relaxed line-clamp-2">
                       {currentResume.summary}
                     </p>

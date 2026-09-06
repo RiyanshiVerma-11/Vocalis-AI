@@ -3,7 +3,7 @@ import { InterviewScenario } from '../types';
 export const INTERVIEW_SCENARIOS: InterviewScenario[] = [
   {
     id: 'candidate-personalized-interview',
-    title: '🎯 Tailored Candidate Resume & AI Project Interview',
+    title: 'Tailored Candidate Resume & AI Project Interview',
     category: 'Custom Roleplay',
     targetRole: 'Custom Role (100% Tailored to Resume)',
     recommendedPanel: ['technical', 'product', 'customer'],
@@ -18,11 +18,11 @@ export const INTERVIEW_SCENARIOS: InterviewScenario[] = [
     exampleDynamics:
       'The panel asks probing questions grounded directly in your uploaded resume, past engineering positions, and project metric claims.'
   },
-  // ⭐ PS11 DEMO SCENARIO — The exact example from EchoSphere problem statement
+  // PS11 DEMO SCENARIO — The exact example from EchoSphere problem statement
   // Technical interviewer accepts implementation; PM challenges business impact
   {
     id: 'ps11-missing-business-impact',
-    title: '⭐ The Missing Business Impact [PS11 Demo]',
+    title: 'The Missing Business Impact [PS11 Demo]',
     category: 'System Design & Product Impact',
     targetRole: 'Senior / Staff Full-Stack Engineer',
     recommendedPanel: ['technical', 'product', 'customer'],

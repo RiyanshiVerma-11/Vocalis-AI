@@ -40,7 +40,13 @@ export interface CandidateResume {
   headline: string;
   yearsOfExperience: number;
   location: string;
+  city?: string;
+  state?: string;
+  country?: string;
   summary: string;
+  previousCompany?: string;
+  workMode?: 'Remote' | 'Onsite' | 'Hybrid';
+  experienceTier?: 'fresher' | 'beginner' | 'mid' | 'senior' | 'expert';
   skills: {
     coreArchitecture: string[];
     languagesAndFrameworks: string[];
@@ -310,5 +316,9 @@ export interface UserSession {
   avatarInitials: string;
   isLoggedIn: boolean;
   isDemo?: boolean;
+  city?: string;
+  state?: string;
+  country?: string;
+  location?: string;
 }
 

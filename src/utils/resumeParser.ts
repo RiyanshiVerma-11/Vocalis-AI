@@ -12,6 +12,8 @@ export function parseResumeText(rawText: string, fallbackName?: string): Candida
       headline: 'Software Engineer',
       yearsOfExperience: 2,
       location: 'Remote',
+      city: 'Remote',
+      state: 'Distributed',
       summary: 'No resume provided.',
       skills: {
         coreArchitecture: ['System Architecture', 'REST APIs'],
@@ -64,9 +66,70 @@ export function parseResumeText(rawText: string, fallbackName?: string): Candida
   }
 
   // ── 2. LOCATION ───────────────────────────────────────────────────────────
+  const cityStateMap: Record<string, { city: string; state: string; country: string }> = {
+    bengaluru: { city: 'Bengaluru', state: 'Karnataka', country: 'India' },
+    bangalore: { city: 'Bengaluru', state: 'Karnataka', country: 'India' },
+    hyderabad: { city: 'Hyderabad', state: 'Telangana', country: 'India' },
+    mumbai: { city: 'Mumbai', state: 'Maharashtra', country: 'India' },
+    pune: { city: 'Pune', state: 'Maharashtra', country: 'India' },
+    delhi: { city: 'New Delhi', state: 'Delhi-NCR', country: 'India' },
+    'new delhi': { city: 'New Delhi', state: 'Delhi-NCR', country: 'India' },
+    noida: { city: 'Noida', state: 'Uttar Pradesh', country: 'India' },
+    gurugram: { city: 'Gurugram', state: 'Haryana', country: 'India' },
+    gurgaon: { city: 'Gurugram', state: 'Haryana', country: 'India' },
+    chennai: { city: 'Chennai', state: 'Tamil Nadu', country: 'India' },
+    kolkata: { city: 'Kolkata', state: 'West Bengal', country: 'India' },
+    meerut: { city: 'Meerut', state: 'Uttar Pradesh', country: 'India' },
+    jaipur: { city: 'Jaipur', state: 'Rajasthan', country: 'India' },
+    ahmedabad: { city: 'Ahmedabad', state: 'Gujarat', country: 'India' },
+    chandigarh: { city: 'Chandigarh', state: 'Punjab / Haryana', country: 'India' },
+    kochi: { city: 'Kochi', state: 'Kerala', country: 'India' },
+    indore: { city: 'Indore', state: 'Madhya Pradesh', country: 'India' },
+    lucknow: { city: 'Lucknow', state: 'Uttar Pradesh', country: 'India' },
+    kanpur: { city: 'Kanpur', state: 'Uttar Pradesh', country: 'India' },
+    ghaziabad: { city: 'Ghaziabad', state: 'Uttar Pradesh', country: 'India' },
+    nagpur: { city: 'Nagpur', state: 'Maharashtra', country: 'India' },
+    patna: { city: 'Patna', state: 'Bihar', country: 'India' },
+    bhopal: { city: 'Bhopal', state: 'Madhya Pradesh', country: 'India' },
+    'san francisco': { city: 'San Francisco', state: 'CA', country: 'USA' },
+    sf: { city: 'San Francisco', state: 'CA', country: 'USA' },
+    'new york': { city: 'New York', state: 'NY', country: 'USA' },
+    nyc: { city: 'New York', state: 'NY', country: 'USA' },
+    seattle: { city: 'Seattle', state: 'WA', country: 'USA' },
+    austin: { city: 'Austin', state: 'TX', country: 'USA' },
+    boston: { city: 'Boston', state: 'MA', country: 'USA' },
+    london: { city: 'London', state: 'England', country: 'UK' },
+    toronto: { city: 'Toronto', state: 'ON', country: 'Canada' },
+    singapore: { city: 'Singapore', state: 'Singapore', country: 'Singapore' },
+    berlin: { city: 'Berlin', state: 'Berlin', country: 'Germany' },
+  };
+
+  let extractedCity = '';
+  let extractedState = '';
+  let extractedCountry = '';
   let location = 'Remote / Open to Relocation';
-  const locMatch = text.match(/(Meerut|Delhi|Mumbai|Bangalore|Noida|Gurgaon|Hyderabad|San Francisco|New York|Seattle|London|Remote)(?:,\s*[A-Za-z\s]+)?/i);
-  if (locMatch) location = locMatch[0].trim();
+
+  // Check known cities in text
+  const cityRegex = new RegExp(`\\b(${Object.keys(cityStateMap).join('|')})\\b`, 'i');
+  const cityMatch = text.match(cityRegex);
+  if (cityMatch) {
+    const key = cityMatch[1].toLowerCase();
+    const info = cityStateMap[key];
+    if (info) {
+      extractedCity = info.city;
+      extractedState = info.state;
+      extractedCountry = info.country;
+      location = `${extractedCity}, ${extractedState}`;
+    }
+  } else {
+    // Regex for "City, State" or "City, Country" pattern
+    const explicitLocMatch = text.match(/([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?),\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?|[A-Z]{2})\b/);
+    if (explicitLocMatch && !/university|institute|college|school|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec/i.test(explicitLocMatch[0])) {
+      extractedCity = explicitLocMatch[1];
+      extractedState = explicitLocMatch[2];
+      location = `${extractedCity}, ${extractedState}`;
+    }
+  }
 
   // ── 3. HEADLINE ───────────────────────────────────────────────────────────
   let headline = 'Software Engineer';
@@ -269,6 +332,9 @@ export function parseResumeText(rawText: string, fallbackName?: string): Candida
     headline,
     yearsOfExperience: 2,
     location,
+    city: extractedCity || undefined,
+    state: extractedState || undefined,
+    country: extractedCountry || undefined,
     summary,
     skills: {
       coreArchitecture: Array.from(new Set(coreArchitecture)),

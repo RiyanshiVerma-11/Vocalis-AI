@@ -15,11 +15,13 @@ import {
   TrendingUp,
   Upload,
   RefreshCw,
+  MapPin,
 } from 'lucide-react';
 import { CandidateResume, QuestionHistoryItem, SharedCandidateContext } from '../types';
 import { RESUME_PRESETS } from '../data/resumes';
 import { parseResumeText, parseResumeTextAsync } from '../utils/resumeParser';
 import { extractTextFromFile } from '../utils/rubricParser';
+import { getExperienceTier, EXPERIENCE_TIERS, ExperienceTier } from './recruiter/types';
 
 interface ResumeDrawerProps {
   isOpen: boolean;
@@ -52,9 +54,11 @@ export const ResumeDrawer: React.FC<ResumeDrawerProps> = ({
   const resumeFileRef = useRef<HTMLInputElement>(null);
 
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   useEffect(() => {
     setEditedResume(currentResume);
+    setValidationError(null);
   }, [currentResume]);
 
   if (!isOpen) return null;
@@ -68,11 +72,34 @@ export const ResumeDrawer: React.FC<ResumeDrawerProps> = ({
   };
 
   const handleSelectPreset = (preset: CandidateResume) => {
+    setValidationError(null);
     notifyChange(preset);
     setIsEditing(false);
   };
 
   const handleSaveEdit = () => {
+    const years = editedResume.yearsOfExperience ?? 0;
+    const tier = editedResume.experienceTier || getExperienceTier(years);
+
+    if (tier !== 'fresher') {
+      if (!editedResume.previousCompany || !editedResume.previousCompany.trim()) {
+        setValidationError('Previous Company is required for experienced candidates (non-freshers).');
+        return;
+      }
+      if (!editedResume.workMode) {
+        setValidationError('Work Mode (Remote or Onsite) is required for experienced candidates.');
+        return;
+      }
+    } else {
+      if (!editedResume.previousCompany) {
+        editedResume.previousCompany = 'None (Fresher / Campus Graduate)';
+      }
+      if (!editedResume.workMode) {
+        editedResume.workMode = 'Onsite';
+      }
+    }
+
+    setValidationError(null);
     notifyChange(editedResume);
     setIsEditing(false);
   };
@@ -238,7 +265,17 @@ export const ResumeDrawer: React.FC<ResumeDrawerProps> = ({
                     </button>
                   </div>
                   <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-xs text-indigo-900 space-y-1">
-                    <p className="font-extrabold">{currentResume.fullName}</p>
+                    <div className="flex items-center justify-between">
+                      <p className="font-extrabold">{currentResume.fullName}</p>
+                      <span className="inline-flex items-center gap-1 text-[11px] text-indigo-700 font-medium">
+                        <MapPin className="w-3 h-3 text-indigo-500" />
+                        <span>
+                          {currentResume.city && currentResume.state
+                            ? `${currentResume.city}, ${currentResume.state}`
+                            : currentResume.location || 'Remote'}
+                        </span>
+                      </span>
+                    </div>
                     <p className="text-indigo-700 font-medium">{currentResume.headline}</p>
                     <p className="text-slate-500 line-clamp-2 text-[11px]">{currentResume.summary}</p>
                   </div>
@@ -318,12 +355,51 @@ export const ResumeDrawer: React.FC<ResumeDrawerProps> = ({
                     <p className="text-xs text-indigo-700 font-semibold">
                       {currentResume.headline}
                     </p>
-                    <p className="text-[11px] text-slate-500">
-                      {currentResume.yearsOfExperience} Years Exp • {currentResume.location}
-                    </p>
+                    <div className="text-[11px] text-slate-500 flex items-center gap-1.5 mt-1 flex-wrap">
+                      <span className="inline-flex items-center gap-1 text-slate-700 font-medium">
+                        <MapPin className="w-3 h-3 text-slate-400" />
+                        <span>
+                          {currentResume.city && currentResume.state
+                            ? `${currentResume.city}, ${currentResume.state}`
+                            : currentResume.location || 'Remote'}
+                        </span>
+                      </span>
+                      <span>•</span>
+                      {(() => {
+                        const tierKey = currentResume.experienceTier || getExperienceTier(currentResume.yearsOfExperience || 0);
+                        const tierInfo = EXPERIENCE_TIERS[tierKey];
+                        const isFresher = tierKey === 'fresher';
+
+                        return (
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded border ${tierInfo.badge}`}>
+                              {tierInfo.range} ({tierInfo.label})
+                            </span>
+                            {isFresher ? (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                Campus Graduate / Fresher
+                              </span>
+                            ) : currentResume.previousCompany ? (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-white text-slate-800 border border-slate-300 flex items-center gap-1">
+                                <Building2 className="w-3 h-3 text-indigo-600" />
+                                <span>Prev: {currentResume.previousCompany}</span>
+                                {currentResume.workMode && (
+                                  <span className="text-[9px] px-1.5 py-0.2 rounded font-black bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                    {currentResume.workMode}
+                                  </span>
+                                )}
+                              </span>
+                            ) : null}
+                          </div>
+                        );
+                      })()}
+                    </div>
                   </div>
                   <button
-                    onClick={() => setIsEditing(!isEditing)}
+                    onClick={() => {
+                      setIsEditing(!isEditing);
+                      setValidationError(null);
+                    }}
                     className="flex items-center gap-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900 bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-2xs cursor-pointer"
                   >
                     <Edit3 className="w-3 h-3" />
@@ -333,33 +409,245 @@ export const ResumeDrawer: React.FC<ResumeDrawerProps> = ({
 
                 {isEditing ? (
                   <div className="space-y-3 pt-2 border-t border-slate-200">
-                    <div>
-                      <label className="text-[11px] font-bold text-slate-700">Full Name</label>
-                      <input
-                        type="text"
-                        value={editedResume.fullName}
-                        onChange={(e) => setEditedResume({ ...editedResume, fullName: e.target.value })}
-                        className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs"
-                      />
+                    {validationError && (
+                      <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-rose-800 text-xs font-bold animate-in fade-in flex items-center gap-2">
+                        <span className="text-rose-600 font-black">!</span>
+                        <span>{validationError}</span>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-700">Full Name</label>
+                        <input
+                          type="text"
+                          value={editedResume.fullName}
+                          onChange={(e) => setEditedResume({ ...editedResume, fullName: e.target.value })}
+                          className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-900"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-700">Headline</label>
+                        <input
+                          type="text"
+                          value={editedResume.headline}
+                          onChange={(e) => setEditedResume({ ...editedResume, headline: e.target.value })}
+                          className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-900"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="text-[11px] font-bold text-slate-700">Headline</label>
-                      <input
-                        type="text"
-                        value={editedResume.headline}
-                        onChange={(e) => setEditedResume({ ...editedResume, headline: e.target.value })}
-                        className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs"
-                      />
+
+                    {/* Experience Tier Selector */}
+                    <div className="space-y-1.5 bg-white p-3 rounded-xl border border-slate-200">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-black text-slate-900 uppercase tracking-wider">
+                          Candidate Seniority / Experience Tier
+                        </label>
+                        <span className="text-[10px] text-indigo-600 font-semibold">
+                          Select one of 5 tiers
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
+                        {(['fresher', 'beginner', 'mid', 'senior', 'expert'] as ExperienceTier[]).map((tierKey) => {
+                          const info = EXPERIENCE_TIERS[tierKey];
+                          const activeTier = editedResume.experienceTier || getExperienceTier(editedResume.yearsOfExperience ?? 0);
+                          const isSelected = activeTier === tierKey;
+
+                          return (
+                            <button
+                              key={tierKey}
+                              type="button"
+                              onClick={() => {
+                                const defaultYears: Record<ExperienceTier, number> = {
+                                  fresher: 0,
+                                  beginner: 2,
+                                  mid: 5,
+                                  senior: 8,
+                                  expert: 12,
+                                };
+                                setEditedResume({
+                                  ...editedResume,
+                                  experienceTier: tierKey,
+                                  yearsOfExperience: defaultYears[tierKey],
+                                  previousCompany:
+                                    tierKey === 'fresher'
+                                      ? 'None (Fresher / Campus Graduate)'
+                                      : editedResume.previousCompany === 'None (Fresher / Campus Graduate)'
+                                      ? ''
+                                      : editedResume.previousCompany,
+                                  workMode: editedResume.workMode || 'Remote',
+                                });
+                                setValidationError(null);
+                              }}
+                              className={`p-2 rounded-lg text-left transition border cursor-pointer flex flex-col justify-between ${
+                                isSelected
+                                  ? 'bg-indigo-50 border-indigo-600 ring-1 ring-indigo-500'
+                                  : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
+                              }`}
+                            >
+                              <span className={`text-[10px] font-black block leading-tight ${isSelected ? 'text-indigo-900' : 'text-slate-800'}`}>
+                                {info.range}
+                              </span>
+                              <span className="text-[9px] text-slate-500 truncate block mt-0.5">
+                                {info.label.split(' ')[0]}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <div className="pt-2 flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-slate-600">Exact Years of Experience:</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={40}
+                          value={editedResume.yearsOfExperience ?? 0}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            const inferredTier = getExperienceTier(val);
+                            setEditedResume({
+                              ...editedResume,
+                              yearsOfExperience: val,
+                              experienceTier: inferredTier,
+                            });
+                          }}
+                          className="w-20 bg-slate-50 px-2 py-1 rounded-lg border border-slate-300 text-xs font-mono font-bold text-slate-900 text-right"
+                        />
+                      </div>
                     </div>
+
+                    {/* Conditional Previous Company & Work Mode Field */}
+                    {(() => {
+                      const activeTier = editedResume.experienceTier || getExperienceTier(editedResume.yearsOfExperience ?? 0);
+                      const isFresher = activeTier === 'fresher';
+
+                      if (isFresher) {
+                        return (
+                          <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 flex items-center gap-2 text-emerald-800 text-xs">
+                            <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                            <span>
+                              <strong>Fresher Pipeline Selected:</strong> Previous company is not required for campus graduates and entry-level talent.
+                            </span>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className="p-3 bg-indigo-50/70 rounded-xl border border-indigo-200 space-y-2.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-black text-indigo-950 uppercase tracking-wider flex items-center gap-1">
+                              <Building2 className="w-3.5 h-3.5 text-indigo-600" />
+                              <span>Prior Industry Background</span>
+                              <span className="text-rose-600 font-bold">* Mandatory</span>
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-medium">
+                              Required for non-freshers
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            <div>
+                              <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                                Previous / Current Company <span className="text-rose-500">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={editedResume.previousCompany || ''}
+                                onChange={(e) => {
+                                  setEditedResume({ ...editedResume, previousCompany: e.target.value });
+                                  setValidationError(null);
+                                }}
+                                placeholder="e.g. Swiggy, Razorpay, Flipkart, Uber, Google..."
+                                className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-900 outline-none focus:border-indigo-600"
+                                required
+                              />
+                            </div>
+
+                            <div>
+                              <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                                Work Mode <span className="text-rose-500">*</span>
+                              </label>
+                              <div className="grid grid-cols-3 gap-1">
+                                {(['Remote', 'Onsite', 'Hybrid'] as const).map((mode) => (
+                                  <button
+                                    key={mode}
+                                    type="button"
+                                    onClick={() => {
+                                      setEditedResume({ ...editedResume, workMode: mode });
+                                      setValidationError(null);
+                                    }}
+                                    className={`py-1.5 px-1.5 rounded-lg text-xs font-bold transition border cursor-pointer text-center ${
+                                      editedResume.workMode === mode
+                                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                                    }`}
+                                  >
+                                    {mode}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-700">City</label>
+                        <input
+                          type="text"
+                          value={editedResume.city || ''}
+                          onChange={(e) => {
+                            const newCity = e.target.value;
+                            const newLoc =
+                              newCity && editedResume.state
+                                ? `${newCity}, ${editedResume.state}`
+                                : newCity || editedResume.state || 'Remote';
+                            setEditedResume({
+                              ...editedResume,
+                              city: newCity,
+                              location: newLoc,
+                            });
+                          }}
+                          placeholder="e.g. Bengaluru"
+                          className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-900"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-700">State / Region</label>
+                        <input
+                          type="text"
+                          value={editedResume.state || ''}
+                          onChange={(e) => {
+                            const newState = e.target.value;
+                            const newLoc =
+                              editedResume.city && newState
+                                ? `${editedResume.city}, ${newState}`
+                                : editedResume.city || newState || 'Remote';
+                            setEditedResume({
+                              ...editedResume,
+                              state: newState,
+                              location: newLoc,
+                            });
+                          }}
+                          placeholder="e.g. Karnataka"
+                          className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-900"
+                        />
+                      </div>
+                    </div>
+
                     <div>
                       <label className="text-[11px] font-bold text-slate-700">Executive Summary</label>
                       <textarea
                         rows={3}
                         value={editedResume.summary}
                         onChange={(e) => setEditedResume({ ...editedResume, summary: e.target.value })}
-                        className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs"
+                        className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-900"
                       />
                     </div>
+
                     <div className="flex justify-end">
                       <button
                         onClick={handleSaveEdit}
