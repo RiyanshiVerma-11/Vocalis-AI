@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Mic, MicOff, Send, Hand, Sparkles, Volume2, AudioLines, Pause, Play, Clock, X, BrainCircuit, ShieldCheck, MessageSquareQuote } from 'lucide-react';
 
 interface VoiceControllerProps {
@@ -18,6 +18,7 @@ interface VoiceControllerProps {
   thoughtGraceActive?: boolean;
   thoughtGraceReason?: string;
   backchannelDetectedPhrase?: string | null;
+  onClearTranscript?: () => void;
 }
 
 export const VoiceController: React.FC<VoiceControllerProps> = ({
@@ -37,21 +38,56 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
   thoughtGraceActive = false,
   thoughtGraceReason = '',
   backchannelDetectedPhrase = null,
+  onClearTranscript,
 }) => {
   const [textInput, setTextInput] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const typingTimerRef = useRef<any>(null);
 
   // Sync current speech recognition text into input box if candidate is speaking
   useEffect(() => {
-    if (currentInterimTranscript) {
+    // Only overwrite if user is not actively typing manually
+    if (currentInterimTranscript && !isTyping) {
       setTextInput(currentInterimTranscript);
+    } else if (!currentInterimTranscript && !isTyping) {
+      setTextInput('');
     }
-  }, [currentInterimTranscript]);
+  }, [currentInterimTranscript, isTyping]);
+
+  const handleClear = () => {
+    setTextInput('');
+    setIsTyping(false);
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    if (onClearTranscript) {
+      onClearTranscript();
+    }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setTextInput(val);
+    setIsTyping(true);
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    typingTimerRef.current = setTimeout(() => {
+      setIsTyping(false);
+    }, 2500);
+
+    // If candidate backspaced/cleared everything manually, also notify engine to cancel auto-send!
+    if (!val.trim() && onClearTranscript) {
+      onClearTranscript();
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!textInput.trim() || isProcessing) return;
+    setIsTyping(false);
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     onSubmitText(textInput.trim());
     setTextInput('');
+    if (onClearTranscript) {
+      onClearTranscript();
+    }
   };
 
   const quickPrompts = [
@@ -218,7 +254,7 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
             id="candidate-response-input"
             type="text"
             value={textInput}
-            onChange={(e) => setTextInput(e.target.value)}
+            onChange={handleInputChange}
             placeholder={
               isFloorHeld
                 ? 'Floor held — speak or type your complete thoughts...'
@@ -233,9 +269,9 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
           {textInput.trim() && (
             <button
               type="button"
-              onClick={() => setTextInput('')}
+              onClick={handleClear}
               className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition cursor-pointer"
-              title="Clear input text"
+              title="Clear text & cancel auto-send"
             >
               <X className="w-3.5 h-3.5" />
             </button>

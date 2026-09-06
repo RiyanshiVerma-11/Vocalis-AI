@@ -334,12 +334,25 @@ export default function App() {
 
       setThoughtGraceActive(false);
       const textToSubmit = fullText.trim();
+      if (!textToSubmit) return;
       agoraVoiceEngine.clearSpeechBuffer();
       setCurrentInterimTranscript('');
       handleCandidateResponse(textToSubmit);
     };
 
     speechSilenceTimerRef.current = setTimeout(checkAndSubmit, effectiveTimeout);
+  }, []);
+
+  // Handler to clear interim speech buffer, cancel auto-send timer, and reset candidate text
+  const handleClearTranscript = useCallback(() => {
+    if (speechSilenceTimerRef.current) {
+      clearTimeout(speechSilenceTimerRef.current);
+      speechSilenceTimerRef.current = null;
+    }
+    setCurrentInterimTranscript('');
+    agoraVoiceEngine.clearSpeechBuffer();
+    setThoughtGraceActive(false);
+    setThoughtGraceReason('');
   }, []);
 
   // Immediate Interruption Handler (synchronously cancels AI audio & in-flight requests, turns ON mic)
@@ -349,6 +362,7 @@ export default function App() {
 
     // 2. Halt all audio sources synchronously
     agoraVoiceEngine.interrupt();
+    agoraVoiceEngine.setIsSpeaking(false);
     import('./services/audioEngine').then(({ audioEngine }) => audioEngine.interrupt()).catch(() => {});
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
@@ -359,6 +373,7 @@ export default function App() {
     }
 
     setIsAISpeaking(false);
+    isAISpeakingRef.current = false;
     setIsProcessing(false);
     setThoughtGraceActive(false);
 
@@ -399,6 +414,7 @@ export default function App() {
       const turnId = ++currentTurnIdRef.current;
       isAISpeakingRef.current = true;
       setIsAISpeaking(true);
+      agoraVoiceEngine.setIsSpeaking(true);
       setActiveSpeakerId(interviewer.id);
 
       // Clean dialogue text of emoji badges, strategy labels, and metadata before synthesis
@@ -414,6 +430,7 @@ export default function App() {
       if (!cleanDialogue) {
         setIsAISpeaking(false);
         isAISpeakingRef.current = false;
+        agoraVoiceEngine.setIsSpeaking(false);
         return;
       }
 
@@ -469,6 +486,7 @@ export default function App() {
           aiFinishedSpeakingAtRef.current = Date.now();
           setIsAISpeaking(false);
           isAISpeakingRef.current = false;
+          agoraVoiceEngine.setIsSpeaking(false);
           agoraVoiceEngine.muteRemoteAudioTrack(false);
           // IMPORTANT: Delay buffer clear by 700ms to let Web Speech API flush its
           // pending final results safely WITHOUT triggering an auto-submit of AI echo.
@@ -615,12 +633,19 @@ export default function App() {
 
     setTranscript([firstMessage]);
     setLastTurnTakingReason(`Initial question opened by ${initialSpeaker.name} (${initialSpeaker.title})`);
-    setLastInternalThought(`Opening scenario question calibrated for ${config.initialDifficulty} level.`);
     setActiveSpeakerId(initialSpeaker.id);
     setSessionSeconds(0);
     setInInterview(true);
     setIsSidebarOpen(false); // Automatically hide sidebar for max focus during live interview
     setAssessment(null);
+
+    // Auto-arm microphone so candidate can speak hands-free immediately after opening question!
+    setIsListening(true);
+    isListeningRef.current = true;
+    agoraVoiceEngine.initMicVisualizer((vol) => {
+      candidateVolumeRef.current = vol;
+      setCandidateVolume(vol);
+    });
 
     // ── Join Agora RTC channel + start Conversational AI agent in background ──
     (async () => {
@@ -679,6 +704,8 @@ export default function App() {
     }
 
     setIsAISpeaking(false);
+    isAISpeakingRef.current = false;
+    agoraVoiceEngine.setIsSpeaking(false);
     setIsProcessing(true);
     setThoughtGraceActive(false);
     setThoughtGraceReason('');
@@ -1109,7 +1136,10 @@ export default function App() {
       window.speechSynthesis.cancel();
     }
     setIsAISpeaking(false);
+    isAISpeakingRef.current = false;
+    agoraVoiceEngine.setIsSpeaking(false);
     setIsListening(false);
+    isListeningRef.current = false;
     if (speechSilenceTimerRef.current) {
       clearTimeout(speechSilenceTimerRef.current);
       speechSilenceTimerRef.current = null;
@@ -1751,6 +1781,7 @@ export default function App() {
                     onToggleListening={handleToggleListening}
                     onInterrupt={handleInterrupt}
                     onSubmitText={handleCandidateResponse}
+                    onClearTranscript={handleClearTranscript}
                     candidateVolume={candidateVolume}
                     currentInterimTranscript={currentInterimTranscript}
                     onSelectQuickPrompt={handleCandidateResponse}

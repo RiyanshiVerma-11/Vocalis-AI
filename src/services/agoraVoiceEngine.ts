@@ -81,16 +81,35 @@ export class AgoraVoiceEngine {
     this.completedSessionsText = '';
     this.currentSessionFinalText = '';
     this.currentSessionInterimText = '';
+    this.isSpeaking = false;
     if (this.webSpeechRecognition) {
       try {
+        this.webSpeechRecognition.onresult = null;
+        this.webSpeechRecognition.onerror = null;
+        this.webSpeechRecognition.onend = null;
         this.webSpeechRecognition.abort();
       } catch (_) {}
       this.webSpeechRecognition = null;
+    }
+    // If we are listening, restart with a fresh clean session after brief tick
+    if (this.isListening) {
+      setTimeout(() => {
+        if (this.isListening && !this.webSpeechRecognition) {
+          this._startWebSpeech();
+        }
+      }, 80);
     }
   }
 
   public getIsSpeaking() {
     return this.isSpeaking;
+  }
+
+  public setIsSpeaking(val: boolean) {
+    this.isSpeaking = val;
+    if (!val) {
+      this.isBrowserSpeaking = false;
+    }
   }
 
   // ─── Join Agora RTC Channel ──────────────────────────────
@@ -324,6 +343,8 @@ export class AgoraVoiceEngine {
   ): Promise<boolean> {
     this.callbacks.onTranscript = onTranscript;
     this.onSpeechDetectedCallback = onSpeechDetected || null;
+    this.isListening = true;
+    this.isSpeaking = false;
 
     // 1. Publish mic to Agora channel (non-blocking so failure doesn't prevent local speech recognition)
     if (this.isJoined && this.client) {
@@ -348,38 +369,47 @@ export class AgoraVoiceEngine {
       }
     }
 
-    // 2. Web Speech API for real-time transcript display (client-side)
+    // 2. Start Web Speech API recognizer
+    return this._startWebSpeech();
+  }
+
+  // Resilient Web Speech API starter and restart manager
+  private _startWebSpeech(): boolean {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) {
       console.warn('[AgoraVoiceEngine] Web Speech API not available — transcript display disabled.');
-      this.isListening = true;
-      return true;
+      return false;
     }
 
     // Clean up any existing speech recognition instance cleanly before starting
     if (this.webSpeechRecognition) {
       try {
+        this.webSpeechRecognition.onresult = null;
+        this.webSpeechRecognition.onerror = null;
+        this.webSpeechRecognition.onend = null;
         this.webSpeechRecognition.abort();
       } catch (_) {}
       this.webSpeechRecognition = null;
     }
 
     try {
-      this.webSpeechRecognition = new SR();
-      this.webSpeechRecognition.continuous = true;
-      this.webSpeechRecognition.interimResults = true;
-      this.webSpeechRecognition.lang = 'en-US';
+      const recognition = new SR();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
 
-      this.webSpeechRecognition.onresult = (event: any) => {
-        // Acoustic echo shield: ignore microphone while AI is speaking
+      recognition.onresult = (event: any) => {
+        // If AI is currently speaking and candidate speaks, trigger barge-in interrupt!
         if (this.isSpeaking) {
+          if (this.onSpeechDetectedCallback) {
+            this.onSpeechDetectedCallback();
+          }
           return;
         }
 
         let sessionFinal = '';
         let sessionInterim = '';
 
-        // Iterate over ALL results in the current session
         for (let i = 0; i < event.results.length; i++) {
           const chunk = event.results[i][0].transcript;
           if (event.results[i].isFinal) {
@@ -400,22 +430,19 @@ export class AgoraVoiceEngine {
 
         const fullSpeech = parts.join(' ').trim();
 
-        if (fullSpeech) {
-          // Boost technical jargon (WAL, Raft, gRPC, p99, etc.)
+        if (fullSpeech && this.callbacks.onTranscript) {
           const boostedSpeech = boostTechnicalJargon(fullSpeech);
-          onTranscript(boostedSpeech, Boolean(sessionFinal));
+          this.callbacks.onTranscript(boostedSpeech, Boolean(sessionFinal));
         }
       };
 
-      this.webSpeechRecognition.onerror = (e: any) => {
-        if (e.error !== 'no-speech') {
+      recognition.onerror = (e: any) => {
+        if (e.error !== 'no-speech' && e.error !== 'aborted') {
           console.warn('[AgoraVoiceEngine] Speech recognition event:', e.error);
         }
       };
 
-      this.webSpeechRecognition.onend = () => {
-        // When Chrome ends a recognition session (e.g., momentary pause),
-        // safely seal whatever was spoken in this session into completedSessionsText.
+      recognition.onend = () => {
         const sessionFinishedText = [
           this.currentSessionFinalText,
           this.currentSessionInterimText,
@@ -430,27 +457,31 @@ export class AgoraVoiceEngine {
         }
 
         if (this.isListening) {
-          try {
-            this.webSpeechRecognition?.start();
-          } catch (_) {
-            // Already restarting or busy
-          }
+          setTimeout(() => {
+            if (this.isListening) {
+              try {
+                this.webSpeechRecognition?.start();
+              } catch (_) {
+                this._startWebSpeech();
+              }
+            }
+          }, 120);
         }
       };
 
-      this.webSpeechRecognition.start();
-      this.isListening = true;
+      recognition.start();
+      this.webSpeechRecognition = recognition;
       return true;
     } catch (err) {
       console.warn('[AgoraVoiceEngine] Speech recognition start caught error:', err);
-      this.isListening = true;
-      return true;
+      return false;
     }
   }
 
   // ─── Stop microphone ─────────────────────────────────────
   public stopSpeechRecognition(): void {
     this.isListening = false;
+    this.isSpeaking = false;
 
     if (this.currentMicVisualizerCleanup) {
       try {
@@ -462,6 +493,9 @@ export class AgoraVoiceEngine {
     // Stop Web Speech API
     if (this.webSpeechRecognition) {
       try {
+        this.webSpeechRecognition.onresult = null;
+        this.webSpeechRecognition.onerror = null;
+        this.webSpeechRecognition.onend = null;
         this.webSpeechRecognition.stop();
       } catch (_) {}
       this.webSpeechRecognition = null;
