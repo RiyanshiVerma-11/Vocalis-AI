@@ -284,10 +284,37 @@ graph LR
 Vocalis AI features two tailored workspace environments:
 
 ### 1. Candidate Practice View
-Designed for job seekers to practice technical and behavioral screens under realistic panel pressure. Features microphone controls, pause tolerance adjustments, quick scenario prompts, and focus mode.
+Designed for job seekers to practice technical and behavioral screens under realistic panel pressure. Features microphone controls, pause tolerance adjustments, quick scenario prompts, focus mode, and the AI Disclosure Banner always visible.
 
 ### 2. Recruiter & Hiring Team View
-Designed for talent acquisition leaders to parse resumes, build custom panel committees, launch live candidate screenings, review evaluated candidate pipelines, and export quote-backed scorecards.
+A full enterprise-grade hiring intelligence hub for talent acquisition leaders. The recruiter workspace is a multi-tab dashboard with the following capabilities:
+
+#### 📊 Tab 1 — Talent Demographics & Top Performers (`analytics`)
+- **`RecruiterHeaderStats`** — Live KPI banner showing total evaluated, gender ratio (Female/Male split), overall avg score, pass rate, and strong-hire count. Includes org-context bar (company name, size, industry, hiring role) populated from the recruiter's profile.
+- **`TopPerformersShowcase`** — Side-by-side top female and top male candidate cards with score badges and key strengths. Interactive state-origin heatmap and experience-tier ratio breakdown (Fresher / Beginner / Mid / Senior / Staff).
+- **`StateProportionVisualizer`** — Colour-coded proportion bar showing candidate origin states (Telangana, Karnataka, Maharashtra, Delhi-NCR, etc.) with click-to-filter drill-down.
+- **`ExperienceRatioVisualizer`** — Stacked visual showing candidate distribution across 5 experience tiers (0–1y, 1–3y, 4–8y, 8–10y, 10+y) with avg score and pass rate per tier.
+- **Demographic Audit button** → opens `DemographicTransparencyModal`.
+- **Parity Shortlist button** → opens `ParityShortlistModal`.
+
+#### 👥 Tab 2 — Candidate Pipeline & Reports (`candidates`)
+- **`RecruiterFilterSortToolbar`** — Rich filter bar with controls for: Gender, State origin, Hiring recommendation, Date range (Today/Yesterday/Week), Experience tier, and custom **Shortlist by Gender Ratio** (e.g. 60% ♀ : 40% ♂ from top N candidates). Sort by date, score, or name.
+- **`StateProportionVisualizer`** — Togglable interactive state chart above the table.
+- **`CandidatePipelineTable`** — Sortable, filterable candidate grid showing: name, gender, experience (years + tier badge), previous company, work mode (Remote/Onsite/Hybrid), city/state, interview date, overall score, recommendation verdict, and key strengths. Supports **CSV export** of the current filtered view.
+- **`CandidateScorecardDrawer`** — Full-screen 360° scorecard slide-over with three inner tabs:
+  - **Q&A Review** — Per-interviewer Q&A pairs with score, verdict, and feedback quotes.
+  - **Overview** — Radar competency breakdown, jargon audit (buzzword density, verified metrics count, practical depth ratio), onboarding plan, and bar-raiser probe summary.
+  - **Bar Raiser** — AI-generated bar-raiser challenge log with candidate claim → AI probe → candidate adjustment → verdict flow.
+- **Live session integration** — Real sessions stored via `sessionHistoryService` are automatically merged into the pipeline alongside demo candidates.
+
+#### 🏢 Tab 3 — Job Requisitions & Committee Rubrics (`requisitions`)
+- **`CommitteeRubricsManager`** — Browse and manage enterprise rubric templates (Google L5/L6, Amazon Bar Raiser, Startup IC5, FAANG Principal, etc.). Each rubric card shows strictness rating, key signals, target level, and culture DNA. One-click **Launch Interview** directly against a selected rubric.
+- **`RubricImporterModal`** — Full rubric editor: import a JD PDF or paste text, AI extracts key signals and weights. Supports editing existing rubrics and creating custom ones.
+- **Shareable apply link** — Auto-generated candidate-facing interview link for the recruiter's active requisition with copy-to-clipboard.
+
+#### 🔍 Advanced Fairness & Compliance Tools
+- **`DemographicTransparencyModal`** — Full audit report of the evaluated cohort: gender ratio breakdown with goal tracking (from recruiter's `diversityGoal` profile field), individual candidate list filterable by gender, score distribution comparison, and direct link to parity shortlist.
+- **`ParityShortlistModal`** — Side-by-side merit-plus-parity shortlist builder. Recruiter sets a target female/male ratio and cohort size; the system surfaces the highest-scoring candidates from each group meeting the threshold. Each candidate card is clickable to open the 360° scorecard drawer.
 
 ---
 
@@ -473,33 +500,61 @@ Content-Type: application/json
 
 ```
 37 VoiceIntro AI/
-├── index.html                    # HTML5 Entry point & PWA meta tags
-├── package.json                  # Dependencies (agora-agents v2.7.0, agora-rtc-sdk-ng)
-├── vite.config.ts                # Vite bundler configuration
-├── server.ts                     # Express Server (Agora Conversational AI SDK, Tokens, LLM APIs)
+├── index.html                         # HTML5 Entry point & PWA meta tags
+├── package.json                       # Dependencies (agora-agents v2.7.0, agora-rtc-sdk-ng)
+├── vite.config.ts                     # Vite bundler configuration
+├── server.ts                          # Express Server (Agora Conversational AI SDK, Tokens, LLM APIs)
 ├── scratch/
-│   └── test_agora_sdk.js         # Live Agora Cloud SDRTN verification test script
-├── public/                       # Static assets & PWA webmanifest
+│   └── test_agora_sdk.js              # Live Agora Cloud SDRTN verification test script
+├── public/                            # Static assets & PWA webmanifest
 └── src/
-    ├── App.tsx                   # Main Workspace & Agora Session Orchestration
-    ├── index.css                 # Tailwind CSS v4 design system
-    ├── main.tsx                  # React DOM mount point & PWA registration
+    ├── App.tsx                        # Main Workspace & Agora Session Orchestration
+    ├── index.css                      # Tailwind CSS v4 design system
+    ├── main.tsx                       # React DOM mount point & PWA registration
     ├── components/
-    │   ├── InterviewerStage.tsx  # Panel stage & active speaker cards
-    │   ├── TranscriptView.tsx    # Live synchronized transcript & backstage thoughts
-    │   ├── VoiceController.tsx   # Agora WebRTC mic controls & VAD visualizer
-    │   ├── RecruiterDashboard.tsx# Hiring team candidate pipeline & panel builder
-    │   ├── LandingPage.tsx       # Marketing landing page & hero section
-    │   ├── LoginPage.tsx         # Side-by-side Auth & 1-click Demo logins
-    │   ├── StudioSidebar.tsx     # Sticky navigation sidebar & user profile
-    │   ├── ResumeDrawer.tsx      # Candidate resume parser & question memory
-    │   └── FinalAssessmentModal.tsx # Quote-backed executive evaluation report
-    ├── data/                     # Scenarios, interviewers & mock resumes
+    │   ├── AIDisclosureBanner.tsx     # Persistent AI panel disclosure notice (PS11 req #11)
+    │   ├── InterviewerStage.tsx       # 5-panel avatar stage & active speaker cards
+    │   ├── TranscriptView.tsx         # Live transcript & backstage deliberation feed
+    │   ├── VoiceController.tsx        # Agora WebRTC mic controls & VAD visualizer
+    │   ├── FinalAssessmentModal.tsx   # Quote-backed executive evaluation scorecard
+    │   ├── LandingPage.tsx            # Marketing landing page & hero section
+    │   ├── LoginPage.tsx              # Side-by-side Auth & 1-click Demo logins
+    │   ├── StudioSidebar.tsx          # Sticky navigation sidebar & user profile
+    │   ├── ResumeDrawer.tsx           # Candidate resume parser & question memory
+    │   ├── DifficultyChart.tsx        # Live SVG difficulty trajectory sparkline
+    │   ├── ScenarioSelector.tsx       # PS11 role-play scenario chooser
+    │   ├── RubricImporterModal.tsx    # AI-powered JD → rubric extractor & editor
+    │   ├── SystemDesignWhiteboardModal.tsx # Whiteboard canvas for system design rounds
+    │   ├── TurnTimeMachineModal.tsx   # Replay any past interview turn with context
+    │   ├── SkillProgressionHub.tsx    # Candidate growth tracker across sessions
+    │   ├── LivePanelContext.tsx       # Shared panel state & context bus
+    │   ├── TalkingFaceAvatar.tsx      # Animated AI avatar face during voice turns
+    │   ├── ToastNotification.tsx      # Global in-app toast system
+    │   ├── PWAInstallPrompt.tsx       # Progressive Web App install prompt
+    │   └── recruiter/                 # ── Enterprise Recruiter Dashboard Module ──
+    │       ├── RecruiterDashboard.tsx        # Root 3-tab dashboard orchestrator
+    │       ├── RecruiterHeaderStats.tsx      # KPI banner (score, pass-rate, gender ratio, org context)
+    │       ├── RecruiterFilterSortToolbar.tsx# Filter bar (gender, state, rec, date, exp, parity ratio)
+    │       ├── RecruiterSidebar.tsx          # Recruiter nav sidebar with tab switcher
+    │       ├── TopPerformersShowcase.tsx     # Top candidates + state & experience visualizers
+    │       ├── StateProportionVisualizer.tsx # Interactive state-origin proportion bar chart
+    │       ├── ExperienceRatioVisualizer.tsx # Experience tier ratio stacked chart
+    │       ├── CandidatePipelineTable.tsx    # Sortable pipeline grid + CSV export
+    │       ├── CandidateScorecardDrawer.tsx  # Full 360° scorecard slide-over (Q&A, overview, bar-raiser)
+    │       ├── CommitteeRubricsManager.tsx   # Enterprise rubric browser & requisition launcher
+    │       ├── DemographicTransparencyModal.tsx # Gender parity audit & diversity goal tracker
+    │       ├── ParityShortlistModal.tsx      # Merit-plus-parity shortlist builder
+    │       ├── demoCandidates.ts             # Enriched demo candidate seed data
+    │       ├── types.ts                      # Recruiter domain types & experience tier constants
+    │       └── index.ts                      # Public barrel exports
+    ├── data/                          # Scenarios, interviewers & mock resumes
     ├── services/
-    │   ├── agoraVoiceEngine.ts   # Client-side Agora RTC SDK NG audio engine
-    │   └── apiService.ts         # REST client for Agora tokens, agent start/speak/stop
-    ├── types/                    # TypeScript interfaces & domain schemas
-    └── utils/                    # Jargon booster & audio visualizer utilities
+    │   ├── agoraVoiceEngine.ts        # Client-side Agora RTC SDK NG audio engine
+    │   ├── apiService.ts              # REST client for Agora tokens, agent start/speak/stop
+    │   ├── sessionHistoryService.ts   # Local session persistence & pipeline integration
+    │   └── recruiterPipelineService.ts# Cohort analytics engine (pass rate, gender pct, tier breakdown)
+    ├── types/                         # TypeScript interfaces & domain schemas
+    └── utils/                         # Jargon booster, rubric parser & audio visualizer utilities
 ```
 
 ---
