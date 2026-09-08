@@ -768,7 +768,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 </div>
                 <h3 className="text-sm font-bold text-slate-900">Groq Sub-100ms Inference</h3>
                 <p className="text-xs text-slate-700 leading-relaxed">
-                  Leverages Groq Llama 3.3 70B with automatic multi-model and multi-key fallback resilience.
+                  Leverages Groq Qwen 3.8 27B / Compound Mini with automatic multi-model and multi-key fallback resilience.
                 </p>
               </div>
 

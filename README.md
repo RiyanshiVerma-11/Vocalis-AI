@@ -13,6 +13,7 @@
   [![Agora RTC SDK](https://img.shields.io/badge/Agora-RTC%20SDK%20v4.24-099DFD?style=for-the-badge&logo=agora&logoColor=white)](https://www.agora.io/)
   [![Deepgram Nova-3](https://img.shields.io/badge/Deepgram-Nova--3%20ASR-13EF93?style=for-the-badge&logo=deepgram&logoColor=black)](https://deepgram.com/)
   [![Groq Qwen 3.8](https://img.shields.io/badge/Groq-Qwen%203.8%2027B-F05032?style=for-the-badge&logo=groq&logoColor=white)](https://groq.com/)
+  [![Google Gemini](https://img.shields.io/badge/Gemini-2.5%20Flash-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev/)
   [![MiniMax TTS](https://img.shields.io/badge/MiniMax-Speech--2.6--Turbo-5B5BD6?style=for-the-badge)](https://minimax.io/)
   [![React 19](https://img.shields.io/badge/React-19.0-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://reactjs.org/)
   [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
@@ -22,11 +23,11 @@
 
   <br />
 
-  *Autonomous multi-role AI interview committee powered by official Agora Conversational AI Agent SDK (v2.7.0), Deepgram Nova-3 speech recognition, Groq Qwen 3.8 27B / Compound Mini intelligence, and MiniMax / ElevenLabs natural cloud voice streaming over Agora SDRTN.*
+  *Autonomous multi-role AI interview committee powered by official Agora Conversational AI Agent SDK (v2.7.0), Deepgram Nova-3 speech recognition, Groq Qwen 3.8 27B / Compound Mini intelligence, Google Gemini 2.5 Flash backstage deliberation, and MiniMax / ElevenLabs natural cloud voice streaming over Agora SDRTN.*
 
   <br />
 
-  [GitHub Repository](https://github.com/RiyanshiVerma-11/Vocalis-AI) · [Live Demo](https://vocalis-ai-phi.vercel.app/) · [Architecture & Diagrams](#-system-architecture) · [Agora Pipeline](#-agora-conversational-ai-engine) · [API Specification](#-api-specifications) · [Quick Start](#-quick-start--installation)
+  [GitHub Repository](https://github.com/RiyanshiVerma-11/Vocalis-AI) · [Live Demo](https://vocalis-ai-phi.vercel.app/) · [Architecture & Diagrams](#system-architecture) · [Agora Pipeline](#agora-conversational-ai-engine) · [API Specification](#api-specifications) · [Quick Start](#quick-start--installation)
 
 </div>
 
@@ -34,23 +35,26 @@
 
 ## 📌 Table of Contents
 
-- [Executive Summary](#-executive-summary)
-- [Live Production Deployments](#-live-production-deployments)
-- [Agora Conversational AI Engine](#-agora-conversational-ai-engine)
-- [System Architecture](#-system-architecture)
-  - [High-Level Component Architecture](#high-level-component-architecture)
-  - [Agora Cloud SDRTN Voice Pipeline](#agora-cloud-sdrtn-voice-pipeline)
-  - [Sub-100ms VAD Barge-In & Turn-Taking](#sub-100ms-vad-barge-in--turn-taking)
-  - [Dynamic Calibration State Machine](#dynamic-calibration-state-machine)
-- [The AI Interview Committee](#-the-ai-interview-committee)
-- [Key Core Capabilities](#-key-core-capabilities)
-- [Workspace Modes](#-workspace-modes)
-- [API Specifications](#-api-specifications)
-- [Repository Structure](#-repository-structure)
-- [Quick Start & Installation](#-quick-start--installation)
-- [Environment Configuration](#-environment-configuration)
-- [Verification & Testing](#-verification--testing)
-- [License & Acknowledgments](#-license--acknowledgments)
+- [Executive Summary](#executive-summary)
+- [Live Production Deployments](#live-production-deployments)
+- [Agora Conversational AI Engine](#agora-conversational-ai-engine)
+- [PS11 Hackathon Feature Matrix](#ps11-hackathon-feature-matrix)
+- [System Architecture](#system-architecture)
+  - [1. High-Level Dual-Workspace Component Architecture](#1-high-level-dual-workspace-component-architecture)
+  - [2. Agora Conversational AI Cloud Pipeline](#2-agora-conversational-ai-cloud-pipeline-agora-agents-v270)
+  - [3. Sub-100ms VAD Barge-In & Deliberation Sequence](#3-sub-100ms-vad-barge-in--deliberation-sequence)
+  - [4. Dynamic Calibration State Machine](#4-dynamic-calibration-state-machine)
+  - [5. Recruiter Hiring Intelligence Pipeline](#5-recruiter-hiring-intelligence--merit-plus-parity-pipeline)
+- [The AI Interview Committee & Deliberation Bus](#the-ai-interview-committee--deliberation-bus)
+- [Key Core Capabilities](#key-core-capabilities)
+- [Workspace Modes](#workspace-modes)
+- [Interactive Photorealistic Avatar Engine](#interactive-photorealistic-avatar-engine)
+- [API Specifications](#api-specifications)
+- [Repository Structure](#repository-structure)
+- [Quick Start & Installation](#quick-start--installation)
+- [Environment Configuration](#environment-configuration)
+- [Verification & Testing](#verification--testing)
+- [License & Acknowledgments](#license--acknowledgments)
 
 ---
 
@@ -58,7 +62,7 @@
 
 **Vocalis AI** is an enterprise-ready, autonomous multi-role AI voice interviewing platform built with Agora's official **Conversational AI Agent SDK (`agora-agents` v2.7.0)**. Traditional AI interview tools deploy a single static persona that listens passively to one-off text prompts. In contrast, **Vocalis AI** deploys a dynamic panel of 5 specialized AI personas—**Lead Systems Architect**, **Principal Product Manager**, **VP of Engineering**, **Enterprise Client Director**, and **Lead Org Psychologist**.
 
-The audio engine streams over the **Agora Software-Defined Real-Time Network (SDRTN)** with sub-100ms Voice Activity Detection (VAD) barge-in. The live voice pipeline orchestrates **Deepgram Nova-3 (ASR)** ➔ **Groq Qwen 3.8 27B / Compound Mini (Sub-100ms LLM)** ➔ **MiniMax / ElevenLabs (TTS)** directly in the cloud. After every response, the AI committee deliberates backstage to evaluate answer depth, detect vague buzzwords or resume contradictions, adjust interview difficulty dynamically (Foundational → Staff/Principal), and generate an **executive evaluation scorecard backed by verbatim transcript quote citations**.
+The audio engine streams over the **Agora Software-Defined Real-Time Network (SDRTN)** with sub-100ms Voice Activity Detection (VAD) barge-in. The live voice pipeline orchestrates **Deepgram Nova-3 (ASR)** ➔ **Groq Qwen 3.8 27B / Compound Mini (Sub-100ms LLM)** ➔ **MiniMax / ElevenLabs (TTS)** directly in the cloud. After every response, **Google Gemini 2.5 Flash** coordinates cross-functional deliberation backstage to evaluate answer depth, detect vague buzzwords or resume contradictions, adjust interview difficulty dynamically (Foundational → Staff/Principal), and generate an **executive evaluation scorecard backed by verbatim transcript quote citations**.
 
 ---
 
@@ -79,14 +83,14 @@ Vocalis AI is 100% compliant with the **Agora Conversational AI Hackathon Requir
 Candidate Mic (WebRTC) ────────► Agora RTC Channel (SDRTN)
                                           │
                                           ▼
-                               Deepgram STT (Nova-3)
+                                Deepgram STT (Nova-3)
                                           │
                                           ▼
-                         Groq LLM (Qwen-3.8-27b / Compound-Mini)
-                         or CustomLLM Webhook (/api/agora/llm-webhook)
+                       Groq LLM (Qwen 3.8 27B / Compound Mini)
+                          or CustomLLM Webhook (/api/agora/llm-webhook)
                                           │
                                           ▼
-                               MiniMax TTS / ElevenLabs TTS
+                                MiniMax TTS / ElevenLabs TTS
                                           │
                                           ▼
 Candidate Speaker ◄──────────── Agora Audio Stream (Opus)
@@ -97,7 +101,7 @@ Candidate Speaker ◄──────────── Agora Audio Stream (Op
 | **SDK & Orchestration** | Official `agora-agents` (v2.7.0) with `AgoraClient`, `Agent`, `AgentSession` | ✅ **100% Verified** |
 | **Region & Authentication** | Configured for `Area.US` with dynamic 3600-second privilege RTC tokens (`/api/agora/token`) | ✅ **100% Verified** |
 | **Cloud ASR (STT)** | `DeepgramSTT` with model `nova-3` for ultra-accurate technical jargon transcription | ✅ **100% Verified** |
-| **Cloud Intelligence (LLM)** | `Groq` (`qwen/qwen3.8-27b` / `groq/compound-mini`) direct cloud inference + `CustomLLM` adaptive webhook | ✅ **100% Verified** |
+| **Cloud Intelligence (LLM)** | Dual-Engine: `Groq` (`qwen/qwen3.8-27b` / `groq/compound-mini`) sub-100ms voice turns + `Google Gemini 2.5 Flash` deliberation | ✅ **100% Verified** |
 | **Cloud Voice (TTS)** | Agora-managed `MiniMaxTTS` (`speech-2.6-turbo`) + BYOK `ElevenLabsTTS` (`eleven_flash_v2_5`) | ✅ **100% Verified** |
 | **Turn Audio Sync** | `session.say(text)` via `/api/agora/speak` to synchronize transcript with cloud voice | ✅ **100% Verified** |
 | **Client RTC Engine** | `agora-rtc-sdk-ng` subscribing to remote audio tracks with automated `.play()` | ✅ **100% Verified** |
@@ -143,11 +147,11 @@ graph TD
 
         subgraph RecruiterHub ["Recruiter Talent Intelligence Hub"]
             HeaderStats["RecruiterHeaderStats (KPIs, Pass Rate)"]
-            Showcase["TopPerformersShowcase (Female/Male)"]
+            Showcase["TopPerformersShowcase (Female / Male)"]
             StateVis["StateProportionVisualizer (Origin Chart)"]
             TierVis["ExperienceRatioVisualizer (5-Tier Ratio)"]
             Table["CandidatePipelineTable (Sort, Filter, CSV)"]
-            Drawer["CandidateScorecardDrawer (360° Review & Radar)"]
+            Drawer["CandidateScorecardDrawer (360 Review & Radar)"]
             RubricsMgr["CommitteeRubricsManager (FAANG/L5/L6)"]
             DemoModal["DemographicTransparencyModal (Audit Report)"]
             ParityModal["ParityShortlistModal (Merit+Parity)"]
@@ -161,8 +165,8 @@ graph TD
         end
     end
 
-    subgraph MediaTransport ["Real-Time Media Transport (Agora SD-RTN™)"]
-        Agora_Cloud["Agora SD-RTN™ Global Edge Network"]
+    subgraph MediaTransport ["Real-Time Media Transport (Agora SD-RTN)"]
+        Agora_Cloud["Agora SD-RTN Global Edge Network"]
         AgoraAgentCloud["Agora Conversational AI Cloud Engine (Area.US)"]
     end
 
@@ -175,30 +179,30 @@ graph TD
 
     subgraph AICloud ["AI Intelligence & Voice Models"]
         Gemini["Google Gemini 2.5 Flash (Deliberation, Depth & Quotes)"]
-        Groq["Groq Qwen 3.8 27B / Compound Mini (Sub-100ms Inference)"]
+        Groq["Groq Qwen 3.8 27B / Compound Mini (Sub-100ms Voice Inference)"]
         DeepgramNova["Deepgram Nova-3 ASR (Speech-to-Text via Agora)"]
         MiniMaxTTS["MiniMax Speech-2.6-Turbo TTS (Voice via Agora)"]
     end
 
-    VoiceCtrl <--> RTC_Engine
-    RTC_Engine <-->|WebRTC Opus Audio| Agora_Cloud
-    CandidateStudio <--> SessionHistory
+    VoiceCtrl --- RTC_Engine
+    RTC_Engine -->|WebRTC Opus Audio| Agora_Cloud
+    CandidateStudio --- SessionHistory
     SessionHistory --> PipelineService
-    PipelineService <--> RecruiterHub
+    PipelineService --- RecruiterHub
     
-    CandidateStudio <--> ApiClient
-    RecruiterHub <--> ApiClient
-    ApiClient <--> BackendServer
+    CandidateStudio --- ApiClient
+    RecruiterHub --- ApiClient
+    ApiClient --> BackendServer
 
-    AgoraAgentsSDK <--> AgoraAgentCloud
-    AgoraAgentCloud <--> DeepgramNova
-    AgoraAgentCloud <--> MiniMaxTTS
+    AgoraAgentsSDK --- AgoraAgentCloud
+    AgoraAgentCloud --> DeepgramNova
+    AgoraAgentCloud --> MiniMaxTTS
     
-    DeliberationRouter <--> Gemini
-    DeliberationRouter <--> Groq
+    DeliberationRouter --> Gemini
+    DeliberationRouter --> Groq
     Whiteboard -.->|Architecture Canvas Sync| DeliberationRouter
-    ScorecardEngine <--> Gemini
-    ScorecardModal <--> ScorecardEngine
+    ScorecardEngine --> Gemini
+    ScorecardModal --- ScorecardEngine
 ```
 
 ---
@@ -208,29 +212,29 @@ graph TD
 ```mermaid
 flowchart LR
     subgraph Candidate ["Candidate Browser"]
-        Mic["🎤 Candidate Mic"]
-        Speaker["🔊 Candidate Speaker"]
+        Mic["Candidate Mic"]
+        Speaker["Candidate Speaker"]
     end
 
-    subgraph AgoraCloud ["Agora SD-RTN™ Cloud AI Pipeline (agora-agents v2.7.0)"]
+    subgraph AgoraCloud ["Agora SD-RTN Cloud AI Pipeline (agora-agents v2.7.0)"]
         direction TB
-        ASR["<b>Deepgram Nova-3 ASR</b><br/><i>Cloud Speech Recognition</i>"]
-        LLM["<b>Groq Qwen 3.8 27B / Webhook</b><br/><i>Sub-100ms Adaptive Reasoning</i>"]
-        TTS["<b>MiniMax Speech-2.6-Turbo</b><br/><i>Ultra-Realistic Voice Synthesis</i>"]
+        ASR["Deepgram Nova-3 ASR (Cloud Speech Recognition)"]
+        LLM["Groq Qwen 3.8 27B / Webhook (Sub-100ms Adaptive Reasoning)"]
+        TTS["MiniMax Speech-2.6-Turbo (Ultra-Realistic Voice Synthesis)"]
         
         ASR -->|Live Speech Stream| LLM
         LLM -->|Streamed Response Text| TTS
     end
 
     subgraph AppServer ["Express Server Orchestrator"]
-        AgentSession["<b>AgentSession Controller</b><br/><code>startAgent()</code> · <code>session.say()</code> · <code>stopAgent()</code>"]
-        SharedMemory["<b>Shared Committee Context</b><br/>Resume · Whiteboard · Turn History"]
+        AgentSession["AgentSession Controller (startAgent / session.say / stopAgent)"]
+        SharedMemory["Shared Committee Context (Resume / Whiteboard / Turn History)"]
     end
 
     Mic -->|WebRTC Opus Stream| ASR
     TTS -->|Low-Latency Opus Stream| Speaker
-    AgentSession <-->|RPC Session Protocol| AgoraCloud
-    LLM <-->|Deliberation & Context| SharedMemory
+    AgentSession --- AgoraCloud
+    LLM --- SharedMemory
 ```
 
 ---
@@ -272,7 +276,7 @@ sequenceDiagram
     
     opt Interview Concluded
         App->>Server: POST /api/interview/final-assessment
-        Server->>LLM: Generate 360° Scorecard with Quote Citations
+        Server->>LLM: Generate 360 Scorecard with Quote Citations
         Server-->>App: Full Executive Scorecard
         App->>Store: Persist Session into Recruiter Pipeline & History
     end
@@ -284,13 +288,13 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    Start([● Interview Started]) --> Foundational
+    Start["Interview Started"] --> Foundational
 
     subgraph Calibration ["Dynamic Difficulty Calibration Engine"]
-        Foundational["<b>Foundational Level</b><br/><i>Baseline screening & fundamentals</i>"]
-        Intermediate["<b>Intermediate Level</b><br/><i>Core system design & APIs</i>"]
-        Senior["<b>Senior Level</b><br/><i>Production scale & failure recovery</i>"]
-        Staff["<b>Staff / Principal Level</b><br/><i>Strategic trade-offs & architecture</i>"]
+        Foundational["Foundational Level (Baseline screening & fundamentals)"]
+        Intermediate["Intermediate Level (Core system design & APIs)"]
+        Senior["Senior Level (Production scale & failure recovery)"]
+        Staff["Staff / Principal Level (Strategic trade-offs & architecture)"]
     end
 
     Foundational -->|Strong Technical Answer| Intermediate
@@ -304,20 +308,8 @@ flowchart TD
 
     Staff -.->|Unhandled Edge Cases| Senior
 
-    Senior --> Finish([★ Finish: Generate Executive Scorecard])
+    Senior --> Finish["Finish: Generate Executive Scorecard"]
     Staff --> Finish
-
-    classDef foundational fill:#eff6ff,stroke:#3b82f6,stroke-width:2px,color:#1e3a8a;
-    classDef intermediate fill:#f0fdf4,stroke:#22c55e,stroke-width:2px,color:#14532d;
-    classDef senior fill:#fefce8,stroke:#eab308,stroke-width:2px,color:#713f12;
-    classDef staff fill:#faf5ff,stroke:#a855f7,stroke-width:2px,color:#581c87;
-    classDef terminal fill:#1e293b,stroke:#0f172a,stroke-width:2px,color:#ffffff;
-
-    class Foundational foundational;
-    class Intermediate intermediate;
-    class Senior senior;
-    class Staff staff;
-    class Start,Finish terminal;
 ```
 
 ---
@@ -326,15 +318,15 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    FinishInterview([★ Candidate Interview Finished]) --> GenScorecard["Generate 360° Executive Scorecard<br/><i>Competency Radar & Verbatim Quote Citations</i>"]
-    GenScorecard --> LocalPersist["sessionHistoryService<br/><i>Persist Real Evaluation to Pipeline Store</i>"]
+    FinishInterview["Candidate Interview Finished"] --> GenScorecard["Generate 360 Executive Scorecard (Competency Radar & Quote Citations)"]
+    GenScorecard --> LocalPersist["sessionHistoryService (Persist Real Evaluation to Pipeline Store)"]
 
-    subgraph RecruiterEngine ["Recruiter Hiring Intelligence Engine (recruiterPipelineService)"]
-        LocalPersist --> Aggregator["Cohort Analytics Aggregator<br/><i>Pass Rate, Avg Score, Tier Distribution, Gender Ratios</i>"]
+    subgraph RecruiterEngine ["Recruiter Hiring Intelligence Engine"]
+        LocalPersist --> Aggregator["Cohort Analytics Aggregator (Pass Rate, Avg Score, Tier Distribution)"]
         
         subgraph View1 ["Tab 1: Analytics & Demographics"]
             Aggregator --> KpiBanner["RecruiterHeaderStats (Overall KPIs & Org Context)"]
-            Aggregator --> TopCards["TopPerformersShowcase (Top ♀ & ♂ Profiles)"]
+            Aggregator --> TopCards["TopPerformersShowcase (Top Female & Male Profiles)"]
             Aggregator --> StateChart["StateProportionVisualizer (Origin Breakdown)"]
             Aggregator --> TierChart["ExperienceRatioVisualizer (5 Experience Tiers)"]
         end
@@ -352,8 +344,8 @@ flowchart TD
         end
 
         subgraph FairnessTools ["Fairness & Diversity Compliance"]
-            DemoAudit["DemographicTransparencyModal<br/><i>Cohort Gender Audit vs Diversity Goal Tracking</i>"]
-            ParityEngine["ParityShortlistModal<br/><i>Merit-Plus-Parity Algorithm (e.g. 50/50, 60/40 Top N)</i>"]
+            DemoAudit["DemographicTransparencyModal (Cohort Gender Audit vs Diversity Goal)"]
+            ParityEngine["ParityShortlistModal (Merit-Plus-Parity Algorithm)"]
         end
 
         Aggregator --> DemoAudit
@@ -370,16 +362,16 @@ Vocalis AI deploys a balanced, 5-persona cross-functional panel. Each persona ma
 ```mermaid
 graph TD
     subgraph Committee ["The 5-Persona AI Interview Committee"]
-        Rohan["<b>Rohan Sharma</b><br/>Technical Architect<br/><i>Systems, Concurrency & Scale</i>"]
-        Priya["<b>Priya Mehta</b><br/>Principal PM<br/><i>UX, ROI & Conversion Impact</i>"]
-        Vikram["<b>Vikram Malhotra</b><br/>VP of Engineering<br/><i>Delivery, Velocity & Tech Debt</i>"]
-        Neha["<b>Neha Kapoor</b><br/>Enterprise Director<br/><i>SLAs, Security & Zero-Downtime</i>"]
-        Meera["<b>Dr. Meera Rao</b><br/>Org Psychologist<br/><i>STAR EQ, Leadership & Culture</i>"]
+        Rohan["Rohan Sharma - Technical Architect (Systems, Concurrency & Scale)"]
+        Priya["Priya Mehta - Principal PM (UX, ROI & Conversion Impact)"]
+        Vikram["Vikram Malhotra - VP of Engineering (Delivery, Velocity & Tech Debt)"]
+        Neha["Neha Kapoor - Enterprise Director (SLAs, Security & Zero-Downtime)"]
+        Meera["Dr. Meera Rao - Org Psychologist (STAR EQ, Leadership & Culture)"]
     end
 
     subgraph Bus ["Backstage Deliberation Bus & Shared Context"]
-        Context["<b>Shared Candidate Context</b><br/>Resume Memory · Whiteboard Sketch · Turn History · Difficulty Trajectory"]
-        Router{"<b>Turn-Taking Router</b><br/>LLM Deliberation Reason"}
+        Context["Shared Candidate Context (Resume Memory, Whiteboard Sketch, Turn History)"]
+        Router{"Turn-Taking Router (LLM Deliberation Reason)"}
     end
 
     Context --> Router
@@ -453,6 +445,16 @@ A full enterprise-grade hiring intelligence hub for talent acquisition leaders. 
 #### 🔍 Advanced Fairness & Compliance Tools
 - **`DemographicTransparencyModal`** — Full audit report of the evaluated cohort: gender ratio breakdown with goal tracking (from recruiter's `diversityGoal` profile field), individual candidate list filterable by gender, score distribution comparison, and direct link to parity shortlist.
 - **`ParityShortlistModal`** — Side-by-side merit-plus-parity shortlist builder. Recruiter sets a target female/male ratio and cohort size; the system surfaces the highest-scoring candidates from each group meeting the threshold. Each candidate card is clickable to open the 360° scorecard drawer.
+
+---
+
+## 🎭 Interactive Photorealistic Avatar Engine
+
+In addition to pure real-time voice, Vocalis AI features optional photorealistic visual interviewer presence powered by **HeyGen Interactive Streaming Avatar**:
+
+- **Real-Time WebRTC Video Feed:** Video streams live into the browser using the `livekit-client` WebRTC SDK (`src/services/liveAvatarService.ts`), syncing lip movements directly with audio output.
+- **Natural Micro-Expressions:** Visual facial expressions and natural head nods provide realistic visual cues during complex technical interviews.
+- **Graceful Fallback:** If HeyGen API credentials are not provided, the interface seamlessly falls back to the native responsive SVG `TalkingFaceAvatar` with audio frequency spectrum reaction.
 
 ---
 
@@ -725,22 +727,15 @@ AGORA_APP_CERTIFICATE="your_agora_app_certificate"
 VITE_AGORA_ENABLED="true"
 
 # ── AI Intelligence Engines ──
-GROQ_API_KEY="your_groq_api_key"        # For sub-100ms Qwen-3.8-27b / Compound inference
-GEMINI_API_KEY="your_gemini_api_key"    # For committee multi-turn deliberation
+GROQ_API_KEY="your_groq_api_key"        # For sub-100ms Qwen 3.8 27B / Compound inference
+GEMINI_API_KEY="your_gemini_api_key"    # For committee multi-turn deliberation & rubrics
 
 # ── Voice & Media (Optional BYOK) ──
 ELEVENLABS_API_KEY="your_elevenlabs_key" # Optional BYOK TTS
-LIVE_AVATAR_API_KEY="your_liveavatar_key" # Optional real-time video avatar
+HEYGEN_API_KEY="your_heygen_key"         # Optional photorealistic video avatar
 ```
 
-### 3. Verify Live Agora Cloud Agent Connection
-Run the official live verification script to test Agora SDRTN agent deployment:
-```bash
-node scratch/test_agora_sdk.js
-```
-*Output confirms connection to `Area.US`, `Deepgram Nova-3`, `Groq Qwen-3.8-27b`, and `MiniMax TTS` on Agora SDRTN.*
-
-### 4. Run Development Server
+### 3. Run Development Server
 ```bash
 npm run dev
 ```
@@ -756,13 +751,13 @@ Open **`http://localhost:3000`** in your browser.
 | `AGORA_APP_CERTIFICATE` | Agora Certificate for dynamic token encryption | N/A | **Configured** |
 | `VITE_AGORA_APP_ID` | Agora App ID for client WebRTC `AgoraRTC.createClient` | N/A | **Configured** |
 | `VITE_AGORA_ENABLED` | Toggle live Agora RTC mode (`true`) vs offline test | N/A | **Configured (`true`)** |
-| `GROQ_API_KEY` | Groq Qwen 3.8 27B / Compound API key for sub-100ms LLM inference | Cloud | **Configured** |
-| `GEMINI_API_KEY` | Google Gemini 2.5 Flash for multi-role deliberation | Cloud | **Configured** |
+| `GROQ_API_KEY` | Groq Qwen 3.8 27B / Compound API key for sub-100ms LLM voice inference | Cloud | **Configured** |
+| `GEMINI_API_KEY` | Google Gemini 2.5 Flash for multi-role deliberation & rubrics | Cloud | **Configured** |
 | `Deepgram STT (Nova-3)` | Managed directly by Agora Cloud (`agora-agents`) | **Yes (No Key Needed)** | **Active** |
 | `MiniMax TTS` | Managed directly by Agora Cloud (`agora-agents`) | **Yes (No Key Needed)** | **Active** |
-| `ELEVENLABS_API_KEY` | ElevenLabs Flash v2.5 BYOK voice rendering | Optional | **Configured** |
+| `ELEVENLABS_API_KEY` | ElevenLabs Flash v2.5 BYOK voice rendering | Optional | **Supported** |
 | `JWT_SECRET` | Secret key for signed session authentication tokens | N/A | **Configured** |
-| `SMTP_USER` / `PASS` | Nodemailer Gmail SMTP credentials for OTP emails | N/A | **Configured** |
+| `SMTP_USER` / `PASS` | Nodemailer SMTP credentials for email OTPs | Optional | **Configurable via .env** |
 
 ---
 
@@ -771,13 +766,10 @@ Open **`http://localhost:3000`** in your browser.
 Verify system compilation, type correctness, and linting rules:
 
 ```bash
-# 1. Official Agora Conversational AI live verification test
-node scratch/test_agora_sdk.js
-
-# 2. TypeScript compilation and lint check
+# 1. TypeScript compilation and type check
 npm run lint
 
-# 3. Production bundle validation
+# 2. Production bundle validation
 npm run build
 ```
 
@@ -786,7 +778,7 @@ npm run build
 ## 📄 License & Acknowledgments
 
 - Built for **EchoSphere Hackathon 2026** (*AI Interview Track - PS11*).
-- Powered by **Agora Real-Time Engagement Platform**, **Google Gemini 2.5 Flash**, and **Groq Qwen 3.8 27B / Compound Mini**.
+- Powered by **Agora Real-Time Engagement Platform**, **Groq Qwen 3.8 27B / Compound Mini**, and **Google Gemini 2.5 Flash**.
 - Released under the [MIT License](LICENSE).
 
 <div align="center">

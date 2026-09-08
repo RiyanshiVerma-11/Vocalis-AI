@@ -1649,7 +1649,7 @@ The interview panel MUST immediately acknowledge with warm human grace and pivot
    - For all active panel members who are currently IDLE/INACTIVE, provide realistic ambient non-verbal cues (nodding, taking_notes, skeptical, intrigued, concerned).
 `;
 
-    // Try Groq API first if GROQ_API_KEY is configured (sub-100ms Llama 3.3 70B inference)
+    // Try Groq API first if GROQ_API_KEY is configured (sub-100ms Qwen 3.8 27B inference)
     if (process.env.GROQ_API_KEY || process.env.GROQ_API_KEY_SECONDARY) {
       try {
         const rawGroq = await generateContentWithGroq(prompt);
@@ -2146,7 +2146,7 @@ const userAgoraSessions = new Map<string, string>(); // userId -> agentId (isola
 // Uses the official TypeScript SDK to deploy a cloud voice agent into the RTC channel.
 // Architecture:
 //   Candidate Mic → Agora RTC → Agent ASR (Deepgram Nova-3)
-//   → Agent LLM (Groq llama-3.3-70b / CustomLLM webhook / OpenAI managed)
+//   → Agent LLM (Groq qwen/qwen3.8-27b / CustomLLM webhook / OpenAI managed)
 //   → Agent TTS (MiniMax managed / ElevenLabs BYOK / Microsoft BYOK)
 //   → Agent audio stream → Client speaker output (low-latency WebRTC)
 app.post('/api/agora/start-agent', authenticateToken, async (req, res) => {
@@ -2185,7 +2185,7 @@ app.post('/api/agora/start-agent', authenticateToken, async (req, res) => {
       language: 'en-US',
     });
 
-    // ── LLM: Groq (llama-3.3-70b-versatile, <100ms) or CustomLLM or OpenAI ────
+    // ── LLM: Groq (qwen/qwen3.8-27b, <100ms) or CustomLLM or OpenAI ────
     // If public APP_URL is available (not localhost), we can route to our webhook.
     // Otherwise, Groq runs directly from Agora Cloud for instant turn-taking.
     let llm: any;

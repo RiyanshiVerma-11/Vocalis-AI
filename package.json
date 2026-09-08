@@ -1,7 +1,7 @@
 {
-  "name": "react-example",
+  "name": "vocalis-ai",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
@@ -13,8 +13,6 @@
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
-    "@livekit/components-core": "^0.12.15",
-    "@livekit/components-react": "^2.9.24",
     "@tailwindcss/vite": "^4.1.14",
     "@types/bcryptjs": "^2.4.6",
     "@types/canvas-confetti": "^1.9.0",

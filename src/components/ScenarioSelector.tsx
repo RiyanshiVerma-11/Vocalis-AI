@@ -810,7 +810,7 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
             <textarea
               value={customDescription}
               onChange={(e) => handleCustomJdChange(e.target.value)}
-              placeholder="Paste company JD here (e.g., We are looking for a Senior Full-Stack AI Engineer experienced with Python, FastAPI, Groq Llama 3.3, Docker, RAG pipelines, and microservice architecture to build enterprise clinical applications...)"
+              placeholder="Paste company JD here (e.g., We are looking for a Senior Full-Stack AI Engineer experienced with Python, FastAPI, Groq Qwen 3.8, Docker, RAG pipelines, and microservice architecture to build enterprise clinical applications...)"
               rows={4}
               className="w-full bg-white rounded-xl p-3.5 text-xs text-slate-900 border border-indigo-200 focus:border-indigo-600 outline-none font-sans leading-relaxed shadow-inner"
             />

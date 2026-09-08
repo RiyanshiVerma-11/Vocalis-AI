@@ -7,3 +7,16 @@ coverage/
 .env*
 !.env.example
 .vocalis_users.json
+
+# Pitch decks, scripts, presentations, and binary docs
+*.docx
+*.pptx
+*pitch*
+*Pitch*
+*Script*
+*script*
+presentation.html
+public/presentation.html
+docs/presentation/
+docs/scratch/
+scratch/
