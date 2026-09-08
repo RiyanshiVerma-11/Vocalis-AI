@@ -125,29 +125,30 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({
   };
 
   return (
-    <div id="transcript-view-panel" className="bg-white rounded-2xl border border-slate-200 p-2.5 sm:p-3 shadow-sm flex flex-col h-[360px] sm:h-[400px] lg:h-[420px]">
+    <div id="transcript-view-panel" className="bg-[#0b101b] rounded-xl border border-slate-800/90 p-2 sm:p-2.5 shadow-xl flex flex-col h-full min-h-0">
       {/* Header */}
-      <div className="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-100">
+      <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-slate-800/80 shrink-0">
         <div className="flex items-center gap-2">
-          <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">
-            Live Synchronized Interview Transcript
+          <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+          <h2 className="text-[10px] font-extrabold text-slate-200 uppercase tracking-widest">
+            Real-Time Transcript
           </h2>
-          <span className="text-[10px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
+          <span className="text-[9px] font-bold text-cyan-300 bg-cyan-500/10 px-1.5 py-0.2 rounded-full border border-cyan-500/30">
             {transcript.length} turns
           </span>
         </div>
-        <div className="text-[10px] font-medium text-slate-400">
+        <div className="text-[9px] font-medium text-slate-400 hidden sm:block">
           Timestamped & Quote-Indexed
         </div>
       </div>
 
       {/* Transcript Scroll Area */}
-      <div className="flex-1 overflow-y-auto space-y-2.5 pr-1 scrollbar-thin scrollbar-thumb-slate-200">
+      <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1 scrollbar-thin scrollbar-thumb-slate-800">
         {transcript.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-400">
-            <User className="w-8 h-8 mb-2 opacity-30 text-slate-400" />
-            <p className="text-xs font-semibold text-slate-600">The interview room is open and ready.</p>
-            <p className="text-[11px] text-slate-400 mt-0.5">
+          <div className="h-full flex flex-col items-center justify-center text-center p-4 text-slate-500">
+            <User className="w-7 h-7 mb-2 opacity-30 text-slate-400" />
+            <p className="text-xs font-semibold text-slate-300">The interview room is open and ready.</p>
+            <p className="text-[10px] text-slate-500 mt-0.5">
               Click "Enable Mic" or choose a prompt to begin the panel conversation.
             </p>
           </div>
@@ -160,50 +161,50 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({
               <div
                 key={msg.id}
                 id={`transcript-turn-${index + 1}`}
-                className={`p-3 rounded-xl border transition-all ${
+                className={`p-2 sm:p-2.5 rounded-xl border transition-all ${
                   isCandidate
-                    ? 'bg-indigo-50/70 border-indigo-100 ml-2 sm:ml-6 text-slate-900 shadow-xs'
-                    : 'bg-slate-50 border-slate-200 mr-2 sm:mr-6 text-slate-800'
+                    ? 'bg-indigo-950/40 border-indigo-500/30 ml-2 sm:ml-4 text-slate-100 shadow-xs'
+                    : 'bg-slate-900/80 border-slate-800/90 mr-2 sm:mr-4 text-slate-200'
                 }`}
               >
                 {/* Message Header */}
-                <div className="flex flex-wrap items-center justify-between gap-1.5 mb-1.5">
-                  <div className="flex items-center gap-1.5">
+                <div className="flex flex-wrap items-center justify-between gap-1 mb-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <span
-                      className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                      className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold ${
                         isCandidate
-                          ? 'bg-indigo-600 text-white'
-                          : 'bg-slate-300 text-slate-800'
+                          ? 'bg-emerald-500 text-slate-950 font-black'
+                          : 'bg-indigo-600 text-white'
                       }`}
                     >
                       {msg.speakerName[0]}
                     </span>
-                    <span className="text-xs font-bold text-slate-900">
+                    <span className="text-[11px] font-bold text-white">
                       {msg.speakerName}
                     </span>
-                    <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider bg-white px-1.5 py-0.2 rounded border border-slate-200">
+                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider bg-slate-800/80 px-1 py-0.2 rounded border border-slate-700/60">
                       {msg.speakerRole.replace('_', ' ')}
                     </span>
                     {msg.isDebateTurn && (
-                      <span className="text-[9px] bg-amber-50 text-amber-800 px-1.5 py-0.2 rounded border border-amber-300 font-bold uppercase tracking-wider flex items-center gap-1">
-                        <Zap className="w-2.5 h-2.5 text-amber-600" /> ⚡ Committee Debate
+                      <span className="text-[8px] bg-amber-500/10 text-amber-300 px-1 py-0.2 rounded border border-amber-500/30 font-bold uppercase tracking-wider flex items-center gap-1">
+                        <Zap className="w-2 h-2 text-amber-400" /> Debate
                       </span>
                     )}
                     {msg.interrupted && (
-                      <span className="text-[9px] bg-amber-100 text-amber-800 px-1 py-0.2 rounded border border-amber-200 font-bold uppercase tracking-wider">
+                      <span className="text-[8px] bg-rose-500/10 text-rose-300 px-1 py-0.2 rounded border border-rose-500/30 font-bold uppercase tracking-wider">
                         Interrupted
                       </span>
                     )}
                   </div>
 
-                  <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
+                  <div className="flex items-center gap-1 text-[9px] text-slate-400">
                     {msg.difficultyAtTurn && (
-                      <span className="text-indigo-700 bg-indigo-100 px-1.5 py-0.2 rounded font-mono font-medium border border-indigo-200 text-[9px]">
+                      <span className="text-cyan-300 bg-cyan-950/80 px-1.5 py-0.2 rounded font-mono font-bold border border-cyan-800/60 text-[8px]">
                         {msg.difficultyAtTurn}
                       </span>
                     )}
-                    <span className="flex items-center gap-1 font-mono text-slate-400 text-[10px]">
-                      <Clock className="w-3 h-3" />
+                    <span className="flex items-center gap-1 font-mono text-slate-400 text-[9px]">
+                      <Clock className="w-2.5 h-2.5" />
                       {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                     </span>
 
@@ -211,11 +212,11 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({
                       <button
                         type="button"
                         onClick={() => onForkTurn(index)}
-                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 hover:text-indigo-900 border border-indigo-200 text-[9px] font-bold transition cursor-pointer ml-1"
+                        className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 hover:text-white border border-indigo-700/60 text-[8px] font-bold transition cursor-pointer ml-0.5"
                         title="Fork & Retry from this turn using the Time-Machine"
                       >
                         <GitFork className="w-2.5 h-2.5" />
-                        <span>Fork Turn</span>
+                        <span>Fork</span>
                       </button>
                     )}
                   </div>
@@ -234,7 +235,7 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({
                 )}
 
                 {/* Message Body */}
-                <p className="text-xs sm:text-[13px] text-slate-800 leading-snug whitespace-pre-wrap">
+                <p className="text-xs sm:text-[12px] text-slate-100 leading-snug whitespace-pre-wrap">
                   {msg.content?.trim() ||
                     (msg.speakerRole === 'candidate'
                       ? '...'
@@ -243,57 +244,46 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({
 
                 {/* Adaptive Answer Evaluation (for Candidate Turns) */}
                 {isCandidate && msg.adaptiveAnalysis && (
-                  <div className="mt-2 pt-1.5 border-t border-indigo-100/80 flex flex-wrap items-center gap-1.5 text-[10px]">
+                  <div className="mt-1.5 pt-1 border-t border-indigo-500/20 flex flex-wrap items-center gap-1 text-[9px]">
                     {msg.adaptiveAnalysis.depthLevel === 'Clarification Requested' ||
                     (msg.adaptiveAnalysis.detectedKeywords && msg.adaptiveAnalysis.detectedKeywords.includes('clarification_request')) ||
                     /rephrase|repeat|clarify|what do you mean|didn't understand|could you explain/i.test(msg.content) ? (
-                      <span className="inline-flex items-center gap-1 text-teal-700 bg-teal-50 px-2 py-0.5 rounded border border-teal-200 font-semibold text-[10px]">
-                        <Sparkles className="w-3 h-3 text-teal-600" /> Question Clarification Requested (No Penalty)
+                      <span className="inline-flex items-center gap-1 text-teal-300 bg-teal-950/80 px-1.5 py-0.2 rounded border border-teal-700/60 font-semibold text-[9px]">
+                        <Sparkles className="w-2.5 h-2.5 text-teal-400" /> Clarification Requested (No Penalty)
                       </span>
                     ) : (
                       <>
-                        <span className="text-slate-500 font-medium">Evaluated Depth:</span>
-                        <span className="px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-800 font-bold font-mono text-[9px]">
+                        <span className="text-slate-400 font-medium">Depth:</span>
+                        <span className="px-1 py-0.2 rounded bg-indigo-900/80 text-indigo-200 font-bold font-mono text-[8px] border border-indigo-700/50">
                           {msg.adaptiveAnalysis.depthLevel}
                         </span>
-                        <span className="text-slate-500 font-medium ml-1">Confidence:</span>
-                        <span className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 font-medium text-[9px]">
+                        <span className="text-slate-400 font-medium ml-1">Confidence:</span>
+                        <span className="px-1 py-0.2 rounded bg-slate-800 text-slate-300 font-medium text-[8px] border border-slate-700">
                           {msg.adaptiveAnalysis.sentiment}
                         </span>
-                        {msg.adaptiveAnalysis.detectedKeywords && msg.adaptiveAnalysis.detectedKeywords.length > 0 && (
-                          <div className="flex items-center gap-1 ml-auto">
-                            <span className="text-slate-400 text-[9px]">Keywords:</span>
-                            {msg.adaptiveAnalysis.detectedKeywords.slice(0, 3).map((kw, kIdx) => (
-                              <span key={kIdx} className="bg-white border border-slate-200 text-slate-600 px-1 py-0.2 rounded text-[9px] font-mono">
-                                {kw}
-                              </span>
-                            ))}
-                          </div>
-                        )}
                       </>
                     )}
                   </div>
                 )}
 
-                {/* Flagged Items on Candidate Turns (Filter out blank or empty quotes) */}
+                {/* Flagged Items on Candidate Turns */}
                 {msg.detectedFlags && msg.detectedFlags.filter((f) => f.quote && f.quote.trim().length > 0).length > 0 && (
-                  <div className="mt-3 pt-2.5 border-t border-indigo-100 space-y-2">
+                  <div className="mt-2 pt-1.5 border-t border-indigo-500/20 space-y-1.5">
                     {msg.detectedFlags.filter((f) => f.quote && f.quote.trim().length > 0).map((flag, fIdx) => (
                       <div
                         key={fIdx}
-                        className="bg-white p-2.5 rounded-lg border border-slate-200 text-xs space-y-1 shadow-sm"
+                        className="bg-slate-950/80 p-2 rounded-lg border border-slate-800 text-[11px] space-y-1"
                       >
                         <div className="flex items-center justify-between">
                           {getFlagBadge(flag)}
-                          <span className="text-[10px] text-slate-400 font-medium capitalize">Severity: {flag.severity}</span>
+                          <span className="text-[9px] text-slate-400 font-mono capitalize">{flag.severity}</span>
                         </div>
-                        <p className="text-slate-700">
-                          <strong className="text-slate-900">Cited Quote:</strong> "{flag.quote}"
+                        <p className="text-slate-300">
+                          <strong className="text-white">Quote:</strong> "{flag.quote}"
                         </p>
-                        <p className="text-slate-500">{flag.explanation}</p>
                         {flag.suggestedProbe && (
-                          <p className="text-indigo-600 text-[11px] font-medium">
-                            <strong>Suggested Probe:</strong> {flag.suggestedProbe}
+                          <p className="text-cyan-300 text-[10px]">
+                            → {flag.suggestedProbe}
                           </p>
                         )}
                       </div>
@@ -303,16 +293,16 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({
 
                 {/* Internal Backstage Deliberation Thought (for Interviewers) */}
                 {msg.internalThought && (
-                  <div className="mt-2 pt-2 border-t border-slate-200">
+                  <div className="mt-1.5 pt-1.5 border-t border-slate-800">
                     <button
                       onClick={() => toggleThought(msg.id)}
-                      className="text-[11px] text-slate-500 hover:text-indigo-600 flex items-center gap-1 font-semibold transition cursor-pointer"
+                      className="text-[10px] text-slate-400 hover:text-cyan-400 flex items-center gap-1 font-semibold transition cursor-pointer"
                     >
-                      {isThoughtOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                      {isThoughtOpen ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
                       <span>Panel Backstage Deliberation Thought</span>
                     </button>
                     {isThoughtOpen && (
-                      <div className="mt-1.5 p-2.5 bg-white rounded-lg border border-slate-200 text-xs text-slate-600 italic">
+                      <div className="mt-1 p-2 bg-slate-950/90 rounded-lg border border-slate-800/80 text-[10px] text-slate-300 italic">
                         {msg.internalThought}
                       </div>
                     )}
@@ -325,9 +315,9 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({
 
         {/* Real-time Thinking / Deliberating Indicator */}
         {isProcessing && (
-          <div className="p-3.5 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center gap-2.5 text-xs text-indigo-800 animate-pulse font-medium">
-            <div className="w-2 h-2 rounded-full bg-indigo-600 animate-ping" />
-            <span>Panel is deliberating turn-taking and formulating adaptive follow-up...</span>
+          <div className="p-2 rounded-xl bg-indigo-950/50 border border-indigo-500/40 flex items-center gap-2 text-[11px] text-indigo-300 animate-pulse font-medium">
+            <div className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+            <span>Panel is deliberating turn-taking and formulating follow-up...</span>
           </div>
         )}
 

@@ -46,6 +46,9 @@ import { TalkingFaceAvatar } from '../components/TalkingFaceAvatar';
 
 export interface InterviewerAvatarProps {
   avatarUrl?: string;
+  avatarPhoto?: string;
+  avatarObjectPosition?: string;
+  objectPosition?: string;
   avatarIcon?: string;
   avatarColor?: string;
   name: string;
@@ -56,7 +59,13 @@ export interface InterviewerAvatarProps {
 }
 
 export const InterviewerAvatar: React.FC<InterviewerAvatarProps> = (props) => {
-  return <TalkingFaceAvatar {...props} />;
+  return (
+    <TalkingFaceAvatar
+      {...props}
+      avatarPhoto={props.avatarPhoto || props.avatarUrl}
+      objectPosition={props.objectPosition || props.avatarObjectPosition}
+    />
+  );
 };
 
 

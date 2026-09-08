@@ -17,27 +17,30 @@ export function generateHeuristicAssessment(
   const candidateTurns = transcript.filter((t) => t.speakerId === 'candidate' || t.speakerRole === 'candidate');
   const interviewerTurns = transcript.filter((t) => t.speakerId !== 'candidate' && t.speakerRole !== 'candidate');
 
-  // Compute overall score from sharedContext competencies or default to realistic range
+  const isCalibrated = Boolean(sharedContext.competencyScores?.isCalibrated || candidateTurns.length > 0);
   const comp = sharedContext.competencyScores || {
-    technicalArchitecture: 75,
-    businessAndCustomerImpact: 72,
-    communicationAndClarity: 78,
-    leadershipAndOwnership: 74,
-    problemSolvingAndAgility: 76,
+    technicalArchitecture: 0,
+    businessAndCustomerImpact: 0,
+    communicationAndClarity: 0,
+    leadershipAndOwnership: 0,
+    problemSolvingAndAgility: 0,
   };
 
-  const scores = [
-    comp.technicalArchitecture || 75,
-    comp.businessAndCustomerImpact || 72,
-    comp.communicationAndClarity || 78,
-    comp.leadershipAndOwnership || 74,
-    comp.problemSolvingAndAgility || 76,
-  ];
+  const scores = isCalibrated
+    ? [
+        comp.technicalArchitecture || 65,
+        comp.businessAndCustomerImpact || 60,
+        comp.communicationAndClarity || 70,
+        comp.leadershipAndOwnership || 60,
+        comp.problemSolvingAndAgility || 65,
+      ]
+    : [30, 30, 35, 30, 30];
 
   const overallScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
 
   let hiringRecommendation: StructuredAssessment['hiringRecommendation'] = 'Hire';
-  if (overallScore >= 85) hiringRecommendation = 'Strong Hire';
+  if (candidateTurns.length === 0) hiringRecommendation = 'Strong No Hire';
+  else if (overallScore >= 85) hiringRecommendation = 'Strong Hire';
   else if (overallScore >= 75) hiringRecommendation = 'Hire';
   else if (overallScore >= 65) hiringRecommendation = 'Leaning Hire';
   else if (overallScore >= 50) hiringRecommendation = 'Leaning No Hire';

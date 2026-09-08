@@ -19,6 +19,7 @@ interface VoiceControllerProps {
   thoughtGraceReason?: string;
   backchannelDetectedPhrase?: string | null;
   onClearTranscript?: () => void;
+  candidateName?: string;
 }
 
 export const VoiceController: React.FC<VoiceControllerProps> = ({
@@ -39,6 +40,7 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
   thoughtGraceReason = '',
   backchannelDetectedPhrase = null,
   onClearTranscript,
+  candidateName = 'Candidate',
 }) => {
   const [textInput, setTextInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -108,148 +110,181 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
     },
   ];
 
+  const isSpeaking = isListening && candidateVolume > 0.08;
+
   return (
-    <div id="voice-controller-panel" className="bg-white rounded-2xl border border-slate-200 p-2 sm:p-2.5 shadow-sm space-y-2">
-      {/* Top Controls Row */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
-          {/* Main Mic Button */}
-          <button
-            id="btn-toggle-mic"
-            type="button"
-            onClick={onToggleListening}
-            className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 min-h-[32px] rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer shadow-xs ${
-              isListening
-                ? 'bg-red-500 hover:bg-red-600 text-white ring-2 ring-red-100 animate-pulse'
-                : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-100'
-            }`}
-          >
-            {isListening ? <Mic className="w-3.5 h-3.5" /> : <MicOff className="w-3.5 h-3.5" />}
-            <span>{isListening ? 'Mic Active' : 'Enable Mic'}</span>
-          </button>
-
-          {/* Interrupt Button (Always active & prominent when AI is speaking/deliberating) */}
-          <button
-            id="btn-interrupt-ai"
-            type="button"
-            onClick={onInterrupt}
-            className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-2.5 py-1.5 min-h-[32px] rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer border ${
-              isAISpeaking || isProcessing
-                ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-600 ring-2 ring-amber-200 animate-pulse shadow-xs'
-                : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300'
-            }`}
-            title="Interrupt the active interviewer immediately and take the floor"
-          >
-            <Hand className="w-3.5 h-3.5 text-amber-950" />
-            <span>Interrupt</span>
-          </button>
-
-          {/* Hold Floor Button (Prevents accidental AI cut-offs while candidate thinks) */}
-          {onToggleHoldFloor && (
-            <button
-              id="btn-hold-floor"
-              type="button"
-              onClick={onToggleHoldFloor}
-              className={`w-full sm:w-auto flex items-center justify-center gap-1.5 px-2.5 py-1.5 min-h-[32px] rounded-xl text-[10px] font-bold transition-all duration-200 cursor-pointer border ${
-                isFloorHeld
-                  ? 'bg-purple-600 hover:bg-purple-700 text-white border-purple-700 ring-2 ring-purple-100 shadow-xs'
-                  : 'bg-purple-50 hover:bg-purple-100 text-purple-900 border-purple-200'
-              }`}
-              title="Hold the floor so you can pause and think deeply without VAD cutting you off"
-            >
-              {isFloorHeld ? <Play className="w-3 h-3 fill-current" /> : <Pause className="w-3 h-3" />}
-              <span>{isFloorHeld ? 'Resume Auto-Send' : '⏸️ Hold Floor'}</span>
-            </button>
-          )}
+    <div id="voice-controller-panel" className="bg-[#0b101b] rounded-xl border border-slate-800/90 p-2 sm:p-2.5 shadow-xl flex flex-col justify-between h-full min-h-0 space-y-1.5">
+      {/* Center Panel Header: Candidate Audio Feed & Live Status */}
+      <div className="flex items-center justify-between pb-1.5 border-b border-slate-800/80 shrink-0">
+        <div className="flex items-center gap-2">
+          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <h2 className="text-[10px] font-extrabold text-slate-200 uppercase tracking-widest">
+            Candidate Audio Feed
+          </h2>
+          <span className="text-[9px] text-slate-400 font-medium truncate max-w-[120px]">
+            {candidateName}
+          </span>
         </div>
 
-        {/* Silence Delay & Audio Visualizer */}
-        <div className="flex items-center gap-2">
-          {/* Silence Tolerance Selector */}
-          {onChangeSilenceTimeout && (
-            <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-xl border border-slate-200 text-[11px]">
-              <Clock className="w-3 h-3 text-slate-500" />
-              <span className="font-medium text-slate-600 hidden sm:inline">Pause:</span>
-              <select
-                id="select-pause-tolerance"
-                value={silenceTimeoutMs}
-                onChange={(e) => onChangeSilenceTimeout(Number(e.target.value))}
-                className="bg-transparent font-semibold text-slate-800 outline-none cursor-pointer text-[11px]"
-                title="Choose when your speech auto-submits. Select Manual Send Only to never get cut off."
-              >
-                <option value={-1}>🛑 Manual Send Only (No Cutoff)</option>
-                <option value={4000}>⏱️ 4s Silence (Default)</option>
-                <option value={6000}>🧘 6s Generous</option>
-                <option value={8000}>☕ 8s Relaxed</option>
-                <option value={10000}>🐢 10s Very Patient</option>
-              </select>
-            </div>
-          )}
+        <div className="flex items-center gap-1.5">
+          <span className={`text-[8px] font-mono font-bold px-2 py-0.2 rounded-full border uppercase tracking-wider flex items-center gap-1 ${
+            isListening
+              ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30'
+              : 'text-slate-400 bg-slate-800/60 border-slate-700/60'
+          }`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${isListening ? 'bg-emerald-400 animate-ping' : 'bg-slate-500'}`} />
+            {isListening ? 'Active Mic [Live]' : 'Mic Muted'}
+          </span>
+        </div>
+      </div>
 
-          {/* Live Audio Visualizer Bars */}
-          <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
-            <AudioLines className={`w-3.5 h-3.5 ${isListening ? 'text-red-500' : 'text-slate-400'}`} />
-            <div className="flex items-end gap-1 h-4 w-16">
-              {[20, 50, 90, 60, 30, 80].map((h, i) => {
-                const activeHeight = isListening ? Math.max(15, (candidateVolume * (h / 100))) : 8;
-                return (
-                  <div
-                    key={i}
-                    style={{ height: `${activeHeight}%` }}
-                    className={`w-1.5 rounded-full transition-all duration-75 ${
-                      isListening ? 'bg-indigo-600' : 'bg-slate-300'
-                    }`}
-                  />
-                );
-              })}
-            </div>
-            <span className="text-[10px] text-slate-500 font-mono font-medium">
-              {isListening ? `${candidateVolume}%` : 'Muted'}
-            </span>
-          </div>
+      {/* Prominent Live Sound Wave Equalizer Visualization (Matching README Header!) */}
+      <div className="relative flex-1 min-h-[60px] max-h-[105px] bg-gradient-to-b from-slate-950/80 via-[#070b14] to-emerald-950/20 rounded-xl border border-slate-800/80 flex flex-col items-center justify-center p-2 overflow-hidden select-none">
+        <div className="flex items-center justify-center gap-1 w-full h-12 sm:h-14 px-4">
+          {[20, 45, 75, 30, 90, 60, 100, 70, 40, 85, 95, 50, 80, 35, 65, 90, 55, 100, 75, 40, 85, 30, 70, 95, 60, 80, 45, 90, 35, 60, 85, 50].map((h, i) => {
+            const dynamicScale = isSpeaking
+              ? Math.max(15, Math.min(100, candidateVolume * (h * 1.6)))
+              : isListening
+              ? Math.max(10, (h * 0.25) + Math.sin(Date.now() / 300 + i) * 8)
+              : 8;
+
+            return (
+              <div
+                key={i}
+                style={{ height: `${dynamicScale}%` }}
+                className={`w-1 rounded-full transition-all duration-75 ${
+                  isSpeaking
+                    ? 'bg-gradient-to-t from-teal-500 via-emerald-400 to-cyan-300 shadow-[0_0_8px_rgba(52,211,153,0.8)]'
+                    : isListening
+                    ? 'bg-emerald-600/40'
+                    : 'bg-slate-800/80'
+                }`}
+              />
+            );
+          })}
+        </div>
+
+        {/* Live Speaking Status label */}
+        <div className="flex items-center justify-between w-full px-2 pt-1">
+          <span className="text-[9px] font-bold text-emerald-400 font-mono tracking-wider truncate">
+            {isSpeaking
+              ? `🎤 ${candidateName.toUpperCase()} - SPEAKING`
+              : isListening
+              ? `🎤 LISTENING • READY FOR SPEECH`
+              : `🔇 MIC MUTED • CLICK ENABLE MIC`}
+          </span>
+
+          <span className="text-[9px] font-mono text-slate-400">
+            Level: {isListening ? `${Math.round(candidateVolume * 100)}%` : '0%'}
+          </span>
         </div>
       </div>
 
       {/* Held Floor Status Banner */}
       {isFloorHeld && (
-        <div className="bg-purple-50 border border-purple-200 text-purple-900 text-xs px-3.5 py-2 rounded-xl flex items-center justify-between animate-fadeIn">
-          <div className="flex items-center gap-2 font-medium">
+        <div className="bg-purple-950/60 border border-purple-600/40 text-purple-200 text-[10px] px-2.5 py-1 rounded-lg flex items-center justify-between animate-fadeIn shrink-0">
+          <div className="flex items-center gap-1.5 font-medium">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-600"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500"></span>
             </span>
-            <span><strong>Floor Held:</strong> Take all the time you need to think. The AI panel will wait until you click <strong>Send</strong> or un-pause.</span>
+            <span><strong>Floor Held:</strong> Take all time to think. AI is waiting for your <strong>Send</strong>.</span>
           </div>
           <button
             type="button"
             onClick={onToggleHoldFloor}
-            className="text-purple-700 underline font-bold hover:text-purple-900 text-xs cursor-pointer"
+            className="text-purple-300 underline font-bold hover:text-white text-[10px] cursor-pointer"
           >
-            Release Floor
+            Release
           </button>
         </div>
       )}
 
-      {/* Semantic Thought Grace Window Active Banner */}
+      {/* Thought Grace Banner */}
       {thoughtGraceActive && !isFloorHeld && (
-        <div className="bg-teal-50 border border-teal-200 text-teal-900 text-[11px] px-3 py-1.5 rounded-xl flex items-center gap-2 animate-pulse">
-          <BrainCircuit className="w-3.5 h-3.5 text-teal-600 shrink-0" />
-          <span className="font-semibold">🧠 Smart Thought Grace Active (+2.5s):</span>
-          <span className="text-teal-700 truncate">{thoughtGraceReason || 'Holding floor while you formulate architectural points...'}</span>
+        <div className="bg-teal-950/60 border border-teal-600/40 text-teal-200 text-[10px] px-2.5 py-0.5 rounded-lg flex items-center gap-1.5 animate-pulse shrink-0">
+          <BrainCircuit className="w-3 h-3 text-teal-400 shrink-0" />
+          <span className="font-semibold text-teal-300">Smart Thought Grace (+2.5s):</span>
+          <span className="truncate">{thoughtGraceReason || 'Formulating points...'}</span>
         </div>
       )}
 
-      {/* Backchannel Acknowledgment Pill */}
-      {backchannelDetectedPhrase && isAISpeaking && (
-        <div className="bg-indigo-50 border border-indigo-200 text-indigo-900 text-[11px] px-3 py-1 rounded-xl flex items-center gap-1.5 animate-fadeIn">
-          <MessageSquareQuote className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-          <span>Candidate active listening acknowledged: <em>"{backchannelDetectedPhrase}"</em> (Interviewer continuing smoothly)</span>
+      {/* Docked Meeting Control Row */}
+      <div className="flex flex-wrap items-center justify-between gap-1.5 shrink-0">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {/* Main Mic Button */}
+          <button
+            id="btn-toggle-mic"
+            type="button"
+            onClick={onToggleListening}
+            className={`flex items-center justify-center gap-1 px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all duration-200 cursor-pointer shadow-xs ${
+              isListening
+                ? 'bg-rose-600 hover:bg-rose-500 text-white ring-2 ring-rose-500/40 animate-pulse'
+                : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+            }`}
+          >
+            {isListening ? <Mic className="w-3 h-3" /> : <MicOff className="w-3 h-3" />}
+            <span>{isListening ? 'Mic Active' : 'Enable Mic'}</span>
+          </button>
+
+          {/* Interrupt Button */}
+          <button
+            id="btn-interrupt-ai"
+            type="button"
+            onClick={onInterrupt}
+            className={`flex items-center justify-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold transition-all duration-200 cursor-pointer border ${
+              isAISpeaking || isProcessing
+                ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 border-amber-400 ring-2 ring-amber-400/40 animate-pulse shadow-xs font-black'
+                : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 border-slate-700/60'
+            }`}
+            title="Interrupt interviewer immediately"
+          >
+            <Hand className="w-3 h-3" />
+            <span>Interrupt</span>
+          </button>
+
+          {/* Hold Floor Button */}
+          {onToggleHoldFloor && (
+            <button
+              id="btn-hold-floor"
+              type="button"
+              onClick={onToggleHoldFloor}
+              className={`flex items-center justify-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold transition-all duration-200 cursor-pointer border ${
+                isFloorHeld
+                  ? 'bg-purple-600 hover:bg-purple-500 text-white border-purple-500 ring-2 ring-purple-500/40 shadow-xs'
+                  : 'bg-purple-950/50 hover:bg-purple-900/60 text-purple-300 border-purple-800/50'
+              }`}
+              title="Hold floor to formulate answer without timeout"
+            >
+              {isFloorHeld ? <Play className="w-2.5 h-2.5 fill-current" /> : <Pause className="w-2.5 h-2.5" />}
+              <span>{isFloorHeld ? 'Resume' : 'Hold Floor'}</span>
+            </button>
+          )}
         </div>
-      )}
+
+        {/* Silence Tolerance Selector */}
+        {onChangeSilenceTimeout && (
+          <div className="flex items-center gap-1 bg-slate-900/80 px-2 py-0.5 rounded-lg border border-slate-800 text-[10px]">
+            <Clock className="w-2.5 h-2.5 text-slate-400" />
+            <select
+              id="select-pause-tolerance"
+              value={silenceTimeoutMs}
+              onChange={(e) => onChangeSilenceTimeout(Number(e.target.value))}
+              className="bg-transparent font-semibold text-slate-300 outline-none cursor-pointer text-[10px]"
+              title="Auto-send timeout"
+            >
+              <option value={-1} className="bg-slate-900">🛑 Manual Send</option>
+              <option value={4000} className="bg-slate-900">⏱️ 4s Pause</option>
+              <option value={6000} className="bg-slate-900">🧘 6s Generous</option>
+              <option value={8000} className="bg-slate-900">☕ 8s Relaxed</option>
+            </select>
+          </div>
+        )}
+      </div>
 
       {/* Text Input Form (Dual Voice + Text Entry) */}
-      <form onSubmit={handleSubmit} className="relative">
-        <div className="flex items-center gap-1.5 bg-slate-50 rounded-xl border border-slate-200 p-1 focus-within:border-indigo-600 focus-within:bg-white focus-within:ring-2 focus-within:ring-indigo-100 transition-all">
+      <form onSubmit={handleSubmit} className="relative shrink-0">
+        <div className="flex items-center gap-1.5 bg-slate-900/90 rounded-xl border border-slate-700/80 p-1 focus-within:border-cyan-500 focus-within:ring-2 focus-within:ring-cyan-500/30 transition-all">
           <input
             id="candidate-response-input"
             type="text"
@@ -257,23 +292,23 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
             onChange={handleInputChange}
             placeholder={
               isFloorHeld
-                ? 'Floor held — speak or type your complete thoughts...'
+                ? 'Floor held — speak or type your answer...'
                 : isListening
-                ? 'Listening to your speech in real-time (or type response)...'
-                : 'Type your answer or click "Enable Mic" to speak...'
+                ? 'Listening to speech (or type answer here)...'
+                : 'Type response or click "Enable Mic"...'
             }
             disabled={isProcessing}
-            className="flex-1 bg-transparent text-slate-900 placeholder-slate-400 text-xs px-2.5 py-1.5 outline-none"
+            className="flex-1 bg-transparent text-slate-100 placeholder-slate-500 text-xs px-2 py-1 outline-none"
           />
 
           {textInput.trim() && (
             <button
               type="button"
               onClick={handleClear}
-              className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition cursor-pointer"
-              title="Clear text & cancel auto-send"
+              className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+              title="Clear text"
             >
-              <X className="w-3.5 h-3.5" />
+              <X className="w-3 h-3" />
             </button>
           )}
 
@@ -281,26 +316,26 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
             id="btn-submit-response"
             type="submit"
             disabled={!textInput.trim() || isProcessing}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+            className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
               textInput.trim() && !isProcessing
-                ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm ring-2 ring-indigo-200'
-                : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                ? 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-extrabold shadow-sm'
+                : 'bg-slate-800 text-slate-500 cursor-not-allowed'
             }`}
           >
-            <span>{isProcessing ? 'Deliberating...' : 'Send Answer'}</span>
-            <Send className="w-3.5 h-3.5" />
+            <span>{isProcessing ? 'Deliberating...' : 'Send'}</span>
+            <Send className="w-3 h-3" />
           </button>
         </div>
       </form>
 
       {/* Quick Test Prompt Shortcuts */}
-      <div className="pt-1.5 border-t border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1.5">
-        <div className="flex items-center gap-1 text-[11px] text-slate-500">
-          <Sparkles className="w-3 h-3 text-indigo-600" />
-          <span className="font-bold text-slate-700">Quick Test Scenarios:</span>
-        </div>
+      <div className="pt-1 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-1 shrink-0">
+        <span className="text-[9px] font-bold text-slate-400 flex items-center gap-1">
+          <Sparkles className="w-2.5 h-2.5 text-cyan-400" />
+          <span>Quick Scenarios:</span>
+        </span>
 
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1">
           {quickPrompts.map((p, idx) => (
             <button
               key={idx}
@@ -310,9 +345,9 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
                 onSelectQuickPrompt(p.text);
               }}
               title={p.desc}
-              className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 px-2 py-0.5 rounded-md border border-slate-200 transition cursor-pointer font-medium"
+              className="text-[9px] bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white px-1.5 py-0.5 rounded border border-slate-800 transition cursor-pointer font-medium"
             >
-              {p.label}
+              {p.label.split(' ')[0]} {p.label.split(' ').slice(1, 3).join(' ')}
             </button>
           ))}
         </div>

@@ -91,15 +91,15 @@ export const DifficultyChart: React.FC<DifficultyChartProps> = ({
   const trending = lastVal > firstVal ? 'up' : lastVal < firstVal ? 'down' : 'flat';
 
   return (
-    <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
+    <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800 space-y-1.5">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
-          <TrendingUp className="w-3.5 h-3.5 text-indigo-600" />
+        <span className="text-[10px] font-bold text-slate-300 flex items-center gap-1.5">
+          <TrendingUp className="w-3 h-3 text-cyan-400" />
           Difficulty Trajectory
         </span>
         <div className="flex items-center gap-1.5">
           <span
-            className="text-[10px] font-bold px-1.5 py-0.5 rounded-md border"
+            className="text-[9px] font-bold px-1.5 py-0.2 rounded border font-mono"
             style={{
               backgroundColor: `${LEVEL_COLOR[currentDifficulty]}18`,
               borderColor: `${LEVEL_COLOR[currentDifficulty]}55`,
@@ -110,7 +110,7 @@ export const DifficultyChart: React.FC<DifficultyChartProps> = ({
           </span>
           {trending !== 'flat' && (
             <span
-              className={`text-[10px] font-bold ${trending === 'up' ? 'text-emerald-600' : 'text-rose-500'}`}
+              className={`text-[9px] font-bold ${trending === 'up' ? 'text-emerald-400' : 'text-rose-400'}`}
             >
               {trending === 'up' ? '↑ Escalating' : '↓ Adjusted'}
             </span>
@@ -124,7 +124,7 @@ export const DifficultyChart: React.FC<DifficultyChartProps> = ({
         height={H}
         viewBox={`0 0 ${W} ${H}`}
         className="w-full overflow-visible"
-        style={{ maxHeight: 60 }}
+        style={{ maxHeight: 55 }}
       >
         {/* Gridlines at each difficulty level */}
         {[1, 2, 3, 4].map((v) => (
@@ -134,7 +134,7 @@ export const DifficultyChart: React.FC<DifficultyChartProps> = ({
             y1={toY(v)}
             x2={PAD.left + chartW}
             y2={toY(v)}
-            stroke="#e2e8f0"
+            stroke="#1e293b"
             strokeWidth={0.8}
             strokeDasharray="3,3"
           />

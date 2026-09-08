@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UserSession } from '../types';
 import {
   Sparkles,
@@ -21,6 +21,9 @@ import {
   ArrowRight,
   MapPin,
   Briefcase,
+  Server,
+  Clock,
+  AlertTriangle,
 } from 'lucide-react';
 
 interface LoginPageProps {
@@ -46,6 +49,45 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successInfoMessage, setSuccessInfoMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingSeconds, setLoadingSeconds] = useState(0);
+  const [serverWarmStatus, setServerWarmStatus] = useState<'checking' | 'warm' | 'waking'>('checking');
+
+  // Background pre-warm ping to wake up Render free tier backend on page load
+  useEffect(() => {
+    let isMounted = true;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 9000);
+
+    fetch('/api/health', { signal: controller.signal })
+      .then((res) => {
+        clearTimeout(timeoutId);
+        if (isMounted && res.ok) setServerWarmStatus('warm');
+      })
+      .catch(() => {
+        if (isMounted) setServerWarmStatus('waking');
+      });
+
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
+  }, []);
+
+  // Track elapsed seconds while loading so user gets clear Render spin-up feedback
+  useEffect(() => {
+    let interval: any;
+    if (isLoading) {
+      setLoadingSeconds(1);
+      interval = setInterval(() => {
+        setLoadingSeconds((s) => s + 1);
+      }, 1000);
+    } else {
+      setLoadingSeconds(0);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isLoading]);
 
   // Recruiter Detailed Setup Steps (1 = Basic Profile, 2 = Organization & Requisition Setup)
   const [recruiterStep, setRecruiterStep] = useState<1 | 2>(1);
@@ -70,10 +112,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       return JSON.parse(text);
     } catch (_e) {
       if (res.status === 504 || res.status === 502 || res.status === 503) {
-        throw new Error('Backend server is waking up. Please retry in a few seconds.');
+        throw new Error('Render Cloud Backend is waking up from sleep mode (~30-50s cold start). It is almost ready! Please wait 10 seconds and try again.');
       }
       if (text.includes('An error occurred') || text.includes('FUNCTION_INVOCATION_TIMEOUT') || text.includes('Gateway')) {
-        throw new Error('Server connection timed out. Your account may already be created; please try Sign In.');
+        throw new Error('Connection timed out while waking the Render backend. Please retry — it will connect immediately on the next attempt.');
       }
       throw new Error(`Server returned unexpected status (${res.status}). Please try again.`);
     }
@@ -525,6 +567,63 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       {/* Main Card Container (Wide 2-Column Side-by-Side Layout) */}
       <div className="w-full max-w-5xl mx-auto px-4">
         <div className="bg-slate-900 shadow-2xl rounded-3xl border border-slate-800 p-6 sm:p-8">
+          {/* Render Cloud Cold-Start Status Notice */}
+          <div className="mb-5 p-3 rounded-2xl bg-slate-950/90 border border-slate-800/90 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+            <div className="flex items-center gap-2.5">
+              <div className="relative flex h-2.5 w-2.5 shrink-0">
+                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${serverWarmStatus === 'warm' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${serverWarmStatus === 'warm' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+              </div>
+              <div>
+                <span className="font-bold text-slate-200 flex items-center gap-1.5">
+                  <Server className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Cloud Backend Status: {serverWarmStatus === 'warm' ? 'Online & Ready' : 'Render Free Tier Deployment'}</span>
+                </span>
+                <p className="text-[11px] text-slate-400">
+                  {serverWarmStatus === 'warm'
+                    ? 'Backend service is warm and running.'
+                    : 'If the server was idle, the first request takes ~30–50 seconds to wake up. Please wait patiently.'}
+                </p>
+              </div>
+            </div>
+            <span className={`self-start sm:self-auto text-[10px] font-mono px-2 py-0.5 rounded-md border ${
+              serverWarmStatus === 'warm'
+                ? 'bg-emerald-950/60 text-emerald-400 border-emerald-500/30'
+                : 'bg-amber-950/60 text-amber-400 border-amber-500/30'
+            }`}>
+              {serverWarmStatus === 'warm' ? '🟢 Active' : '🟡 Render Cold-Start'}
+            </span>
+          </div>
+
+          {/* Active Waking Up Banner when an auth request is running */}
+          {isLoading && (
+            <div className="mb-5 p-4 rounded-2xl bg-gradient-to-r from-amber-950/60 via-slate-900 to-indigo-950/60 border border-amber-500/50 shadow-xl space-y-2 animate-fadeIn">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-amber-300 font-bold text-xs">
+                  <RefreshCw className="w-4 h-4 text-amber-400 animate-spin" />
+                  <span>Waking Up Cloud Backend Server (Render Free Tier)...</span>
+                </div>
+                <span className="font-mono text-xs font-extrabold text-amber-400 bg-amber-950/90 px-2 py-0.5 rounded border border-amber-500/40">
+                  ⏱️ {loadingSeconds}s elapsed
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                Render automatically sleeps free-tier instances after 15 minutes of inactivity. When you initiate a request, it spins the container back up. This typically takes <strong>30 to 50 seconds</strong>.
+                <br />
+                <span className="text-amber-200 font-semibold">
+                  ⚠️ Please do NOT refresh or close the page — your login will complete as soon as the server wakes up!
+                </span>
+              </p>
+              {/* Animated Progress Bar */}
+              <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden border border-slate-800 mt-1">
+                <div
+                  className="h-full bg-gradient-to-r from-amber-500 via-cyan-400 to-indigo-500 transition-all duration-1000 shadow-[0_0_10px_rgba(245,158,11,0.5)]"
+                  style={{ width: `${Math.min(95, Math.max(10, (loadingSeconds / 45) * 100))}%` }}
+                />
+              </div>
+            </div>
+          )}
+
           {step === 'otp' ? (
             /* OTP Code Entry Screen (Centered View) */
             <form onSubmit={handleVerifyOtp} className="max-w-md mx-auto space-y-4">
@@ -584,7 +683,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold py-3 px-4 rounded-xl text-xs shadow-lg shadow-indigo-600/30 transition flex items-center justify-center gap-2 cursor-pointer"
               >
                 {isLoading ? (
-                  <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                  <span className="flex items-center gap-2">
+                    <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                    <span>{loadingSeconds > 2 ? `Waking Server (${loadingSeconds}s)...` : 'Verifying Code...'}</span>
+                  </span>
                 ) : (
                   <>
                     <CheckCircle2 className="w-4 h-4" />
@@ -696,7 +798,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 px-4 rounded-xl text-xs shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
                     >
                       {isLoading ? (
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
+                        <span className="flex items-center gap-2">
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
+                          <span>{loadingSeconds > 2 ? `Waking Server (${loadingSeconds}s)...` : 'Sending Code...'}</span>
+                        </span>
                       ) : (
                         <>
                           <Send className="w-3.5 h-3.5 text-white" />
@@ -1144,7 +1249,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                           className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold py-2.5 px-4 rounded-xl text-xs shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
                         >
                           {isLoading ? (
-                            <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
+                            <span className="flex items-center gap-2">
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
+                              <span>{loadingSeconds > 2 ? `Waking Backend (${loadingSeconds}s)...` : 'Authenticating...'}</span>
+                            </span>
                           ) : (
                             <>
                               <Sparkles className="w-3.5 h-3.5 text-white" />
@@ -1227,6 +1335,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     </p>
                     <button
                       type="button"
+                      disabled={isLoading}
                       onClick={() =>
                         handleDemoLogin({
                           name: 'Jordan Reed',
@@ -1236,10 +1345,19 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                           initials: 'JR',
                         })
                       }
-                      className="w-full py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[11px] rounded-lg shadow-sm transition flex items-center justify-center gap-1 cursor-pointer"
+                      className="w-full py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-[11px] rounded-lg shadow-sm transition flex items-center justify-center gap-1 cursor-pointer disabled:cursor-not-allowed"
                     >
-                      <span>Login as Candidate Demo</span>
-                      <ArrowRight className="w-3 h-3" />
+                      {isLoading ? (
+                        <span className="flex items-center gap-1.5">
+                          <RefreshCw className="w-3 h-3 animate-spin" />
+                          <span>{loadingSeconds > 2 ? `Waking up (${loadingSeconds}s)...` : 'Connecting...'}</span>
+                        </span>
+                      ) : (
+                        <>
+                          <span>Login as Candidate Demo</span>
+                          <ArrowRight className="w-3 h-3" />
+                        </>
+                      )}
                     </button>
                   </div>
 
@@ -1258,6 +1376,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     </p>
                     <button
                       type="button"
+                      disabled={isLoading}
                       onClick={() =>
                         handleDemoLogin({
                           name: 'Neha Kapoor',
@@ -1267,10 +1386,19 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                           initials: 'NK',
                         })
                       }
-                      className="w-full py-1.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-[11px] rounded-lg shadow-sm transition flex items-center justify-center gap-1 cursor-pointer"
+                      className="w-full py-1.5 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white font-bold text-[11px] rounded-lg shadow-sm transition flex items-center justify-center gap-1 cursor-pointer disabled:cursor-not-allowed"
                     >
-                      <span>Login as Hiring Team Demo</span>
-                      <ArrowRight className="w-3 h-3" />
+                      {isLoading ? (
+                        <span className="flex items-center gap-1.5">
+                          <RefreshCw className="w-3 h-3 animate-spin" />
+                          <span>{loadingSeconds > 2 ? `Waking up (${loadingSeconds}s)...` : 'Connecting...'}</span>
+                        </span>
+                      ) : (
+                        <>
+                          <span>Login as Hiring Team Demo</span>
+                          <ArrowRight className="w-3 h-3" />
+                        </>
+                      )}
                     </button>
                   </div>
                 </div>

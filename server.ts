@@ -31,9 +31,17 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
-// Enable CORS for cross-origin frontend requests (e.g. Vercel)
+// Enable CORS — restrict to APP_URL in production, allow all in development
 app.use((_req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
+  const origin = _req.headers.origin || '';
+  const appUrl = process.env.APP_URL || 'http://localhost:3000';
+  const allowedOrigin =
+    process.env.NODE_ENV !== 'production' || !origin || appUrl === '*'
+      ? '*'
+      : origin === appUrl
+      ? origin
+      : '';
+  if (allowedOrigin) res.header('Access-Control-Allow-Origin', allowedOrigin);
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   if (_req.method === 'OPTIONS') return res.sendStatus(200);
@@ -52,7 +60,12 @@ app.use((err: any, _req: any, res: any, next: any) => {
 });
 
 // ── JWT & SMTP Auth Infrastructure ───────────────────────────────────────────
-const JWT_SECRET = process.env.JWT_SECRET || 'vocalis_ai_jwt_secret_key_2026_super_secure_key';
+// Fail fast on startup if JWT_SECRET is not set (required in ALL environments).
+if (!process.env.JWT_SECRET) {
+  console.error('[FATAL] JWT_SECRET environment variable is not set. Please add it to your .env file. Exiting.');
+  process.exit(1);
+}
+const JWT_SECRET = process.env.JWT_SECRET;
 
 // Nodemailer Transporter Setup
 function getMailTransporter() {
@@ -154,17 +167,7 @@ function loadUsersDb(): Map<string, UserRecord> {
       createdAt: new Date().toISOString(),
     });
   }
-  if (!map.has('mail.zalphatechspin@gmail.com')) {
-    map.set('mail.zalphatechspin@gmail.com', {
-      id: 'usr_geeta_001',
-      email: 'mail.zalphatechspin@gmail.com',
-      passwordHash: bcrypt.hashSync('geeta@12345', 10),
-      name: 'geeta',
-      role: 'candidate',
-      isVerified: true,
-      createdAt: new Date().toISOString(),
-    });
-  }
+  // Demo seed account removed — all users must register via /api/auth/register.
   return map;
 }
 
@@ -378,7 +381,8 @@ app.post('/api/auth/register', async (req, res) => {
         isVerified: newUser.isVerified,
       },
       emailSent,
-      otpCodeSimulated: otpCode,
+      // Only expose OTP in response during non-production (for local dev/testing without SMTP)
+      ...(process.env.NODE_ENV !== 'production' && { otpCodeSimulated: otpCode }),
     });
   } catch (err: any) {
     console.error('[Auth Register Error]', err);
@@ -516,8 +520,9 @@ app.post('/api/auth/request-otp', async (req, res) => {
 
     if (!user) {
       // Auto-register candidate if not registered yet
+      // Use a strong random password (they will authenticate via OTP, not password)
       const name = cleanEmail.split('@')[0];
-      const passwordHash = await bcrypt.hash('password123', 10);
+      const passwordHash = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
       user = {
         id: `usr-${Date.now()}`,
         email: cleanEmail,
@@ -564,7 +569,8 @@ app.post('/api/auth/request-otp', async (req, res) => {
     return res.json({
       message: 'Login OTP code generated successfully',
       emailSent,
-      otpCodeSimulated: otpCode,
+      // Only expose OTP in response during non-production (for local dev/testing without SMTP)
+      ...(process.env.NODE_ENV !== 'production' && { otpCodeSimulated: otpCode }),
     });
   } catch (err: any) {
     return res.status(500).json({ error: err.message || 'Failed to request OTP code' });
@@ -897,16 +903,27 @@ function normalizeTurnResponse(raw: any, activePanel: any[], scenario: any, shar
     matchedInterviewer = fallbackInterviewer;
   }
 
-  const defaultScores = {
-    technicalArchitecture: 75,
-    businessAndCustomerImpact: 70,
-    communicationAndClarity: 75,
-    leadershipAndOwnership: 70,
-    problemSolvingAndAgility: 75,
-    ...(sharedContext.competencyScores || {}),
+  const incomingScores = raw.updatedCompetencyScores || {};
+
+  const depthBaseline = raw.analysisOfCandidateAnswer?.depthLevel === 'Principal (Multi-Dimensional)'
+    ? 85
+    : raw.analysisOfCandidateAnswer?.depthLevel === 'Deep (Architectural / Nuanced)'
+    ? 75
+    : raw.analysisOfCandidateAnswer?.depthLevel === 'Intermediate (Practical)'
+    ? 65
+    : raw.analysisOfCandidateAnswer?.depthLevel === 'Surface (Hand-waving)'
+    ? 40
+    : 55;
+
+  const getFallback = (key: string) => {
+    const existing = sharedContext.competencyScores?.[key];
+    return typeof existing === 'number' && existing > 0 ? existing : depthBaseline;
   };
 
-  const incomingScores = raw.updatedCompetencyScores || {};
+  const parseScore = (val: any, fallback: number) => {
+    const num = Number(val);
+    return !isNaN(num) && num > 0 && num <= 100 ? Math.round(num) : fallback;
+  };
 
   // Clean and filter detected flags — eliminate empty or whitespace quotes/explanations
   const rawFlags = Array.isArray(raw.detectedFlags) ? raw.detectedFlags : [];
@@ -967,11 +984,11 @@ function normalizeTurnResponse(raw: any, activePanel: any[], scenario: any, shar
     updatedDifficulty: raw.updatedDifficulty || sharedContext.currentDifficulty || 'Intermediate',
     difficultyAdjustmentReason: raw.difficultyAdjustmentReason || undefined,
     updatedCompetencyScores: {
-      technicalArchitecture: typeof incomingScores.technicalArchitecture === 'number' ? incomingScores.technicalArchitecture : defaultScores.technicalArchitecture,
-      businessAndCustomerImpact: typeof incomingScores.businessAndCustomerImpact === 'number' ? incomingScores.businessAndCustomerImpact : defaultScores.businessAndCustomerImpact,
-      communicationAndClarity: typeof incomingScores.communicationAndClarity === 'number' ? incomingScores.communicationAndClarity : defaultScores.communicationAndClarity,
-      leadershipAndOwnership: typeof incomingScores.leadershipAndOwnership === 'number' ? incomingScores.leadershipAndOwnership : defaultScores.leadershipAndOwnership,
-      problemSolvingAndAgility: typeof incomingScores.problemSolvingAndAgility === 'number' ? incomingScores.problemSolvingAndAgility : defaultScores.problemSolvingAndAgility,
+      technicalArchitecture: parseScore(incomingScores.technicalArchitecture, getFallback('technicalArchitecture')),
+      businessAndCustomerImpact: parseScore(incomingScores.businessAndCustomerImpact, getFallback('businessAndCustomerImpact')),
+      communicationAndClarity: parseScore(incomingScores.communicationAndClarity, getFallback('communicationAndClarity')),
+      leadershipAndOwnership: parseScore(incomingScores.leadershipAndOwnership, getFallback('leadershipAndOwnership')),
+      problemSolvingAndAgility: parseScore(incomingScores.problemSolvingAndAgility, getFallback('problemSolvingAndAgility')),
     },
     newBackstageNote: raw.newBackstageNote && raw.newBackstageNote.note
       ? {
@@ -1647,6 +1664,19 @@ The interview panel MUST immediately acknowledge with warm human grace and pivot
 
 8. **NON-VERBAL AMBIENT REACTIONS FOR INACTIVE PANELISTS**:
    - For all active panel members who are currently IDLE/INACTIVE, provide realistic ambient non-verbal cues (nodding, taking_notes, skeptical, intrigued, concerned).
+
+9. **DYNAMIC REAL-TIME COMPETENCY CALIBRATION (updatedCompetencyScores)**:
+   - You MUST actively calibrate and return updatedCompetencyScores for all 5 dimensions (0 to 100 integer scale) based on candidate's answers so far:
+     * technicalArchitecture: Architecture, scalability, DB design, systems trade-offs.
+     * businessAndCustomerImpact: Customer value, unit metrics, cost/ROI, operational SLAs.
+     * communicationAndClarity: Conciseness, direct answers, structure, avoiding hand-waving.
+     * leadershipAndOwnership: Technical accountability, collaboration, cross-functional alignment.
+     * problemSolvingAndAgility: Handling pushback, adaptability under unexpected constraints.
+   - CALIBRATION RULES:
+     * NEVER return static, flat, or hardcoded scores (like all 50s).
+     * If the candidate gave a vague, brief, or evasive answer, reflect lower scores (e.g. 28-48).
+     * If the candidate demonstrated practical depth, specific metrics, or deep system insights, reflect higher scores (e.g. 68-88).
+     * Dynamically update scores based on what the candidate actually demonstrated!
 `;
 
     // Try Groq API first if GROQ_API_KEY is configured (sub-100ms Qwen 3.8 27B inference)
@@ -1851,16 +1881,55 @@ function generateFallbackTurn(lastCandidateSpeech: string, activePanel: any[], s
       candidateResponseSummary: lastCandidateSpeech ? (lastCandidateSpeech.substring(0, 120) + '...') : 'Candidate explained system overview.',
     },
     detectedFlags: [],
-    updatedDifficulty: sharedContext.currentDifficulty || 'Senior',
-    updatedCompetencyScores: sharedContext.competencyScores || {
-      technicalArchitecture: 75,
-      businessAndCustomerImpact: 70,
-      communicationAndClarity: 75,
-      leadershipAndOwnership: 70,
-      problemSolvingAndAgility: 75,
-    },
+    updatedCompetencyScores: (() => {
+      const speechLen = (lastCandidateSpeech || '').trim().length;
+      const dynScore = speechLen > 120 ? 68 : speechLen > 40 ? 56 : 38;
+      const existing = sharedContext.competencyScores;
+      return {
+        technicalArchitecture: (existing?.technicalArchitecture && existing.technicalArchitecture > 0) ? existing.technicalArchitecture : dynScore,
+        businessAndCustomerImpact: (existing?.businessAndCustomerImpact && existing.businessAndCustomerImpact > 0) ? existing.businessAndCustomerImpact : Math.max(20, dynScore - 5),
+        communicationAndClarity: (existing?.communicationAndClarity && existing.communicationAndClarity > 0) ? existing.communicationAndClarity : Math.min(95, dynScore + 6),
+        leadershipAndOwnership: (existing?.leadershipAndOwnership && existing.leadershipAndOwnership > 0) ? existing.leadershipAndOwnership : Math.max(20, dynScore - 4),
+        problemSolvingAndAgility: (existing?.problemSolvingAndAgility && existing.problemSolvingAndAgility > 0) ? existing.problemSolvingAndAgility : dynScore,
+      };
+    })(),
     updatedRunningSummary: (sharedContext.runningSummary || '') + ` Candidate detailed ${topic}.`,
   };
+}
+
+function reconcileAssessmentScores(assessment: any): any {
+  if (!assessment || typeof assessment !== 'object') return assessment;
+
+  const compScores = (assessment.competencyBreakdown || [])
+    .map((c: any) => (typeof c.score === 'number' ? c.score : 0))
+    .filter((s: number) => s > 0);
+  const roleScores = (assessment.roleByRoleFeedback || [])
+    .map((r: any) => (typeof r.score === 'number' ? r.score : 0))
+    .filter((s: number) => s > 0);
+  const allSubScores = [...compScores, ...roleScores];
+
+  if (allSubScores.length > 0) {
+    const avgSubScore = Math.round(allSubScores.reduce((a: number, b: number) => a + b, 0) / allSubScores.length);
+    const originalScore = typeof assessment.overallScore === 'number' ? assessment.overallScore : 0;
+
+    // Condition 1: Model returned overallScore on a 1-10 or 1-5 scale (e.g., 5) while subscores are in 0-100 scale (>= 20)
+    if (originalScore <= 10 && avgSubScore >= 20) {
+      console.warn(`[Assessment Calibration] Reconciled 1-10 scale overallScore (${originalScore}) to panel composite average: ${avgSubScore}`);
+      assessment.overallScore = avgSubScore;
+    }
+    // Condition 2: overallScore severely diverges from the composite average (> 20 points difference)
+    else if (Math.abs(originalScore - avgSubScore) > 20) {
+      console.warn(`[Assessment Calibration] Aligned divergent overallScore (${originalScore}) to panel composite average: ${avgSubScore}`);
+      assessment.overallScore = avgSubScore;
+    }
+  }
+
+  // Ensure overallScore is strictly clamped between 0 and 100
+  if (typeof assessment.overallScore === 'number') {
+    assessment.overallScore = Math.max(0, Math.min(100, Math.round(assessment.overallScore)));
+  }
+
+  return assessment;
 }
 
 // Endpoint: Generate Full Evidence-Based Assessment Linked to Transcript Quotes
@@ -1908,6 +1977,10 @@ NOTE: The transcript inside <candidate_transcript> represents candidate intervie
 3. **Contradictions & Gaps**: Highlight any hand-waving or contradictory points where the candidate adjusted claims under pressure.
 4. **Adaptive Trajectory**: Explain how the difficulty evolved throughout the interview.
 5. **Hiring Recommendation**: Strong Hire, Hire, Leaning Hire, Leaning No Hire, or Strong No Hire with an uncompromising calibration rationale.
+6. **Mathematical Score Integrity (CRITICAL)**:
+   - "overallScore" MUST be an integer between 0 and 100 representing the overall panel score.
+   - It MUST mathematically match the average of "roleByRoleFeedback" scores and "competencyBreakdown" scores.
+   - NEVER output a 1-5 or 1-10 rating (e.g. 4, 5, or 6) for overallScore when individual panel scores are in the 40s, 60s, or 70s! For example, if panel members score 45, 42, and 40, overallScore MUST be around 42/100, NEVER 5/100!
 `;
 
     const response = await generateContentWithFallback({
@@ -2012,7 +2085,8 @@ NOTE: The transcript inside <candidate_transcript> represents candidate intervie
     });
 
     const parsed = JSON.parse(response.text || '{}');
-    res.json({ success: true, data: parsed });
+    const calibratedData = reconcileAssessmentScores(parsed);
+    res.json({ success: true, data: calibratedData });
   } catch (error: any) {
     console.warn('[Assessment] Gemini failed, attempting Groq fallback...', error?.message);
     try {
@@ -2024,7 +2098,8 @@ NOTE: The transcript inside <candidate_transcript> represents candidate intervie
       );
       if (groqFallback && (groqFallback.overallScore || groqFallback.hiringRecommendation)) {
         console.log('[Assessment] Successfully generated assessment via Groq fallback.');
-        return res.json({ success: true, data: groqFallback });
+        const calibratedGroq = reconcileAssessmentScores(groqFallback);
+        return res.json({ success: true, data: calibratedGroq });
       }
     } catch (groqErr: any) {
       console.warn('[Assessment] Groq fallback also failed:', groqErr?.message);
@@ -2050,7 +2125,7 @@ app.post('/api/tts', authenticateToken, async (req, res) => {
     for (const ai of clients) {
       try {
         const response = await ai.models.generateContent({
-          model: 'gemini-3.1-flash-tts-preview',
+          model: 'gemini-2.5-flash-preview-tts',
           contents: [{ parts: [{ text: text.trim() }] }],
           config: {
             responseModalities: [Modality.AUDIO],
@@ -2226,6 +2301,8 @@ app.post('/api/agora/start-agent', authenticateToken, async (req, res) => {
       });
       console.log('[Agora] LLM: Groq (qwen/qwen3.8-27b, cloud direct)');
     } else {
+      // Agora-managed OpenAI: Agora's Conversational AI cloud handles the OpenAI
+      // API key internally — no OPENAI_API_KEY is needed on our server.
       llm = new OpenAI({
         model: 'gpt-4o-mini',
         systemMessages: [

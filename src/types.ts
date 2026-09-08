@@ -18,6 +18,7 @@ export interface Interviewer {
   avatarColor: string;
   avatarIcon: string;
   avatarUrl?: string;
+  avatarPhoto?: string;
   /** CSS object-position value to perfectly frame the face in the tile, e.g. '50% 25%' */
   avatarObjectPosition?: string;
   /** HeyGen digital human avatar ID for real-time video stream */
@@ -231,6 +232,7 @@ export interface SharedCandidateContext {
     communicationAndClarity: number; // 0-100
     leadershipAndOwnership: number; // 0-100
     problemSolvingAndAgility: number; // 0-100
+    isCalibrated?: boolean;
   };
   backstagePanelNotes: Array<{
     authorRole: InterviewerRole;

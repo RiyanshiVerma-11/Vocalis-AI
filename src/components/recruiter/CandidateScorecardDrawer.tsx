@@ -209,10 +209,13 @@ export const CandidateScorecardDrawer: React.FC<CandidateScorecardDrawerProps> =
                     className="p-2.5 bg-white rounded-xl border border-slate-200 flex items-center gap-2 shadow-2xs hover:border-indigo-200 transition"
                   >
                     <InterviewerAvatar
+                      avatarPhoto={interviewer.avatarPhoto}
+                      avatarUrl={interviewer.avatarUrl}
+                      avatarObjectPosition={interviewer.avatarObjectPosition}
                       avatarIcon={interviewer.avatarIcon}
                       avatarColor={interviewer.avatarColor}
                       name={interviewer.name}
-                      className="w-7 h-7 rounded-lg border border-slate-200 shrink-0"
+                      className="w-8 h-8 rounded-lg border border-slate-200 shrink-0 overflow-hidden"
                     />
                     <div className="min-w-0">
                       <p className="text-[11px] font-bold text-slate-900 truncate">{interviewer.name}</p>

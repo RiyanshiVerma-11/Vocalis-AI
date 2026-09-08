@@ -29,10 +29,13 @@ export const InterviewerPersonaModal: React.FC<InterviewerPersonaModalProps> = (
         <div className="p-5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <InterviewerAvatar
+              avatarPhoto={interviewer.avatarPhoto}
+              avatarUrl={interviewer.avatarUrl}
+              avatarObjectPosition={interviewer.avatarObjectPosition}
               avatarIcon={interviewer.avatarIcon}
               avatarColor={interviewer.avatarColor}
               name={interviewer.name}
-              className="w-12 h-12 rounded-xl border border-slate-200 shadow-sm"
+              className="w-14 h-14 rounded-2xl border border-slate-200 shadow-md overflow-hidden"
             />
             <div>
               <div className="flex items-center gap-2">

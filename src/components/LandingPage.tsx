@@ -640,10 +640,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                       }`}
                     >
                       <InterviewerAvatar
+                        avatarPhoto={turn.speaker.avatarPhoto}
+                        avatarUrl={turn.speaker.avatarUrl}
+                        avatarObjectPosition={turn.speaker.avatarObjectPosition}
                         avatarIcon={turn.speaker.avatarIcon}
                         avatarColor={turn.speaker.avatarColor}
                         name={turn.speaker.name}
-                        className="w-5 h-5 rounded-md"
+                        className="w-6 h-6 rounded-md overflow-hidden"
                       />
                       <span>{turn.speaker.name} ({turn.speaker.role})</span>
                     </button>
@@ -659,10 +662,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
                       <div className="flex items-center gap-3">
                         <InterviewerAvatar
+                          avatarPhoto={current.speaker.avatarPhoto}
+                          avatarUrl={current.speaker.avatarUrl}
+                          avatarObjectPosition={current.speaker.avatarObjectPosition}
                           avatarIcon={current.speaker.avatarIcon}
                           avatarColor={current.speaker.avatarColor}
                           name={current.speaker.name}
-                          className="w-10 h-10 rounded-xl border border-slate-200 shadow-xs"
+                          className="w-12 h-12 rounded-xl border border-slate-200 shadow-xs overflow-hidden"
                         />
                         <div>
                           <h4 className="text-xs font-bold text-slate-900 flex items-center gap-2">
@@ -883,10 +889,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 >
                   <div className="flex items-center gap-3">
                     <InterviewerAvatar
+                      avatarPhoto={interviewer.avatarPhoto}
+                      avatarUrl={interviewer.avatarUrl}
+                      avatarObjectPosition={interviewer.avatarObjectPosition}
                       avatarIcon={interviewer.avatarIcon}
                       avatarColor={interviewer.avatarColor}
                       name={interviewer.name}
-                      className="w-11 h-11 rounded-xl border border-slate-200 shadow-md"
+                      className="w-12 h-12 rounded-xl border border-slate-200 shadow-md overflow-hidden"
                     />
                     <div>
                       <h3 className="text-sm font-bold text-slate-900">{interviewer.name}</h3>

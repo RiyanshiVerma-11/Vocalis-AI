@@ -104,62 +104,88 @@ export const InterviewerStage: React.FC<InterviewerStageProps> = ({
     }
   };
 
+  const getRoleGlowStyle = (role: string, isSpeaking: boolean, isTargeted: boolean) => {
+    if (isSpeaking) {
+      switch (role) {
+        case 'technical':      return 'border-cyan-400 ring-2 ring-cyan-400/50 shadow-[0_0_20px_rgba(6,182,212,0.4)]';
+        case 'product':        return 'border-purple-400 ring-2 ring-purple-400/50 shadow-[0_0_20px_rgba(168,85,247,0.4)]';
+        case 'hiring_manager': return 'border-amber-400 ring-2 ring-amber-400/50 shadow-[0_0_20px_rgba(245,158,11,0.4)]';
+        case 'customer':       return 'border-emerald-400 ring-2 ring-emerald-400/50 shadow-[0_0_20px_rgba(16,185,129,0.4)]';
+        default:               return 'border-indigo-400 ring-2 ring-indigo-400/50 shadow-[0_0_20px_rgba(99,102,241,0.4)]';
+      }
+    }
+    if (isTargeted) {
+      return 'border-indigo-400 ring-1 ring-indigo-400/40 shadow-md';
+    }
+    return 'border-slate-800/90 hover:border-slate-700 shadow-md';
+  };
+
   return (
-    <div id="interviewer-stage-container" className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3 sm:p-4 shadow-xl relative overflow-hidden">
-      {/* Stage Bar Header */}
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-3 pb-2.5 border-b border-slate-800">
-        <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <h2 className="text-[11px] font-extrabold text-slate-300 tracking-widest uppercase">
-            Active Committee Stage ({panel.length} AI Interviewers)
+    <div id="interviewer-stage-container" className="bg-[#0b101b] border border-slate-800/90 rounded-xl p-2 sm:p-2.5 shadow-xl relative overflow-hidden">
+      {/* Sleek Stage Bar Header */}
+      <div className="flex flex-wrap items-center justify-between gap-1.5 mb-2 pb-1.5 border-b border-slate-800/80">
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
+          <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse shrink-0" />
+          <h2 className="text-[10px] font-extrabold text-slate-200 tracking-wider uppercase truncate">
+            AI Committee Panel ({panel.length} Interviewers)
           </h2>
-          <span className="text-[10px] font-bold text-indigo-300 bg-indigo-500/10 border border-indigo-500/30 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-            <Sparkles className="w-3 h-3 text-indigo-400" /> Multi-Role Deliberation Sync
+          <span className="hidden sm:inline-flex text-[9px] font-bold text-cyan-300 bg-cyan-500/10 border border-cyan-500/30 px-2 py-0.2 rounded-full items-center gap-1">
+            <Sparkles className="w-2.5 h-2.5 text-cyan-400" /> Multi-Role Deliberation Sync
           </span>
           {/* LiveAvatar Stream Status */}
-          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border ${
+          <span className={`text-[8px] font-bold px-2 py-0.2 rounded-full flex items-center gap-1 border ${
             isLiveStreaming
               ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
               : liveStatus === 'connecting'
               ? 'text-amber-400 bg-amber-500/10 border-amber-500/30 animate-pulse'
               : 'text-slate-500 bg-slate-800/50 border-slate-700/40'
           }`}>
-            {isLiveStreaming ? <Wifi className="w-2.5 h-2.5" /> : <WifiOff className="w-2.5 h-2.5" />}
-            {isLiveStreaming ? 'LIVE AVATAR' : liveStatus === 'connecting' ? 'CONNECTING...' : 'AVATAR OFFLINE'}
+            {isLiveStreaming ? <Wifi className="w-2 h-2" /> : <WifiOff className="w-2 h-2" />}
+            {isLiveStreaming ? 'LIVE AVATAR' : liveStatus === 'connecting' ? 'CONNECTING...' : 'AVATAR READY'}
           </span>
           {/* Whiteboard Canvas Action */}
           {onOpenWhiteboard && (
             <button
               type="button"
               onClick={onOpenWhiteboard}
-              className={`text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 border transition cursor-pointer ${
+              className={`text-[9px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border transition cursor-pointer ${
                 isWhiteboardSynced
                   ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30 hover:bg-emerald-500/20'
                   : 'text-indigo-300 bg-indigo-500/10 border-indigo-500/30 hover:bg-indigo-500/20'
               }`}
               title="Open Interactive System Design Whiteboard"
             >
-              <Layers className="w-3 h-3 text-indigo-400" />
-              <span>{isWhiteboardSynced ? '🎨 Whiteboard (Synced)' : '🎨 System Design Whiteboard'}</span>
+              <Layers className="w-2.5 h-2.5 text-indigo-400" />
+              <span>{isWhiteboardSynced ? '🎨 Whiteboard (Synced)' : '🎨 Whiteboard'}</span>
             </button>
           )}
         </div>
 
-        {selectedTargetInterviewerId && (
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-medium text-indigo-400">Directing answer to target interviewer</span>
-            <button
-              onClick={() => onSelectTargetInterviewer(null)}
-              className="text-[10px] font-bold text-slate-300 hover:text-white px-2 py-0.5 rounded bg-slate-800 border border-slate-700 transition cursor-pointer"
-            >
-              Clear Target
-            </button>
-          </div>
-        )}
+        {/* Turn-Taking Deliberation Reason integrated directly into header */}
+        <div className="flex items-center gap-2 min-w-0">
+          {lastTurnTakingReason && (
+            <div className="hidden lg:flex items-center gap-1.5 bg-slate-900/90 border border-slate-700/60 px-2 py-0.5 rounded-lg text-[9px] text-slate-300 max-w-sm truncate">
+              <span className="text-cyan-400 font-bold uppercase tracking-wider">Deliberation:</span>
+              <span className="truncate text-slate-200">{lastTurnTakingReason}</span>
+            </div>
+          )}
+
+          {selectedTargetInterviewerId && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-[9px] font-medium text-cyan-300">Targeted</span>
+              <button
+                onClick={() => onSelectTargetInterviewer(null)}
+                className="text-[9px] font-bold text-slate-300 hover:text-white px-1.5 py-0.2 rounded bg-slate-800 border border-slate-700 transition cursor-pointer"
+              >
+                Clear
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Compact Passport-Size Video Panel Grid (Fits 5 Tiles: Candidate + Panel Members) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 items-start">
+      {/* Modern Cyber Panel Cards Grid (Fits Candidate + Panel Members in 1 Clean Row) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 items-stretch">
         {/* Candidate Live Stage Tile */}
         <CandidateStageTile
           candidateName={candidateName}
@@ -172,9 +198,6 @@ export const InterviewerStage: React.FC<InterviewerStageProps> = ({
           const isSpeakingNow = activeSpeakerId === interviewer.id && isAISpeaking;
           const isTargeted   = selectedTargetInterviewerId === interviewer.id;
           
-          // LiveAvatar sandbox mode only has "June HR" (a female avatar).
-          // Only attach June HR to female interviewers (e.g. Priya Mehta, Neha Kapoor).
-          // Male interviewers like Rohan Sharma use their high-tech digital architect persona card!
           const isFemaleInterviewer =
             interviewer.name.toLowerCase().includes('priya') ||
             interviewer.name.toLowerCase().includes('neha') ||
@@ -191,17 +214,15 @@ export const InterviewerStage: React.FC<InterviewerStageProps> = ({
             <div
               key={interviewer.id}
               id={`panel-card-${interviewer.id}`}
-              className={`relative rounded-xl border transition-all duration-300 overflow-hidden flex flex-col justify-between cursor-pointer group bg-slate-950/80 ${
-                isSpeakingNow
-                  ? 'border-indigo-500 ring-2 ring-indigo-500/50 shadow-xl shadow-indigo-950/50'
-                  : isTargeted
-                  ? 'border-indigo-400 ring-1 ring-indigo-400/40 shadow-md'
-                  : 'border-slate-800 hover:border-slate-700 hover:shadow-md'
-              }`}
+              className={`relative rounded-xl border transition-all duration-300 overflow-hidden flex flex-col justify-between cursor-pointer group bg-[#0b101b] ${getRoleGlowStyle(
+                interviewer.role,
+                isSpeakingNow,
+                isTargeted
+              )}`}
               onClick={() => onSelectTargetInterviewer(isTargeted ? null : interviewer.id)}
             >
               {/* Header Bar inside card */}
-              <div className="px-2 py-1.5 flex items-center justify-between border-b border-slate-800/80 bg-slate-900/60 z-10">
+              <div className="px-2 py-1 flex items-center justify-between border-b border-slate-800/80 bg-slate-900/60 z-10">
                 <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-extrabold border uppercase tracking-wider ${getRoleBadgeStyle(interviewer.role)}`}>
                   {getRoleIcon(interviewer.role)}
                   <span className="truncate max-w-[70px] sm:max-w-none">{interviewer.role.replace('_', ' ')}</span>
@@ -209,26 +230,29 @@ export const InterviewerStage: React.FC<InterviewerStageProps> = ({
 
                 <div className="flex items-center gap-1">
                   {isSpeakingNow ? (
-                    <span className="flex items-center gap-1 text-[8px] font-extrabold text-indigo-300 bg-indigo-500/20 px-1.5 py-0.5 rounded border border-indigo-400/30 uppercase tracking-wider animate-pulse">
-                      <Volume2 className="w-2.5 h-2.5" /> Speaking
+                    <span className="flex items-center gap-1 text-[8px] font-extrabold text-cyan-300 bg-cyan-500/20 px-1.5 py-0.5 rounded border border-cyan-400/40 uppercase tracking-wider animate-pulse">
+                      <Volume2 className="w-2 h-2" /> Speaking
                     </span>
                   ) : (
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); setSelectedPersona(interviewer); }}
-                      className="p-0.5 px-1 rounded text-[8px] font-bold text-slate-400 hover:text-white bg-slate-800/80 hover:bg-slate-800 border border-slate-700/60 transition flex items-center gap-0.5"
+                      className="p-0.5 px-1 rounded text-[8px] font-bold text-slate-400 hover:text-white bg-slate-800/80 hover:bg-slate-700 border border-slate-700/60 transition flex items-center gap-0.5"
                     >
-                      <Info className="w-2.5 h-2.5" /> Info
+                      <Info className="w-2 h-2" /> Info
                     </button>
                   )}
                 </div>
               </div>
 
-              {/* Video Stream Stage Tile (Compact Passport Size Tile) */}
-              <div className="relative w-full h-32 sm:h-36 max-h-36 bg-slate-950 overflow-hidden">
+              {/* Video Stream Stage Tile */}
+              <div className="relative w-full h-24 sm:h-28 md:h-30 bg-slate-950 overflow-hidden">
                 <TalkingFaceAvatar
+                  avatarPhoto={interviewer.avatarPhoto}
+                  avatarUrl={interviewer.avatarUrl}
                   avatarIcon={interviewer.avatarIcon}
                   avatarColor={interviewer.avatarColor}
+                  objectPosition={interviewer.avatarObjectPosition}
                   name={interviewer.name}
                   isSpeaking={isSpeakingNow}
                   className="w-full h-full rounded-none"
@@ -239,7 +263,7 @@ export const InterviewerStage: React.FC<InterviewerStageProps> = ({
 
                 {/* Floating Ambient Reaction Badge on Inactive Tile */}
                 {!isSpeakingNow && reaction && (
-                  <div className="absolute top-1.5 right-1.5 z-20 flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-900/90 text-slate-100 text-[8px] font-bold border border-slate-700 shadow-md backdrop-blur-xs animate-in fade-in zoom-in duration-200">
+                  <div className="absolute top-1.5 right-1.5 z-20 flex items-center gap-1 px-1.5 py-0.2 rounded-md bg-slate-900/90 text-slate-100 text-[8px] font-bold border border-slate-700 shadow-md backdrop-blur-xs animate-in fade-in zoom-in duration-200">
                     <span>
                       {reaction.reactionType === 'taking_notes' && '📝'}
                       {reaction.reactionType === 'skeptical' && '🤔'}
@@ -247,49 +271,56 @@ export const InterviewerStage: React.FC<InterviewerStageProps> = ({
                       {reaction.reactionType === 'concerned' && '⚠️'}
                       {reaction.reactionType === 'intrigued' && '✨'}
                     </span>
-                    <span className="truncate max-w-[75px] sm:max-w-[90px]">{reaction.label}</span>
+                    <span className="truncate max-w-[70px]">{reaction.label}</span>
                   </div>
                 )}
 
                 {isTargeted && !isSpeakingNow && (
-                  <div className="absolute top-1.5 left-1.5 z-20 bg-indigo-600/90 text-white font-mono text-[8px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider backdrop-blur-sm shadow-md">
+                  <div className="absolute top-1.5 left-1.5 z-20 bg-indigo-600/90 text-white font-mono text-[8px] font-extrabold px-1.5 py-0.2 rounded uppercase tracking-wider backdrop-blur-sm shadow-md">
                     Target
                   </div>
                 )}
+
+                {/* Audio Equalizer Waveform Overlay at bottom of video card (matching README design!) */}
+                <div className="absolute bottom-1 left-2 right-2 flex items-center justify-between pointer-events-none">
+                  <div className="flex items-center gap-0.5 h-3">
+                    {[35, 80, 50, 95, 60, 100, 55, 85, 45, 75, 90, 40].map((h, i) => {
+                      const barHeight = isSpeakingNow ? Math.max(25, h) : 12;
+                      return (
+                        <div
+                          key={i}
+                          style={{ height: `${barHeight}%` }}
+                          className={`w-0.5 rounded-full transition-all duration-100 ${
+                            isSpeakingNow
+                              ? 'bg-cyan-400 shadow-[0_0_6px_rgba(6,182,212,0.9)] animate-pulse'
+                              : 'bg-slate-700/60'
+                          }`}
+                        />
+                      );
+                    })}
+                  </div>
+                  <span className={`text-[7px] font-mono font-bold px-1 rounded uppercase ${
+                    isSpeakingNow
+                      ? 'text-cyan-300 bg-slate-950/80 border border-cyan-500/40'
+                      : 'text-slate-400 bg-slate-900/60 border border-slate-800'
+                  }`}>
+                    {isSpeakingNow ? 'SPEAKING' : 'ENGAGED'}
+                  </span>
+                </div>
               </div>
 
               {/* Footer Bar inside card: Name & Title */}
-              <div className={`p-2 border-t border-slate-800/80 ${isSpeakingNow ? 'bg-indigo-950/40' : 'bg-slate-900/60'}`}>
-                <p className="text-[11px] font-extrabold text-white truncate leading-tight flex items-center justify-between">
+              <div className={`px-2 py-1 border-t border-slate-800/80 ${isSpeakingNow ? 'bg-cyan-950/40' : 'bg-slate-900/70'}`}>
+                <p className="text-[10px] font-extrabold text-white truncate leading-tight flex items-center justify-between">
                   <span className="truncate">{interviewer.name}</span>
-                  {isTargeted && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-ping inline-block shrink-0" />}
+                  {isTargeted && <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping inline-block shrink-0" />}
                 </p>
-                <p className="text-[9px] text-indigo-400 font-semibold truncate leading-tight mt-0.5">{interviewer.title}</p>
+                <p className="text-[8px] text-cyan-400/90 font-medium truncate leading-tight mt-0.5">{interviewer.title}</p>
               </div>
             </div>
           );
         })}
       </div>
-
-      {/* Backstage Rationale Banner */}
-      {(lastTurnTakingReason || lastInternalThought) && (
-        <div className="mt-3.5 p-3 rounded-xl bg-slate-950/90 border border-slate-800 text-white flex flex-col md:flex-row items-start md:items-center justify-between gap-2.5 text-xs shadow-md">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <span className="p-1.5 rounded-lg bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 shrink-0 font-bold font-mono text-[10px] uppercase flex items-center gap-1">
-              <Sparkles className="w-3 h-3 text-indigo-400" /> Turn-Taking
-            </span>
-            <p className="font-semibold text-slate-300 truncate">
-              <strong className="text-white">Deliberation:</strong>{' '}
-              {lastTurnTakingReason || 'Next interviewer selected dynamically.'}
-            </p>
-          </div>
-          {lastInternalThought && (
-            <span className="text-[11px] text-slate-400 italic bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-800 max-w-sm truncate shrink-0">
-              "{lastInternalThought}"
-            </span>
-          )}
-        </div>
-      )}
 
       <InterviewerPersonaModal
         interviewer={selectedPersona}

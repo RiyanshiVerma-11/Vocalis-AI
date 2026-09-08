@@ -45,8 +45,19 @@ import { LaunchSessionModal } from './components/LaunchSessionModal';
 import { getUnifiedCandidatePipeline, computeCohortAnalytics } from './services/recruiterPipelineService';
 
 export default function App() {
-  // Navigation View State ('landing' | 'login' | 'studio')
-  const [currentView, setCurrentView] = useState<AppView>('landing');
+  // Navigation View State — initialized from saved session so refresh doesn't kick users back to landing
+  const [currentView, setCurrentView] = useState<AppView>(() => {
+    try {
+      const saved = localStorage.getItem('vocalis_user_session');
+      if (saved) {
+        const user = JSON.parse(saved);
+        if (user?.isLoggedIn) return 'studio';
+      }
+    } catch {
+      // Corrupt storage — fall through to landing
+    }
+    return 'landing';
+  });
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
   const [currentUser, setCurrentUser] = useState<UserSession | null>(() => {
     try {
@@ -122,11 +133,12 @@ export default function App() {
     candidateResume: candidateResume,
     questionHistory: [],
     competencyScores: {
-      technicalArchitecture: 50,
-      businessAndCustomerImpact: 50,
-      communicationAndClarity: 50,
-      leadershipAndOwnership: 50,
-      problemSolvingAndAgility: 50,
+      technicalArchitecture: 0,
+      businessAndCustomerImpact: 0,
+      communicationAndClarity: 0,
+      leadershipAndOwnership: 0,
+      problemSolvingAndAgility: 0,
+      isCalibrated: false,
     },
     backstagePanelNotes: [],
     flaggedItems: [],
@@ -601,11 +613,12 @@ export default function App() {
         },
       ],
       competencyScores: {
-        technicalArchitecture: 50,
-        businessAndCustomerImpact: 50,
-        communicationAndClarity: 50,
-        leadershipAndOwnership: 50,
-        problemSolvingAndAgility: 50,
+        technicalArchitecture: 0,
+        businessAndCustomerImpact: 0,
+        communicationAndClarity: 0,
+        leadershipAndOwnership: 0,
+        problemSolvingAndAgility: 0,
+        isCalibrated: false,
       },
       backstagePanelNotes: [
         {
@@ -837,7 +850,12 @@ export default function App() {
         ...sharedContextRef.current,
         currentDifficulty: turnResult.updatedDifficulty || sharedContextRef.current.currentDifficulty,
         runningSummary: turnResult.updatedRunningSummary || sharedContextRef.current.runningSummary,
-        competencyScores: turnResult.updatedCompetencyScores || sharedContextRef.current.competencyScores,
+        competencyScores: turnResult.updatedCompetencyScores
+          ? {
+              ...turnResult.updatedCompetencyScores,
+              isCalibrated: true,
+            }
+          : sharedContextRef.current.competencyScores,
         questionHistory: newQuestionHistory,
         latestAdaptiveAnalysis: turnResult.analysisOfCandidateAnswer
           ? {
@@ -1448,56 +1466,73 @@ export default function App() {
 
   // 3. Interview Studio Workspace View
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans selection:bg-indigo-600 selection:text-white">
+    <div className={inInterview ? "h-screen overflow-hidden bg-[#070b14] text-slate-100 flex flex-col font-sans selection:bg-cyan-500 selection:text-slate-950" : "min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans selection:bg-indigo-600 selection:text-white"}>
       {/* PWA Install Banner & Offline Indicator */}
-      <PWAInstallPrompt />
+      <PWAInstallPrompt isInInterview={inInterview} />
 
-      {/* Mandatory AI Disclosure Banner */}
-      <AIDisclosureBanner />
+      {/* Mandatory AI Disclosure Banner (Visible during setup/dashboard, minimized during live interview) */}
+      {!inInterview && <AIDisclosureBanner />}
 
-      {/* Main Top Navigation — Premium */}
-      <header className="border-b border-slate-800/80 bg-[#0a0e1a] sticky top-0 z-40" style={{ boxShadow: '0 1px 24px rgba(0,0,0,0.45)' }}>
-        <div className="w-full px-3 sm:px-5 flex items-center justify-between gap-2" style={{ height: '57px' }}>
+      {/* Main Top Navigation — Compact in Interview Mode */}
+      <header className={inInterview ? "border-b border-slate-800/90 bg-[#070b14] sticky top-0 z-40 shrink-0" : "border-b border-slate-800/80 bg-[#0a0e1a] sticky top-0 z-40"} style={{ boxShadow: '0 1px 24px rgba(0,0,0,0.45)' }}>
+        <div className="w-full px-2 sm:px-4 flex items-center justify-between gap-2" style={{ height: inInterview ? '46px' : '57px' }}>
           {/* Left Brand */}
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              id="btn-toggle-mobile-menu"
-              onClick={() => setIsSidebarOpen((prev) => !prev)}
-              className="md:hidden w-8 h-8 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer flex items-center justify-center border border-slate-700/60"
-              aria-label="Toggle navigation"
-            >
-              <Menu className="w-4 h-4 text-indigo-400" />
-            </button>
+          <div className="flex items-center gap-2.5">
+            {!inInterview && (
+              <button
+                type="button"
+                id="btn-toggle-mobile-menu"
+                onClick={() => setIsSidebarOpen((prev) => !prev)}
+                className="md:hidden w-8 h-8 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer flex items-center justify-center border border-slate-700/60"
+                aria-label="Toggle navigation"
+              >
+                <Menu className="w-4 h-4 text-indigo-400" />
+              </button>
+            )}
 
             <button
               type="button"
               onClick={handleNavigateToLanding}
-              className="w-8 h-8 rounded-lg overflow-hidden hover:opacity-90 transition cursor-pointer shrink-0 ring-1 ring-indigo-500/20 shadow-md"
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg overflow-hidden hover:opacity-90 transition cursor-pointer shrink-0 ring-1 ring-cyan-500/30 shadow-md"
             >
               <img src="/logo.jpg" alt="Vocalis AI" className="w-full h-full object-cover" />
             </button>
 
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={handleNavigateToLanding}
-                className="text-sm font-extrabold text-white hover:text-indigo-300 transition cursor-pointer tracking-tight"
+                className="text-xs sm:text-sm font-extrabold text-white hover:text-cyan-300 transition cursor-pointer tracking-tight"
               >
-                Vocalis <span className="text-indigo-400">AI</span>
+                Vocalis <span className="text-cyan-400">AI</span>
               </button>
-              <span className="hidden sm:inline-flex items-center text-[9px] px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-mono font-black uppercase tracking-widest">
-                Studio
-              </span>
+              {inInterview ? (
+                <span className="hidden md:inline-flex items-center text-[9px] px-2 py-0.2 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 font-bold uppercase tracking-wider">
+                  AI Voice Interview Room
+                </span>
+              ) : (
+                <span className="hidden sm:inline-flex items-center text-[9px] px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-mono font-black uppercase tracking-widest">
+                  Studio
+                </span>
+              )}
             </div>
 
-            <div className="hidden md:block w-px h-5 bg-slate-800" />
+            <div className="hidden md:block w-px h-4 bg-slate-800" />
 
             {inInterview ? (
-              <div className="hidden md:flex items-center gap-2 bg-rose-500/10 border border-rose-500/25 px-3 py-1.5 rounded-lg text-rose-400 text-xs font-mono font-bold">
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
-                <span>LIVE</span>
-                <span className="text-white ml-1">{formatTimer(sessionSeconds)}</span>
+              <div className="flex items-center gap-1.5">
+                <span className="inline-flex items-center gap-1 text-[8px] font-extrabold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                  ACTIVE
+                </span>
+                <div className="flex items-center gap-1 bg-rose-500/10 border border-rose-500/25 px-2 py-0.5 rounded-lg text-rose-400 text-[10px] font-mono font-bold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
+                  <span>LIVE</span>
+                  <span className="text-white ml-1">{formatTimer(sessionSeconds)}</span>
+                </div>
+                <span className="hidden lg:inline-flex items-center gap-1 text-[9px] font-mono text-cyan-400 bg-cyan-950/60 border border-cyan-800/60 px-2 py-0.5 rounded-lg">
+                  SUB-100ms LATENCY: 85ms
+                </span>
               </div>
             ) : (
               <div className="hidden md:flex items-center gap-1.5 text-xs text-slate-500">
@@ -1508,8 +1543,8 @@ export default function App() {
           </div>
 
           {/* Right Controls */}
-          <div className="flex items-center gap-2 sm:gap-2.5">
-            {/* Mode Switcher: Recruiter vs Candidate (Strictly restricted to verified recruiters/interviewers) */}
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            {/* Mode Switcher: Recruiter vs Candidate */}
             {!inInterview && currentUser && (currentUser.role === 'recruiter' || currentUser.role === 'interviewer') && (
               <div className="flex rounded-lg bg-slate-800/90 p-0.5 border border-slate-700/80">
                 <button
@@ -1545,16 +1580,16 @@ export default function App() {
             <button
               type="button"
               onClick={() => setIsResumeDrawerOpen(true)}
-              className="text-xs font-semibold text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg border border-slate-700/80 bg-slate-800/60 hover:bg-slate-800 flex items-center gap-1.5 transition cursor-pointer"
+              className="text-[11px] font-semibold text-slate-300 hover:text-white px-2 py-1 rounded-lg border border-slate-700/80 bg-slate-800/60 hover:bg-slate-800 flex items-center gap-1 transition cursor-pointer"
               title="View Candidate Resume & Question Memory"
             >
-              <FileText className="w-3.5 h-3.5 text-indigo-400" />
+              <FileText className="w-3 h-3 text-cyan-400" />
               <span className="hidden md:inline">Resume & Memory</span>
               <span className="md:hidden">Resume</span>
             </button>
 
             {/* User Profile / Auth State Button */}
-            {currentUser ? (
+            {!inInterview && currentUser ? (
               <div className="flex items-center gap-1.5 pl-1.5 border-l border-slate-800">
                 <div
                   className="w-7 h-7 rounded-lg bg-indigo-600 text-white font-extrabold text-[10px] flex items-center justify-center shrink-0 shadow-xs cursor-default"
@@ -1571,7 +1606,7 @@ export default function App() {
                   <LogOut className="w-3.5 h-3.5" />
                 </button>
               </div>
-            ) : (
+            ) : !inInterview ? (
               <button
                 type="button"
                 onClick={() => setCurrentView('login')}
@@ -1580,17 +1615,10 @@ export default function App() {
                 <LogIn className="w-3.5 h-3.5 text-indigo-400" />
                 <span className="hidden sm:inline">Sign In</span>
               </button>
-            )}
+            ) : null}
 
             {inInterview ? (
-              <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
-                {/* Live Session Timer Badge */}
-                <div className="flex items-center gap-2 bg-rose-500/10 border border-rose-500/30 px-3 py-1 rounded-lg text-rose-400 text-xs font-mono font-bold animate-pulse">
-                  <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
-                  <span>INTERVIEW LIVE</span>
-                  <span className="text-white font-bold ml-1">{formatTimer(sessionSeconds)}</span>
-                </div>
-
+              <div className="flex items-center gap-1.5 pl-1.5 border-l border-slate-800">
                 {/* Focus Mode / Telemetry Mode Toggle */}
                 <button
                   type="button"
@@ -1602,30 +1630,30 @@ export default function App() {
                       'info'
                     );
                   }}
-                  className={`text-xs font-bold px-2.5 py-1.5 rounded-lg border flex items-center gap-1.5 transition cursor-pointer ${
+                  className={`text-[10px] font-bold px-2 py-1 rounded-lg border flex items-center gap-1 transition cursor-pointer ${
                     isFocusMode
                       ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500 ring-1 ring-emerald-500/30'
                       : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
                   }`}
-                  title="Toggle between Focus Mode (Clean View) and Telemetry Mode (Full HUD Metrics)"
+                  title="Toggle Focus / Telemetry View"
                 >
-                  <span>{isFocusMode ? 'Focus Mode' : 'Telemetry View'}</span>
+                  <span>{isFocusMode ? '🧘 Focus' : '📊 Telemetry'}</span>
                 </button>
 
                 <div
-                  className="hidden xl:flex items-center gap-1.5 text-xs bg-slate-800/80 px-2.5 py-1.5 rounded-lg border border-slate-700 text-slate-300 font-medium max-w-[240px] truncate"
+                  className="hidden xl:flex items-center gap-1 text-[10px] bg-slate-900/90 px-2 py-1 rounded-lg border border-slate-800 text-slate-300 font-medium max-w-[180px] truncate"
                   title={`Candidate: ${candidateName} | Role: ${targetRole}`}
                 >
-                  <span className="truncate">Active: <strong className="text-emerald-400">{candidateName}</strong></span>
+                  <span className="truncate">Candidate: <strong className="text-cyan-400">{candidateName}</strong></span>
                 </div>
 
                 <button
                   id="btn-back-to-setup"
                   onClick={handleRestart}
-                  className="text-xs font-semibold text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-800 flex items-center gap-1.5 transition cursor-pointer"
-                  title="Reset & End Interview Session"
+                  className="text-[10px] font-bold text-rose-300 hover:text-white px-2 py-1 rounded-lg border border-rose-800/80 bg-rose-950/40 hover:bg-rose-900/60 flex items-center gap-1 transition cursor-pointer"
+                  title="End Interview Session"
                 >
-                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <ArrowLeft className="w-3 h-3" />
                   <span>End Session</span>
                 </button>
               </div>
@@ -1659,7 +1687,7 @@ export default function App() {
     )}
 
       {/* Main Workspace Layout with Hideable Sidebar */}
-      <div className="flex-1 flex w-full">
+      <div className={inInterview ? "flex-1 flex w-full min-h-0 overflow-hidden" : "flex-1 flex w-full"}>
         {/* Hideable Studio Sidebar */}
         <StudioSidebar
           isOpen={isSidebarOpen}
@@ -1700,7 +1728,7 @@ export default function App() {
         />
 
         {/* Main Center Content Workspace */}
-        <main className="flex-1 min-w-0 p-1 sm:p-2 space-y-2.5">
+        <main className={inInterview ? "flex-1 min-w-0 p-1.5 sm:p-2 flex flex-col overflow-hidden h-full" : "flex-1 min-w-0 p-1 sm:p-2 space-y-2.5"}>
           {showProgressionHub ? (
             <SkillProgressionHub
               onSelectAssessment={(a) => {
@@ -1742,29 +1770,31 @@ export default function App() {
               />
             )
           ) : (
-            <div className="space-y-3">
-              {/* Top Stage: Active Interviewers Display */}
-              <InterviewerStage
-                panel={activePanel}
-                activeSpeakerId={activeSpeakerId}
-                isAISpeaking={isAISpeaking}
-                selectedTargetInterviewerId={selectedTargetInterviewerId}
-                onSelectTargetInterviewer={setSelectedTargetInterviewerId}
-                lastTurnTakingReason={lastTurnTakingReason}
-                lastInternalThought={lastInternalThought}
-                candidateName={candidateName}
-                candidateHeadline={`Candidate • ${targetRole || 'Software Engineer'}`}
-                isListening={isListening}
-                candidateVolume={candidateVolume}
-                onOpenWhiteboard={() => setIsWhiteboardOpen(true)}
-                isWhiteboardSynced={Boolean(sharedContext.architectureDiagram?.lastSyncedAt)}
-                ambientReactions={ambientReactions}
-              />
+            <div className="flex-1 min-h-0 flex flex-col gap-2 overflow-hidden">
+              {/* Top Stage: Active Interviewers & Candidate Video Cards Row */}
+              <div className="shrink-0">
+                <InterviewerStage
+                  panel={activePanel}
+                  activeSpeakerId={activeSpeakerId}
+                  isAISpeaking={isAISpeaking}
+                  selectedTargetInterviewerId={selectedTargetInterviewerId}
+                  onSelectTargetInterviewer={setSelectedTargetInterviewerId}
+                  lastTurnTakingReason={lastTurnTakingReason}
+                  lastInternalThought={lastInternalThought}
+                  candidateName={candidateName}
+                  candidateHeadline={`Candidate • ${targetRole || 'Software Engineer'}`}
+                  isListening={isListening}
+                  candidateVolume={candidateVolume}
+                  onOpenWhiteboard={() => setIsWhiteboardOpen(true)}
+                  isWhiteboardSynced={Boolean(sharedContext.architectureDiagram?.lastSyncedAt)}
+                  ambientReactions={ambientReactions}
+                />
+              </div>
 
-              {/* Middle Grid: Transcript & Shared Context Panel */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5">
-                {/* Transcript & Response Controls */}
-                <div className="lg:col-span-7 xl:col-span-8 space-y-3">
+              {/* Bottom Deck: 3-Column Unified Console (Matching README Dashboard Design!) */}
+              <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-2 overflow-hidden">
+                {/* 1. Left Column: Real-Time Synchronized Transcript */}
+                <div className="lg:col-span-4 xl:col-span-4 h-full min-h-0 flex flex-col overflow-hidden">
                   <TranscriptView
                     transcript={transcript}
                     isProcessing={isProcessing}
@@ -1772,9 +1802,12 @@ export default function App() {
                     isFocusMode={isFocusMode}
                     onForkTurn={handleOpenForkTurn}
                   />
+                </div>
 
-                  {/* Voice & Response Controller */}
+                {/* 2. Center Column: Candidate Audio Feed & Response Controls */}
+                <div className="lg:col-span-4 xl:col-span-4 h-full min-h-0 flex flex-col overflow-hidden">
                   <VoiceController
+                    candidateName={candidateName}
                     isListening={isListening}
                     isAISpeaking={isAISpeaking}
                     isProcessing={isProcessing}
@@ -1808,15 +1841,15 @@ export default function App() {
                   />
                 </div>
 
-                {/* Live Panel Shared Memory & Competency Monitor */}
-                <div className="lg:col-span-5 xl:col-span-4">
+                {/* 3. Right Column: Competency Scorecard & Telemetry */}
+                <div className="lg:col-span-4 xl:col-span-4 h-full min-h-0 flex flex-col overflow-hidden">
                   <LivePanelContext
                     context={sharedContext}
                     onEndInterview={handleEndInterview}
                     isProcessing={isProcessing || isGeneratingAssessment}
                     agoraMode={agoraMode}
                     isFocusMode={isFocusMode}
-                    onToggleFocusMode={() => setIsFocusMode(false)}
+                    onToggleFocusMode={() => setIsFocusMode((prev) => !prev)}
                   />
                 </div>
               </div>

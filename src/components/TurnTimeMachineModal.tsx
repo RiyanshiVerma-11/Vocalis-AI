@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   AlertTriangle,
   Send,
-  Mic,
   ArrowRight,
   ShieldAlert,
   Zap,
@@ -36,7 +35,6 @@ export const TurnTimeMachineModal: React.FC<TurnTimeMachineModalProps> = ({
 
   const [newAnswer, setNewAnswer] = useState(checkpoint.originalAnswer || '');
   const [activeTab, setActiveTab] = useState<'retry' | 'coach'>('retry');
-  const [isDictating, setIsDictating] = useState(false);
 
   const blueprint: CoachBlueprint = turnForkService.generateCoachBlueprint(
     checkpoint.questionText,

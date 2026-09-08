@@ -2,7 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Download, WifiOff, X, Sparkles, Smartphone, Check } from 'lucide-react';
 import { subscribePWAInstallPrompt, subscribeNetworkStatus, promptPWAInstall, BeforeInstallPromptEvent } from '../services/pwaService';
 
-export const PWAInstallPrompt: React.FC = () => {
+interface PWAInstallPromptProps {
+  isInInterview?: boolean;
+}
+
+export const PWAInstallPrompt: React.FC<PWAInstallPromptProps> = ({ isInInterview = false }) => {
   const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null);
   const [isOnline, setIsOnline] = useState<boolean>(true);
   const [isDismissed, setIsDismissed] = useState<boolean>(false);
@@ -41,7 +45,7 @@ export const PWAInstallPrompt: React.FC = () => {
       )}
 
       {/* PWA Install Banner Prompt */}
-      {installEvent && !isInstalled && !isDismissed && (
+      {installEvent && !isInstalled && !isDismissed && !isInInterview && (
         <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-sm z-50 bg-slate-900/95 border border-indigo-500/40 backdrop-blur-xl text-white p-4 rounded-2xl shadow-2xl flex flex-col gap-3 animate-slide-up">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">

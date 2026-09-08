@@ -987,7 +987,7 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
                     >
                       <div className="flex items-center gap-2.5">
                         <div
-                          className={`w-4 h-4 rounded-md flex items-center justify-center border ${
+                          className={`w-4 h-4 rounded-md flex items-center justify-center border shrink-0 ${
                             isChecked
                               ? 'bg-indigo-600 border-indigo-600 text-white'
                               : 'border-slate-300 bg-white'
@@ -995,9 +995,20 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
                         >
                           {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
                         </div>
-                        <span className="font-semibold text-xs">{interviewer.name} ({interviewer.title})</span>
+                        {interviewer.avatarPhoto && (
+                          <img
+                            src={interviewer.avatarPhoto}
+                            alt={interviewer.name}
+                            className="w-7 h-7 rounded-lg object-cover border border-slate-200 shadow-2xs shrink-0"
+                            style={{ objectPosition: interviewer.avatarObjectPosition || '50% 20%' }}
+                          />
+                        )}
+                        <div>
+                          <span className="font-bold text-xs block text-slate-900 leading-tight">{interviewer.name}</span>
+                          <span className="text-[10px] text-slate-500 leading-tight">{interviewer.title}</span>
+                        </div>
                       </div>
-                      <span className="text-[10px] text-slate-500 font-mono capitalize">
+                      <span className="text-[10px] text-slate-500 font-mono capitalize shrink-0 ml-2">
                         {interviewer.role.replace('_', ' ')}
                       </span>
                     </div>
