@@ -5,7 +5,6 @@
   # 🎙️ Vocalis AI
   ### Enterprise Autonomous Multi-Role AI Voice Interview Platform
 
-  **EchoSphere Hackathon 2026 Submission** | *Track: AI Interview Track (PS11)*  
   *Author: [Riyanshi Verma](https://github.com/RiyanshiVerma-11)*  
 
   [![GitHub Repo](https://img.shields.io/badge/GitHub-RiyanshiVerma--11%2FVocalis--AI-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/RiyanshiVerma-11/Vocalis-AI)
@@ -38,7 +37,7 @@
 - [Executive Summary](#executive-summary)
 - [Live Production Deployments](#live-production-deployments)
 - [Agora Conversational AI Engine](#agora-conversational-ai-engine)
-- [PS11 Hackathon Feature Matrix](#ps11-hackathon-feature-matrix)
+- [Core Platform Capabilities Matrix](#core-platform-capabilities-matrix)
 - [System Architecture](#system-architecture)
   - [1. High-Level Dual-Workspace Component Architecture](#1-high-level-dual-workspace-component-architecture)
   - [2. Agora Conversational AI Cloud Pipeline](#2-agora-conversational-ai-cloud-pipeline-agora-agents-v270)
@@ -77,7 +76,7 @@ The audio engine streams over the **Agora Software-Defined Real-Time Network (SD
 
 ## 🎙️ Agora Conversational AI Engine
 
-Vocalis AI is 100% compliant with the **Agora Conversational AI Hackathon Requirements**, utilizing the official `agora-agents` TypeScript SDK to deploy autonomous voice agents directly onto Agora's SDRTN media channels:
+Vocalis AI is built with the official `agora-agents` TypeScript SDK to deploy autonomous voice agents directly onto Agora's SDRTN media channels:
 
 ```
 Candidate Mic (WebRTC) ────────► Agora RTC Channel (SDRTN)
@@ -96,7 +95,7 @@ Candidate Mic (WebRTC) ────────► Agora RTC Channel (SDRTN)
 Candidate Speaker ◄──────────── Agora Audio Stream (Opus)
 ```
 
-| Component | Technical Implementation | Hackathon Compliance |
+| Component | Technical Implementation | Production Status |
 | :--- | :--- | :---: |
 | **SDK & Orchestration** | Official `agora-agents` (v2.7.0) with `AgoraClient`, `Agent`, `AgentSession` | ✅ **100% Verified** |
 | **Region & Authentication** | Configured for `Area.US` with dynamic 3600-second privilege RTC tokens (`/api/agora/token`) | ✅ **100% Verified** |
@@ -109,19 +108,19 @@ Candidate Speaker ◄──────────── Agora Audio Stream (Op
 
 ---
 
-## 🎯 PS11 Hackathon Feature Matrix
+## 🎯 Core Platform Capabilities Matrix
 
-Vocalis AI implements all 11 core requirements specified in the **EchoSphere PS11 AI Interview Track**:
+Vocalis AI implements 11 core enterprise conversational interviewing capabilities:
 
-| PS11 Requirement | Vocalis AI Technical Implementation | UI Indicator | Status |
-| :--- | :--- | :---: | :---: |
+| Core Capability | Vocalis AI Technical Implementation | UI Indicator | Status |
+| :--- | :--- | :--- | :---: |
 | **1. Mandatory Agora Voice SDK** | Integrated `agora-rtc-sdk-ng` WebRTC client + server-side `agora-token` builder (`/api/agora/token`). | `Radio` Badge (`Agora RTC / AI`) | ✅ **Fully Integrated** |
 | **2. Real-Time & Interruptible Voice** | Sub-100ms barge-in VAD (`agoraVoiceEngine.interrupt()`). Candidate speech instantly halts active AI audio tracks. | Interruption Indicator | ✅ **Fully Integrated** |
 | **3. Multiple Interviewer Roles** | 5 distinct panel personas (Technical Architect, PM, VP Engineering, Enterprise Customer, Psychologist). | Multi-Avatar Stage | ✅ **Fully Integrated** |
 | **4. Shared Candidate Context** | Unified `SharedCandidateContext` bus tracking resume metrics, turn history, depth levels, and open probes. | Live Panel State Sidebar | ✅ **Fully Integrated** |
 | **5. Dynamic Follow-Up Probes** | Gemini 2.5 Flash / Groq engine generates adaptive follow-ups based on candidate's technical depth. | Adaptive Strategy Badges | ✅ **Fully Integrated** |
 | **6. Controlled Turn-Taking** | Panelists deliberate backstage in JSON format and justify turn-taking rationale before passing the floor. | Backstage Thought Feed | ✅ **Fully Integrated** |
-| **7. Role-Play & Scenarios** | PS11 Demo Scenario (*The Missing Business Impact*) where Technical & PM interviewers challenge cross-functional trade-offs. | Scenario Selector | ✅ **Fully Integrated** |
+| **7. Role-Play & Scenarios** | Interactive Scenario (*The Missing Business Impact*) where Technical & PM interviewers challenge cross-functional trade-offs. | Scenario Selector | ✅ **Fully Integrated** |
 | **8. Dynamic Difficulty Calibration** | Real-time calibration (Foundational → Staff/Principal) rendered on a live SVG trajectory sparkline. | `DifficultyChart.tsx` | ✅ **Fully Integrated** |
 | **9. Contradiction & Vague Detection** | Real-time flag detector highlighting `contradiction`, `vague`, and `missing_impact` items live in the panel feed. | Live Alert Cards | ✅ **Fully Integrated** |
 | **10. Evidence-Based Feedback** | Final assessment report with verbatim quote citations linked to exact timestamped transcript turns. | `FinalAssessmentModal` | ✅ **Fully Integrated** |
@@ -652,7 +651,7 @@ Content-Type: application/json
     ├── index.css                      # Tailwind CSS v4 design system
     ├── main.tsx                       # React DOM mount point & PWA registration
     ├── components/
-    │   ├── AIDisclosureBanner.tsx     # Persistent AI panel disclosure notice (PS11 req #11)
+    │   ├── AIDisclosureBanner.tsx     # Persistent AI panel disclosure notice
     │   ├── InterviewerStage.tsx       # 5-panel avatar stage & active speaker cards
     │   ├── TranscriptView.tsx         # Live transcript & backstage deliberation feed
     │   ├── VoiceController.tsx        # Agora WebRTC mic controls & VAD visualizer
@@ -662,7 +661,7 @@ Content-Type: application/json
     │   ├── StudioSidebar.tsx          # Sticky navigation sidebar & user profile
     │   ├── ResumeDrawer.tsx           # Candidate resume parser & question memory
     │   ├── DifficultyChart.tsx        # Live SVG difficulty trajectory sparkline
-    │   ├── ScenarioSelector.tsx       # PS11 role-play scenario chooser
+    │   ├── ScenarioSelector.tsx       # Interactive role-play scenario chooser
     │   ├── RubricImporterModal.tsx    # AI-powered JD → rubric extractor & editor
     │   ├── SystemDesignWhiteboardModal.tsx # Whiteboard canvas for system design rounds
     │   ├── TurnTimeMachineModal.tsx   # Replay any past interview turn with context
@@ -722,7 +721,7 @@ AGORA_APP_ID="your_agora_app_id"
 AGORA_APP_CERTIFICATE="your_agora_app_certificate"
 
 # ── Agora Conversational AI Enable Switch ──
-# "true"  = Live Agora SDRTN Conversational AI Agent (Official Hackathon mode)
+# "true"  = Live Agora SDRTN Conversational AI Agent (Cloud Agent mode)
 # "false" = Local fallback audio (0 Agora quota consumed)
 VITE_AGORA_ENABLED="true"
 
@@ -777,10 +776,9 @@ npm run build
 
 ## 📄 License & Acknowledgments
 
-- Built for **EchoSphere Hackathon 2026** (*AI Interview Track - PS11*).
 - Powered by **Agora Real-Time Engagement Platform**, **Groq Qwen 3.8 27B / Compound Mini**, and **Google Gemini 2.5 Flash**.
 - Released under the [MIT License](LICENSE).
 
 <div align="center">
-  <sub>Created with ❤️ by <strong><a href="https://github.com/RiyanshiVerma-11">Riyanshi Verma (@RiyanshiVerma-11)</a></strong> for EchoSphere 2026</sub>
+  <sub>Created with ❤️ by <strong><a href="https://github.com/RiyanshiVerma-11">Riyanshi Verma (@RiyanshiVerma-11)</a></strong></sub>
 </div>
