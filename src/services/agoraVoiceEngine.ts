@@ -93,23 +93,6 @@ export class AgoraVoiceEngine {
     this.currentSessionFinalText = '';
     this.currentSessionInterimText = '';
     this.isSpeaking = false;
-    if (this.webSpeechRecognition) {
-      try {
-        this.webSpeechRecognition.onresult = null;
-        this.webSpeechRecognition.onerror = null;
-        this.webSpeechRecognition.onend = null;
-        this.webSpeechRecognition.abort();
-      } catch (_) {}
-      this.webSpeechRecognition = null;
-    }
-    // If we are listening, restart with a fresh clean session after brief tick
-    if (this.isListening) {
-      setTimeout(() => {
-        if (this.isListening && !this.webSpeechRecognition) {
-          this._startWebSpeech();
-        }
-      }, 80);
-    }
   }
 
   public getIsSpeaking() {
@@ -361,10 +344,10 @@ export class AgoraVoiceEngine {
     this.isListening = true;
     this.isSpeaking = false;
 
-    // 1. Publish mic to Agora channel (non-blocking so failure doesn't prevent local speech recognition)
-    if (this.isJoined && this.client) {
-      try {
-        if (!this.localMicTrack) {
+    // 1. Background Agora mic publishing (non-blocking, only once if not already published)
+    if (this.isJoined && this.client && !this.localMicTrack) {
+      (async () => {
+        try {
           this.localMicTrack = await AgoraRTC.createMicrophoneAudioTrack({
             AEC: true, // Acoustic Echo Cancellation
             ANS: true, // Automatic Noise Suppression
@@ -373,18 +356,18 @@ export class AgoraVoiceEngine {
             console.warn('[AgoraVoiceEngine] createMicrophoneAudioTrack failed:', err);
             return null;
           });
+          if (this.localMicTrack && this.client && this.isJoined) {
+            await this.client.publish([this.localMicTrack]).catch((err) => {
+              console.warn('[AgoraVoiceEngine] Publish mic track failed:', err);
+            });
+          }
+        } catch (err) {
+          console.warn('[AgoraVoiceEngine] Non-critical Agora mic publish warning:', err);
         }
-        if (this.localMicTrack) {
-          await this.client.publish([this.localMicTrack]).catch((err) => {
-            console.warn('[AgoraVoiceEngine] Publish mic track failed:', err);
-          });
-        }
-      } catch (err) {
-        console.warn('[AgoraVoiceEngine] Non-critical Agora mic publish warning:', err);
-      }
+      })();
     }
 
-    // 2. Start Web Speech API recognizer
+    // 2. Start Web Speech API recognizer immediately
     return this._startWebSpeech();
   }
 
@@ -396,15 +379,10 @@ export class AgoraVoiceEngine {
       return false;
     }
 
-    // Clean up any existing speech recognition instance cleanly before starting
+    // If an instance is ALREADY running and healthy, KEEP IT!
+    // Do NOT abort it, because aborting in Chromium triggers an abort-restart storm.
     if (this.webSpeechRecognition) {
-      try {
-        this.webSpeechRecognition.onresult = null;
-        this.webSpeechRecognition.onerror = null;
-        this.webSpeechRecognition.onend = null;
-        this.webSpeechRecognition.abort();
-      } catch (_) {}
-      this.webSpeechRecognition = null;
+      return true;
     }
 
     try {
@@ -482,6 +460,10 @@ export class AgoraVoiceEngine {
       };
 
       recognition.onend = () => {
+        if (this.webSpeechRecognition === recognition) {
+          this.webSpeechRecognition = null;
+        }
+
         const sessionFinishedText = [
           this.currentSessionFinalText,
           this.currentSessionInterimText,
@@ -497,7 +479,7 @@ export class AgoraVoiceEngine {
 
         if (this.isListening) {
           setTimeout(() => {
-            if (this.isListening) {
+            if (this.isListening && !this.webSpeechRecognition) {
               this._startWebSpeech();
             }
           }, 150);

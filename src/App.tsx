@@ -400,9 +400,14 @@ export default function App() {
     setIsProcessing(false);
     setThoughtGraceActive(false);
 
-    // 3. Automatically activate mic if not listening so candidate can speak immediately
+    // 3. Clear candidate speech buffer cleanly so new speech starts fresh
     agoraVoiceEngine.clearSpeechBuffer();
     setCurrentInterimTranscript('');
+
+    // 4. Ensure mic is armed and listening
+    setIsListening(true);
+    isListeningRef.current = true;
+
     agoraVoiceEngine.startSpeechRecognition(
       (fullText) => {
         if (isAISpeakingRef.current) {
@@ -422,7 +427,6 @@ export default function App() {
       }
     ).then((started) => {
       if (started) {
-        setIsListening(true);
         agoraVoiceEngine.initMicVisualizer((vol) => {
           candidateVolumeRef.current = vol;
           setCandidateVolume(vol);

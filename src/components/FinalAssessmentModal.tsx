@@ -247,7 +247,7 @@ export const FinalAssessmentModal: React.FC<FinalAssessmentModalProps> = ({
                       </span>
                       <ul className="list-disc pl-4 space-y-0.5 text-slate-700">
                         {comp.strengths.map((s, sIdx) => (
-                          <li key={sIdx}>{s}</li>
+                          <li key={sIdx}>{typeof s === 'string' ? s : ((s as any)?.point || (s as any)?.strength || (s as any)?.text || JSON.stringify(s))}</li>
                         ))}
                       </ul>
                     </div>
@@ -258,7 +258,7 @@ export const FinalAssessmentModal: React.FC<FinalAssessmentModalProps> = ({
                       </span>
                       <ul className="list-disc pl-4 space-y-0.5 text-slate-700">
                         {comp.improvements.map((im, imIdx) => (
-                          <li key={imIdx}>{im}</li>
+                          <li key={imIdx}>{typeof im === 'string' ? im : ((im as any)?.point || (im as any)?.improvement || (im as any)?.text || JSON.stringify(im))}</li>
                         ))}
                       </ul>
                     </div>
@@ -332,7 +332,7 @@ export const FinalAssessmentModal: React.FC<FinalAssessmentModalProps> = ({
                 {assessment.actionableDevelopmentPlan.map((plan, pIdx) => (
                   <div key={pIdx} className="flex items-start gap-2">
                     <span className="text-indigo-600 font-bold">•</span>
-                    <span>{plan}</span>
+                    <span>{typeof plan === 'string' ? plan : ((plan as any)?.action || (plan as any)?.plan || (plan as any)?.title || (plan as any)?.recommendation || JSON.stringify(plan))}</span>
                   </div>
                 ))}
               </div>
