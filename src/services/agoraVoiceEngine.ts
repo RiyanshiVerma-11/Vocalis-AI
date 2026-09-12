@@ -93,10 +93,21 @@ export class AgoraVoiceEngine {
       } catch (_) {}
       this.webSpeechRecognition = null;
     }
-    // Do NOT auto-restart here — callers (startSpeechRecognition / speakInterviewerMessage finally block)
-    // are responsible for explicitly restarting recognition after a buffer clear.
-    // Auto-restarting from clearSpeechBuffer causes a race loop on HTTPS (Vercel/Chrome strict mode).
+    // If we are listening, restart with a fresh clean session after a brief tick.
+    // NOTE: This does NOT cause the old restart loop because _setSpeaking() no longer
+    // calls clearSpeechBuffer(). The loop was: _setSpeaking → clearSpeechBuffer → restart → onend
+    // → _startWebSpeech → _setSpeaking. That chain is now broken at the first link.
+    if (this.isListening && !this._speechRestartPending) {
+      this._speechRestartPending = true;
+      setTimeout(() => {
+        this._speechRestartPending = false;
+        if (this.isListening && !this.webSpeechRecognition) {
+          this._startWebSpeech();
+        }
+      }, 150);
+    }
   }
+
 
   public getIsSpeaking() {
     return this.isSpeaking;
