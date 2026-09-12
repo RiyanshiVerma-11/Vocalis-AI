@@ -49,6 +49,8 @@ export class AgoraVoiceEngine {
   private isJoined = false;
   private volAnimFrameId: number | null = null;
   private webSpeechRecognition: any = null;
+  // Prevents concurrent restart races in onend handler
+  private _speechRestartPending = false;
   // Multi-session speech accumulators: guarantees no duplicate text and zero lost words across pauses
   private completedSessionsText = '';
   private currentSessionFinalText = '';
@@ -91,14 +93,9 @@ export class AgoraVoiceEngine {
       } catch (_) {}
       this.webSpeechRecognition = null;
     }
-    // If we are listening, restart with a fresh clean session after brief tick
-    if (this.isListening) {
-      setTimeout(() => {
-        if (this.isListening && !this.webSpeechRecognition) {
-          this._startWebSpeech();
-        }
-      }, 80);
-    }
+    // Do NOT auto-restart here — callers (startSpeechRecognition / speakInterviewerMessage finally block)
+    // are responsible for explicitly restarting recognition after a buffer clear.
+    // Auto-restarting from clearSpeechBuffer causes a race loop on HTTPS (Vercel/Chrome strict mode).
   }
 
   public getIsSpeaking() {
@@ -456,16 +453,19 @@ export class AgoraVoiceEngine {
           this.currentSessionInterimText = '';
         }
 
-        if (this.isListening) {
+        // Guard: only restart if we are still supposed to be listening AND no restart is already pending.
+        // On HTTPS (Vercel/Chrome strict mode) concurrent start() calls throw NotAllowedError which
+        // causes the mic indicator to flicker on/off rapidly.
+        if (this.isListening && !this._speechRestartPending) {
+          this._speechRestartPending = true;
+          // Null out the current instance so _startWebSpeech creates a fresh one
+          this.webSpeechRecognition = null;
           setTimeout(() => {
-            if (this.isListening) {
-              try {
-                this.webSpeechRecognition?.start();
-              } catch (_) {
-                this._startWebSpeech();
-              }
+            this._speechRestartPending = false;
+            if (this.isListening && !this.webSpeechRecognition) {
+              this._startWebSpeech();
             }
-          }, 120);
+          }, 150);
         }
       };
 
@@ -552,16 +552,29 @@ export class AgoraVoiceEngine {
 
     try {
       let stream: MediaStream | null = null;
+      // ownStream = true only if WE opened a NEW getUserMedia stream (so we must close it on cleanup).
+      // If we reuse the localMicTrack's stream, we must NOT stop those tracks — Agora manages them.
       let ownStream = false;
 
       if (this.localMicTrack) {
         const track = this.localMicTrack.getMediaStreamTrack();
         if (track && track.readyState === 'live') {
           stream = new MediaStream([track]);
+          // ownStream remains false: these tracks are owned by Agora, do not stop them
         }
       }
 
       if (!stream) {
+        // Only open a fallback getUserMedia stream if we are NOT already listening via Agora.
+        // On HTTPS (Vercel/Chrome), opening a second concurrent getUserMedia while Agora already
+        // holds the mic causes a permission re-prompt or "device busy" error which resets the mic
+        // permission state — manifesting as the mic toggling off unexpectedly.
+        if (this.isListening && this.isJoined) {
+          // We're in an active Agora session but localMicTrack isn't ready yet — skip the visualizer
+          // rather than opening a competing stream. Volume feedback is non-critical.
+          console.warn('[AgoraVoiceEngine] Skipping getUserMedia fallback: Agora mic stream active but track not yet live.');
+          return () => {};
+        }
         stream = await navigator.mediaDevices.getUserMedia({
           audio: {
             echoCancellation: true,
@@ -767,7 +780,9 @@ export class AgoraVoiceEngine {
   // ─── Private helpers ─────────────────────────────────────
   private _setSpeaking(val: boolean) {
     this.isSpeaking = val;
-    this.clearSpeechBuffer();
+    // NOTE: Do NOT call clearSpeechBuffer() here. Doing so triggered a start/abort/start loop
+    // on every speaking state change under HTTPS (Vercel/Chrome strict mode), causing the mic
+    // indicator to flicker on/off. Callers are responsible for clearing the buffer explicitly.
     this.callbacks.onSpeakingStateChange?.(val);
   }
 }
