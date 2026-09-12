@@ -160,7 +160,6 @@ export class AgoraVoiceEngine {
           } catch (playErr) {
             console.warn('[AgoraVoiceEngine] remoteAudioTrack.play() autoplay blocked:', playErr);
           }
-          this._setSpeaking(true);
 
           // Clear any previous silence monitor
           if (this.remoteAudioSilenceCheckInterval) {
@@ -188,24 +187,24 @@ export class AgoraVoiceEngine {
                 ? this.remoteAudioTrack.getVolumeLevel()
                 : 0;
 
-            // If volume drops below threshold (< 0.02) for a finish window, release floor
-            // ONLY if browser fallback is not actively speaking
-            if (volume < 0.02) {
+            // If volume drops below threshold (< 0.05) for a finish window, release floor
+            // ONLY if local TTS is not actively speaking
+            if (volume < 0.05) {
               if (!this.remoteAudioSilenceTimeout) {
                 this.remoteAudioSilenceTimeout = setTimeout(() => {
                   if (
                     !this.isBrowserSpeaking &&
                     this.remoteAudioTrack &&
                     typeof this.remoteAudioTrack.getVolumeLevel === 'function' &&
-                    this.remoteAudioTrack.getVolumeLevel() < 0.02
+                    this.remoteAudioTrack.getVolumeLevel() < 0.05
                   ) {
                     this._setSpeaking(false);
                   }
                   this.remoteAudioSilenceTimeout = null;
-                }, 800); // 800ms silence tolerance
+                }, 500); // 500ms silence tolerance
               }
-            } else {
-              // Remote agent is actively producing sound
+            } else if (volume >= 0.08 && !this.isBrowserSpeaking) {
+              // Remote agent is actively producing audible sound (>8% volume)
               if (this.remoteAudioSilenceTimeout) {
                 clearTimeout(this.remoteAudioSilenceTimeout);
                 this.remoteAudioSilenceTimeout = null;

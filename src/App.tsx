@@ -405,7 +405,10 @@ export default function App() {
     setCurrentInterimTranscript('');
     agoraVoiceEngine.startSpeechRecognition(
       (fullText) => {
-        if (!isAISpeakingRef.current && !isProcessingRef.current) {
+        if (isAISpeakingRef.current) {
+          handleInterrupt();
+        }
+        if (!isProcessingRef.current) {
           const cleanIncoming = fullText.trim();
           setCurrentInterimTranscript(cleanIncoming);
           scheduleSilenceAutoSubmit(cleanIncoming);
@@ -525,7 +528,10 @@ export default function App() {
           if (isListeningRef.current) {
             agoraVoiceEngine.startSpeechRecognition(
               (fullText) => {
-                if (!isAISpeakingRef.current && !isProcessingRef.current) {
+                if (isAISpeakingRef.current) {
+                  handleInterrupt();
+                }
+                if (!isProcessingRef.current) {
                   const cleanIncoming = fullText.trim();
                   setCurrentInterimTranscript(cleanIncoming);
                   scheduleSilenceAutoSubmit(cleanIncoming);
@@ -1121,7 +1127,10 @@ export default function App() {
       setCurrentInterimTranscript('');
       const started = await agoraVoiceEngine.startSpeechRecognition(
         (fullText) => {
-          if (!isAISpeakingRef.current && !isProcessingRef.current) {
+          if (isAISpeakingRef.current) {
+            handleInterrupt();
+          }
+          if (!isProcessingRef.current) {
             const cleanIncoming = fullText.trim();
             setCurrentInterimTranscript(cleanIncoming);
             scheduleSilenceAutoSubmit(cleanIncoming);
@@ -1367,7 +1376,6 @@ export default function App() {
   // Audio lifecycle cleanup — wire Agora engine callbacks
   useEffect(() => {
     agoraVoiceEngine.setCallbacks({
-      onSpeakingStateChange: (speaking) => setIsAISpeaking(speaking),
       onInterrupted: () => setIsAISpeaking(false),
       onConnectionStateChange: (state) => {
         console.log('[Agora] Connection state:', state);
