@@ -669,13 +669,30 @@ export default function App() {
     setIsSidebarOpen(false); // Automatically hide sidebar for max focus during live interview
     setAssessment(null);
 
-    // Auto-arm microphone so candidate can speak hands-free immediately after opening question!
+    // Auto-arm microphone and speech recognition so candidate can speak hands-free from second 0!
     setIsListening(true);
     isListeningRef.current = true;
     agoraVoiceEngine.initMicVisualizer((vol) => {
       candidateVolumeRef.current = vol;
       setCandidateVolume(vol);
     });
+    agoraVoiceEngine.startSpeechRecognition(
+      (fullText) => {
+        if (isAISpeakingRef.current) {
+          handleInterrupt();
+        }
+        if (!isProcessingRef.current) {
+          const cleanIncoming = fullText.trim();
+          setCurrentInterimTranscript(cleanIncoming);
+          scheduleSilenceAutoSubmit(cleanIncoming);
+        }
+      },
+      () => {
+        if (isAISpeakingRef.current) {
+          handleInterrupt();
+        }
+      }
+    );
 
     // ── Join Agora RTC channel + start Conversational AI agent in background ──
     (async () => {

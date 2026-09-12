@@ -182,6 +182,8 @@ export class AudioEngine {
       utterance.rate = rate;
       this.setSpeaking(true);
 
+      (window as any).__audio_engine_utterance = utterance;
+
       const heartbeat = setInterval(() => {
         if (window.speechSynthesis.speaking) {
           window.speechSynthesis.pause();
@@ -189,13 +191,26 @@ export class AudioEngine {
         } else {
           clearInterval(heartbeat);
         }
-      }, 10000);
+      }, 3000);
 
+      const wordCount = cleaned.split(/\s+/).length;
+      const maxDurationMs = Math.max(5000, Math.ceil((wordCount / 2.2) * 1000) + 4000);
+
+      let isFinished = false;
       const cleanup = () => {
+        if (isFinished) return;
+        isFinished = true;
+        clearTimeout(safetyTimer);
         clearInterval(heartbeat);
+        (window as any).__audio_engine_utterance = null;
         this.setSpeaking(false);
         resolve();
       };
+
+      const safetyTimer = setTimeout(() => {
+        console.log('[AudioEngine] SpeechSynthesis safety timer released speaking lock.');
+        cleanup();
+      }, maxDurationMs);
 
       utterance.onend = cleanup;
       utterance.onerror = (e) => {

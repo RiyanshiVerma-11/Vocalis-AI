@@ -52,6 +52,7 @@ export class AgoraVoiceEngine {
   private volAnimFrameId: number | null = null;
   private webSpeechRecognition: any = null;
   public micAnalyser: AnalyserNode | null = null;
+  private activeUtterance: SpeechSynthesisUtterance | null = null;
   // Multi-session speech accumulators: guarantees no duplicate text and zero lost words across pauses
   private completedSessionsText = '';
   private currentSessionFinalText = '';
@@ -497,13 +498,9 @@ export class AgoraVoiceEngine {
         if (this.isListening) {
           setTimeout(() => {
             if (this.isListening) {
-              try {
-                this.webSpeechRecognition?.start();
-              } catch (_) {
-                this._startWebSpeech();
-              }
+              this._startWebSpeech();
             }
-          }, 120);
+          }, 150);
         }
       };
 
@@ -728,6 +725,10 @@ export class AgoraVoiceEngine {
       }
 
       const utterance = new SpeechSynthesisUtterance(cleaned);
+      // Retain strong reference on instance and window to prevent Chromium V8 GC mid-speech
+      this.activeUtterance = utterance;
+      (window as any).__vocalis_active_utterance = utterance;
+
       const voices = window.speechSynthesis.getVoices();
 
       if (voices.length > 0) {
@@ -763,14 +764,29 @@ export class AgoraVoiceEngine {
         } else {
           clearInterval(heartbeat);
         }
-      }, 5000);
+      }, 3000);
 
+      // Robust safety timeout to guarantee Promise resolves even if Chromium drops onend
+      const wordCount = cleaned.split(/\s+/).length;
+      const maxDurationMs = Math.max(5000, Math.ceil((wordCount / 2.2) * 1000) + 4000);
+
+      let isFinished = false;
       const cleanup = () => {
+        if (isFinished) return;
+        isFinished = true;
+        clearTimeout(safetyTimer);
         clearInterval(heartbeat);
+        this.activeUtterance = null;
+        (window as any).__vocalis_active_utterance = null;
         this.isBrowserSpeaking = false;
         this._setSpeaking(false);
         resolve();
       };
+
+      const safetyTimer = setTimeout(() => {
+        console.log('[AgoraVoiceEngine] SpeechSynthesis safety timer released speaking lock.');
+        cleanup();
+      }, maxDurationMs);
 
       utterance.onend = cleanup;
       utterance.onerror = (e) => {
