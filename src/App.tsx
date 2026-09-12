@@ -177,6 +177,17 @@ export default function App() {
         setBackchannelDetectedPhrase(phrase);
         setTimeout(() => setBackchannelDetectedPhrase(null), 2500);
       },
+      onSpeechError: (errorMsg) => {
+        // Surface speech recognition errors visibly in the UI
+        // This helps debug Vercel/HTTPS-specific mic issues
+        setErrorToast(`🎤 ${errorMsg}`);
+        setTimeout(() => setErrorToast(null), 6000);
+        // If it's a permanent error (not-allowed / audio-capture), also update UI mic state
+        if (errorMsg.includes('blocked') || errorMsg.includes('hardware error')) {
+          setIsListening(false);
+          isListeningRef.current = false;
+        }
+      },
     });
   }, []);
 

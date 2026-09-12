@@ -30,6 +30,8 @@ export interface AgoraVoiceCallbacks {
   onBackchannelDetected?: (phrase: string) => void;
   onConnectionStateChange?: (state: string) => void;
   onVolume?: (vol: number) => void;
+  /** Called when speech recognition hits a non-recoverable error (e.g. not-allowed, network) */
+  onSpeechError?: (error: string) => void;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -437,8 +439,29 @@ export class AgoraVoiceEngine {
       };
 
       recognition.onerror = (e: any) => {
-        if (e.error !== 'no-speech' && e.error !== 'aborted') {
-          console.warn('[AgoraVoiceEngine] Speech recognition event:', e.error);
+        const err: string = e.error || 'unknown';
+        if (err === 'no-speech' || err === 'aborted') return; // ignorable
+
+        console.warn('[AgoraVoiceEngine] Speech recognition error:', err);
+
+        if (err === 'not-allowed' || err === 'service-not-allowed') {
+          // Permanent denial — stop trying and notify UI
+          this.isListening = false;
+          this.callbacks.onSpeechError?.(
+            `Microphone blocked (${err}). Please open Chrome site settings for this page and allow Microphone.`
+          );
+        } else if (err === 'network') {
+          // Transient network error — UI hint, but onend will retry automatically
+          this.callbacks.onSpeechError?.(
+            `Speech recognition network error. Retrying... (If this persists, check internet connection.)`
+          );
+        } else if (err === 'audio-capture') {
+          this.isListening = false;
+          this.callbacks.onSpeechError?.(
+            `Microphone hardware error (${err}). Please check your microphone is connected and not used by another app.`
+          );
+        } else {
+          this.callbacks.onSpeechError?.(`Speech recognition error: ${err}`);
         }
       };
 
