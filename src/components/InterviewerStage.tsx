@@ -289,10 +289,14 @@ export const InterviewerStage: React.FC<InterviewerStageProps> = ({
                       return (
                         <div
                           key={i}
-                          style={{ height: `${barHeight}%` }}
+                          style={{
+                            height: `${barHeight}%`,
+                            animation: isSpeakingNow ? 'pulse 0.32s ease-in-out infinite alternate' : undefined,
+                            animationDelay: `${i * 0.05}s`,
+                          }}
                           className={`w-0.5 rounded-full transition-all duration-100 ${
                             isSpeakingNow
-                              ? 'bg-cyan-400 shadow-[0_0_6px_rgba(6,182,212,0.9)] animate-pulse'
+                              ? 'bg-cyan-400 shadow-[0_0_6px_rgba(6,182,212,0.9)]'
                               : 'bg-slate-700/60'
                           }`}
                         />

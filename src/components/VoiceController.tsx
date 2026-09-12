@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Mic, MicOff, Send, Hand, Sparkles, Volume2, AudioLines, Pause, Play, Clock, X, BrainCircuit, ShieldCheck, MessageSquareQuote } from 'lucide-react';
+import { agoraVoiceEngine } from '../services/agoraVoiceEngine';
 
 interface VoiceControllerProps {
   isListening: boolean;
@@ -110,7 +111,126 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
     },
   ];
 
-  const isSpeaking = isListening && candidateVolume > 0.08;
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const isSpeaking = isListening && candidateVolume > 12;
+
+  // Live 60fps Canvas Audio Waveform (Real FFT Frequencies + Organic Harmonic Motion)
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let animId: number;
+    const numBars = 36;
+    const currentHeights = new Float32Array(numBars).fill(6);
+    let phase = 0;
+
+    const render = () => {
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      const displayWidth = rect.width || 320;
+      const displayHeight = rect.height || 56;
+
+      if (canvas.width !== Math.round(displayWidth * dpr) || canvas.height !== Math.round(displayHeight * dpr)) {
+        canvas.width = Math.round(displayWidth * dpr);
+        canvas.height = Math.round(displayHeight * dpr);
+      }
+
+      ctx.save();
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, displayWidth, displayHeight);
+
+      phase += 0.06;
+      const freqData = agoraVoiceEngine.getMicFrequencyData();
+      const rawVol = candidateVolume;
+      const isVoiceActive = isListening && (rawVol > 12 || (freqData ? freqData.some((v) => v > 20) : false));
+
+      const totalGap = 3;
+      const availableWidth = displayWidth - 16;
+      const barWidth = Math.max(2, (availableWidth - (numBars - 1) * totalGap) / numBars);
+      const startX = 8;
+      const centerY = displayHeight / 2;
+
+      for (let i = 0; i < numBars; i++) {
+        let targetHeight = 6;
+
+        if (isVoiceActive) {
+          if (freqData && freqData.length > 0) {
+            // Mirror frequency spectrum from center outwards (Voice Assistant aesthetic)
+            const distFromCenter = Math.abs(i - (numBars / 2 - 0.5)) / (numBars / 2);
+            const binIdx = Math.min(
+              freqData.length - 1,
+              Math.max(0, Math.floor((1 - distFromCenter * 0.8) * (freqData.length - 1)))
+            );
+            const freqVal = freqData[binIdx] / 255;
+            const dynamicBounce = Math.sin(phase * 4 + i * 0.45) * 0.12;
+            const volumeBoost = (rawVol / 100) * 0.4;
+            const combined = Math.min(1, freqVal * 0.85 + volumeBoost + dynamicBounce);
+            targetHeight = Math.max(8, combined * (displayHeight * 0.92));
+          } else {
+            // Dynamic synthetic harmonic waveform reacting to volume
+            const bell = Math.sin((i / (numBars - 1)) * Math.PI);
+            const ripple = Math.sin(phase * 4 + i * 0.4) * 0.3 + Math.cos(phase * 2.5 + i * 0.7) * 0.2;
+            const normVol = Math.min(1, rawVol / 60);
+            targetHeight = Math.max(8, Math.min(displayHeight * 0.9, normVol * (0.3 + 0.7 * bell + ripple) * displayHeight));
+          }
+        } else if (isListening) {
+          // Ambient breathing wave
+          const ambientWave = Math.sin(phase * 2 + i * 0.35) * 0.5 + 0.5;
+          targetHeight = 6 + ambientWave * 8;
+        } else {
+          // Mic muted: resting flatline
+          targetHeight = 4;
+        }
+
+        // Smooth physics (fast attack, natural decay)
+        if (targetHeight > currentHeights[i]) {
+          currentHeights[i] += (targetHeight - currentHeights[i]) * 0.45;
+        } else {
+          currentHeights[i] += (targetHeight - currentHeights[i]) * 0.18;
+        }
+
+        const h = Math.max(4, currentHeights[i]);
+        const x = startX + i * (barWidth + totalGap);
+        const y = centerY - h / 2;
+        const radius = Math.min(barWidth / 2, 3);
+
+        // Styling: glowing gradient when voice is active
+        if (isVoiceActive) {
+          const grad = ctx.createLinearGradient(0, y, 0, y + h);
+          grad.addColorStop(0, '#38bdf8');   // Cyan top
+          grad.addColorStop(0.5, '#34d399'); // Emerald middle
+          grad.addColorStop(1, '#059669');   // Teal base
+          ctx.fillStyle = grad;
+          ctx.shadowColor = 'rgba(52, 211, 153, 0.6)';
+          ctx.shadowBlur = 6;
+        } else if (isListening) {
+          ctx.fillStyle = 'rgba(16, 185, 129, 0.45)';
+          ctx.shadowBlur = 0;
+        } else {
+          ctx.fillStyle = 'rgba(71, 85, 105, 0.5)';
+          ctx.shadowBlur = 0;
+        }
+
+        ctx.beginPath();
+        if (typeof (ctx as any).roundRect === 'function') {
+          (ctx as any).roundRect(x, y, barWidth, h, radius);
+        } else {
+          ctx.rect(x, y, barWidth, h);
+        }
+        ctx.fill();
+      }
+
+      ctx.restore();
+      animId = requestAnimationFrame(render);
+    };
+
+    animId = requestAnimationFrame(render);
+    return () => {
+      cancelAnimationFrame(animId);
+    };
+  }, [isListening, candidateVolume]);
 
   return (
     <div id="voice-controller-panel" className="bg-[#0b101b] rounded-xl border border-slate-800/90 p-2 sm:p-2.5 shadow-xl flex flex-col justify-between h-full min-h-0 space-y-1.5">
@@ -138,31 +258,12 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
         </div>
       </div>
 
-      {/* Prominent Live Sound Wave Equalizer Visualization (Matching README Header!) */}
+      {/* Prominent Live Sound Wave Equalizer Visualization (Hardware Accelerated Canvas) */}
       <div className="relative flex-1 min-h-[60px] max-h-[105px] bg-gradient-to-b from-slate-950/80 via-[#070b14] to-emerald-950/20 rounded-xl border border-slate-800/80 flex flex-col items-center justify-center p-2 overflow-hidden select-none">
-        <div className="flex items-center justify-center gap-1 w-full h-12 sm:h-14 px-4">
-          {[20, 45, 75, 30, 90, 60, 100, 70, 40, 85, 95, 50, 80, 35, 65, 90, 55, 100, 75, 40, 85, 30, 70, 95, 60, 80, 45, 90, 35, 60, 85, 50].map((h, i) => {
-            const dynamicScale = isSpeaking
-              ? Math.max(15, Math.min(100, candidateVolume * (h * 1.6)))
-              : isListening
-              ? Math.max(10, (h * 0.25) + Math.sin(Date.now() / 300 + i) * 8)
-              : 8;
-
-            return (
-              <div
-                key={i}
-                style={{ height: `${dynamicScale}%` }}
-                className={`w-1 rounded-full transition-all duration-75 ${
-                  isSpeaking
-                    ? 'bg-gradient-to-t from-teal-500 via-emerald-400 to-cyan-300 shadow-[0_0_8px_rgba(52,211,153,0.8)]'
-                    : isListening
-                    ? 'bg-emerald-600/40'
-                    : 'bg-slate-800/80'
-                }`}
-              />
-            );
-          })}
-        </div>
+        <canvas
+          ref={canvasRef}
+          className="w-full h-12 sm:h-14 block pointer-events-none"
+        />
 
         {/* Live Speaking Status label */}
         <div className="flex items-center justify-between w-full px-2 pt-1">
@@ -175,7 +276,7 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
           </span>
 
           <span className="text-[9px] font-mono text-slate-400">
-            Level: {isListening ? `${Math.round(candidateVolume * 100)}%` : '0%'}
+            Level: {isListening ? `${Math.round(Math.min(100, candidateVolume))}%` : '0%'}
           </span>
         </div>
       </div>

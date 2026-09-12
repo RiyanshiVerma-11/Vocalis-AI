@@ -22,7 +22,7 @@ export const CandidateStageTile: React.FC<CandidateStageTileProps> = ({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
 
-  const isSpeaking = isListening && candidateVolume > 0.08;
+  const isSpeaking = isListening && candidateVolume > 12;
 
   // Auto-enable camera on mount when interview room opens
   useEffect(() => {
@@ -189,11 +189,16 @@ export const CandidateStageTile: React.FC<CandidateStageTileProps> = ({
         <div className="absolute bottom-1 left-2 right-2 flex items-center justify-between pointer-events-none">
           <div className="flex items-center gap-0.5 h-3">
             {[30, 70, 45, 90, 60, 100, 50, 80, 40, 65, 85, 35].map((h, i) => {
-              const barHeight = isSpeaking ? Math.max(20, Math.min(100, candidateVolume * (h * 1.5))) : (isListening ? 15 : 8);
+              const normVol = Math.min(1, candidateVolume / 65);
+              const dynamicH = isSpeaking ? Math.max(25, Math.min(100, normVol * h * (0.8 + 0.35 * Math.sin(i * 1.5)))) : (isListening ? 14 : 8);
               return (
                 <div
                   key={i}
-                  style={{ height: `${barHeight}%` }}
+                  style={{
+                    height: `${dynamicH}%`,
+                    animation: isSpeaking ? 'pulse 0.35s ease-in-out infinite alternate' : undefined,
+                    animationDelay: `${i * 0.04}s`,
+                  }}
                   className={`w-0.5 rounded-full transition-all duration-75 ${
                     isSpeaking ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]' : 'bg-slate-700/60'
                   }`}

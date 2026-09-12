@@ -51,6 +51,7 @@ export class AgoraVoiceEngine {
   private isJoined = false;
   private volAnimFrameId: number | null = null;
   private webSpeechRecognition: any = null;
+  public micAnalyser: AnalyserNode | null = null;
   // Multi-session speech accumulators: guarantees no duplicate text and zero lost words across pauses
   private completedSessionsText = '';
   private currentSessionFinalText = '';
@@ -77,6 +78,13 @@ export class AgoraVoiceEngine {
 
   public setCallbacks(cb: AgoraVoiceCallbacks) {
     this.callbacks = { ...this.callbacks, ...cb };
+  }
+
+  public getMicFrequencyData(): Uint8Array | null {
+    if (!this.micAnalyser) return null;
+    const data = new Uint8Array(this.micAnalyser.frequencyBinCount);
+    this.micAnalyser.getByteFrequencyData(data);
+    return data;
   }
 
   public clearSpeechBuffer() {
@@ -614,7 +622,9 @@ export class AgoraVoiceEngine {
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 64;
+      analyser.smoothingTimeConstant = 0.8;
       source.connect(analyser);
+      this.micAnalyser = analyser;
 
       const data = new Uint8Array(analyser.frequencyBinCount);
 
@@ -639,6 +649,7 @@ export class AgoraVoiceEngine {
         if (ctx.state !== 'closed') {
           ctx.close().catch(() => {});
         }
+        this.micAnalyser = null;
       };
 
       this.currentMicVisualizerCleanup = cleanupFn;
