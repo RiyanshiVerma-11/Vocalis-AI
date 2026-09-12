@@ -109,7 +109,12 @@ export class AgoraVoiceEngine {
 
   public setIsSpeaking(val: boolean) {
     this.isSpeaking = val;
-    if (!val) {
+    if (val) {
+      // Mark that LOCAL TTS (MiniMax via Render or browser fallback) is playing.
+      // This is separate from remote Agora track speaking (which sets isSpeaking via _setSpeaking).
+      // The onresult handler uses isBrowserSpeaking to decide whether to discard candidate speech.
+      this.isBrowserSpeaking = true;
+    } else {
       this.isBrowserSpeaking = false;
     }
   }
@@ -401,8 +406,11 @@ export class AgoraVoiceEngine {
       recognition.lang = 'en-US';
 
       recognition.onresult = (event: any) => {
-        // If AI is currently speaking and candidate speaks, trigger barge-in interrupt!
-        if (this.isSpeaking) {
+        // Only discard candidate speech if LOCAL TTS (browser/MiniMax) is actively playing.
+        // Do NOT discard based on this.isSpeaking — that flag is also set by the remote Agora
+        // agent's audio track (via the silence check interval), which would silently swallow
+        // all candidate speech on Vercel where Agora cloud agent is active.
+        if (this.isBrowserSpeaking) {
           if (this.onSpeechDetectedCallback) {
             this.onSpeechDetectedCallback();
           }
@@ -790,7 +798,11 @@ export class AgoraVoiceEngine {
   // ─── Private helpers ─────────────────────────────────────
   private _setSpeaking(val: boolean) {
     this.isSpeaking = val;
-    this.clearSpeechBuffer();
+    // NOTE: Do NOT call clearSpeechBuffer() here.
+    // _setSpeaking is called by the remote Agora agent's audio track events (silence check interval).
+    // If we aborted recognition every time the remote track changes state, it would create a
+    // constant abort→restart loop on Vercel (where Agora cloud agent is active), causing mic
+    // flickering and lost transcripts. Local TTS is handled separately via isBrowserSpeaking.
     this.callbacks.onSpeakingStateChange?.(val);
   }
 }
