@@ -55,9 +55,13 @@ export class AgoraVoiceEngine {
   private activeUtterance: SpeechSynthesisUtterance | null = null;
   // Index pointer into event.results to guarantee each candidate turn starts with 0 previous sentences
   private turnResultStartIndex = 0;
+  private lastResultsLength = 0;
   private currentSessionFinalText = '';
   private currentSessionInterimText = '';
   private speechSilenceTimer: any = null;
+  private restartDebounceTimer: any = null;
+  private outputAudioCtx: AudioContext | null = null;
+  private currentSourceNode: AudioBufferSourceNode | null = null;
 
   // Callbacks wired from App.tsx
   private callbacks: AgoraVoiceCallbacks = {};
@@ -73,6 +77,10 @@ export class AgoraVoiceEngine {
 
   constructor() {
     AgoraRTC.setLogLevel(2); // warn only — avoids noisy console in prod
+    if (typeof window !== 'undefined') {
+      (window as any).agoraVoiceEngine = this;
+      (window as any).audioEngine = this;
+    }
   }
 
   // ─── Public API ─────────────────────────────────────────
@@ -91,35 +99,74 @@ export class AgoraVoiceEngine {
   public clearSpeechBuffer() {
     this.currentSessionFinalText = '';
     this.currentSessionInterimText = '';
-    this.turnResultStartIndex = 0;
+    // Advance index slice to current results length to seamlessly start fresh turn
+    this.turnResultStartIndex = this.lastResultsLength;
     this.isSpeaking = false;
-
-    // Reset the active Web Speech API recognizer so event.results is cleanly wiped for the next turn
-    if (this.webSpeechRecognition) {
-      try {
-        this.webSpeechRecognition.onresult = null;
-        this.webSpeechRecognition.onerror = null;
-        this.webSpeechRecognition.onend = null;
-        this.webSpeechRecognition.abort();
-      } catch (_) {}
-      this.webSpeechRecognition = null;
-    }
+    // CRITICAL: We intentionally do NOT call webSpeechRecognition.abort() here!
+    // Keeping the continuous recognizer active prevents Chromium audio pipeline contention
+    // and eliminates the fatal abort-restart loop.
   }
 
-  public getIsSpeaking() {
-    return this.isSpeaking;
+  public getIsSpeaking(): boolean {
+    return this.isSpeaking || this.isBrowserSpeaking;
   }
 
   public setIsSpeaking(val: boolean) {
     this.isSpeaking = val;
-    if (val) {
-      // Mark that LOCAL TTS (MiniMax via Render or browser fallback) is playing.
-      // This is separate from remote Agora track speaking (which sets isSpeaking via _setSpeaking).
-      // The onresult handler uses isBrowserSpeaking to decide whether to discard candidate speech.
-      this.isBrowserSpeaking = true;
-    } else {
-      this.isBrowserSpeaking = false;
+    this.isBrowserSpeaking = val;
+    this.callbacks.onSpeakingStateChange?.(val);
+  }
+
+  // Play PCM audio from Studio/Gemini TTS using a unified, clean AudioContext
+  public async playGeminiTTS(base64Data: string, sampleRate = 24000): Promise<void> {
+    this.interrupt();
+    this.isBrowserSpeaking = true;
+    this._setSpeaking(true);
+
+    const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!this.outputAudioCtx || this.outputAudioCtx.state === 'closed') {
+      this.outputAudioCtx = new AudioCtxClass({ sampleRate });
     }
+    if (this.outputAudioCtx.state === 'suspended') {
+      await this.outputAudioCtx.resume().catch(() => {});
+    }
+
+    return new Promise((resolve, reject) => {
+      try {
+        const binary = atob(base64Data);
+        const len = binary.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        const int16Array = new Int16Array(bytes.buffer);
+        const float32Array = new Float32Array(int16Array.length);
+        for (let i = 0; i < int16Array.length; i++) {
+          float32Array[i] = int16Array[i] / 32768.0;
+        }
+
+        const audioBuffer = this.outputAudioCtx!.createBuffer(1, float32Array.length, sampleRate);
+        audioBuffer.getChannelData(0).set(float32Array);
+
+        const source = this.outputAudioCtx!.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(this.outputAudioCtx!.destination);
+        this.currentSourceNode = source;
+
+        source.onended = () => {
+          this.isBrowserSpeaking = false;
+          this._setSpeaking(false);
+          this.currentSourceNode = null;
+          resolve();
+        };
+
+        source.start(0);
+      } catch (err) {
+        this.isBrowserSpeaking = false;
+        this._setSpeaking(false);
+        reject(err);
+      }
+    });
   }
 
   // ─── Join Agora RTC Channel ──────────────────────────────
@@ -150,6 +197,38 @@ export class AgoraVoiceEngine {
     try {
       // Use 'vp8' codec for the Agora RTC Web client (WebRTC audio track is always Opus)
       this.client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+
+      // Enable Agora RTC hardware-level volume indication
+      try {
+        this.client.enableAudioVolumeIndicator();
+        this.client.on('volume-indicator', (volumes) => {
+          for (const vol of volumes) {
+            // Check if remote agent is actively sending audio
+            if (vol.uid !== this.currentUid) {
+              if (vol.level > 5) {
+                if (this.remoteAudioSilenceTimeout) {
+                  clearTimeout(this.remoteAudioSilenceTimeout);
+                  this.remoteAudioSilenceTimeout = null;
+                }
+                if (!this.isSpeaking && !this.isBrowserSpeaking) {
+                  this._setSpeaking(true);
+                }
+              } else if (this.isSpeaking && !this.isBrowserSpeaking) {
+                if (!this.remoteAudioSilenceTimeout) {
+                  this.remoteAudioSilenceTimeout = setTimeout(() => {
+                    if (!this.isBrowserSpeaking) {
+                      this._setSpeaking(false);
+                    }
+                    this.remoteAudioSilenceTimeout = null;
+                  }, 350);
+                }
+              }
+            }
+          }
+        });
+      } catch (volErr) {
+        console.warn('[AgoraVoiceEngine] Audio volume indicator setup notice:', volErr);
+      }
 
       // When the remote AI agent publishes audio or video, subscribe and play
       this.client.on('user-published', async (user: IAgoraRTCRemoteUser, mediaType) => {
@@ -410,10 +489,8 @@ export class AgoraVoiceEngine {
       };
 
       recognition.onresult = (event: any) => {
-        if (this.isBrowserSpeaking || this.isSpeaking) {
-          console.log('[AgoraVoiceEngine] 🔇 Gated candidate speech because AI is actively speaking.');
-          return;
-        }
+        // Track total results count to maintain clean turn isolation without aborting
+        this.lastResultsLength = event.results.length;
 
         let sessionFinal = '';
         let sessionInterim = '';
@@ -434,7 +511,9 @@ export class AgoraVoiceEngine {
         const fullSpeech = [sessionFinal, sessionInterim].filter(Boolean).join(' ').trim();
 
         if (fullSpeech) {
-          console.log('[AgoraVoiceEngine] 📝 Candidate transcript recognized:', fullSpeech);
+          if (this.onSpeechDetectedCallback) {
+            this.onSpeechDetectedCallback();
+          }
           if (this.callbacks.onTranscript) {
             const boostedSpeech = boostTechnicalJargon(fullSpeech);
             this.callbacks.onTranscript(boostedSpeech, Boolean(sessionFinal));
@@ -444,25 +523,25 @@ export class AgoraVoiceEngine {
 
       recognition.onerror = (e: any) => {
         const err: string = e.error || 'unknown';
-        console.warn('[AgoraVoiceEngine] ⚠️ Speech recognition error event:', err);
 
-        if (err === 'no-speech' || err === 'aborted') return; // ignorable
+        // 'no-speech' is normal silence timeout; 'aborted' occurs on intentional stop.
+        // Neither requires error toast or restart storm.
+        if (err === 'no-speech' || err === 'aborted') return;
+
+        console.warn('[AgoraVoiceEngine] ⚠️ Speech recognition notice:', err);
 
         if (err === 'not-allowed' || err === 'service-not-allowed') {
           // Permanent denial — stop trying and notify UI
           this.isListening = false;
           this.callbacks.onSpeechError?.(
-            `Microphone blocked (${err}). Please open Chrome site settings for this page and allow Microphone.`
+            `Microphone blocked (${err}). Please click the lock icon next to the URL and allow Microphone access.`
           );
         } else if (err === 'network') {
-          // Transient network error — UI hint, but onend will retry automatically
-          this.callbacks.onSpeechError?.(
-            `Speech recognition network error. Retrying... (If this persists, check internet connection.)`
-          );
+          // Transient network glitch on Google Speech cloud backend — onend will cleanly reconnect
         } else if (err === 'audio-capture') {
           this.isListening = false;
           this.callbacks.onSpeechError?.(
-            `Microphone hardware error (${err}). Please check your microphone is connected and not used by another app.`
+            `Microphone hardware error (${err}). Please check your microphone is connected and not locked by another app.`
           );
         } else {
           this.callbacks.onSpeechError?.(`Speech recognition error: ${err}`);
@@ -474,15 +553,19 @@ export class AgoraVoiceEngine {
           this.webSpeechRecognition = null;
         }
 
-        this.currentSessionFinalText = '';
         this.currentSessionInterimText = '';
 
+        // Auto-reconnect with healthy 600ms debounce to prevent Chromium audio pipeline crash
         if (this.isListening) {
-          setTimeout(() => {
+          if (this.restartDebounceTimer) {
+            clearTimeout(this.restartDebounceTimer);
+          }
+          this.restartDebounceTimer = setTimeout(() => {
             if (this.isListening && !this.webSpeechRecognition) {
+              console.log('[AgoraVoiceEngine] 🔄 Auto-reconnecting speech recognition...');
               this._startWebSpeech();
             }
-          }, 150);
+          }, 600);
         }
       };
 
@@ -498,10 +581,14 @@ export class AgoraVoiceEngine {
   // ─── Stop microphone ─────────────────────────────────────
   public stopSpeechRecognition(): void {
     this.isListening = false;
-    this.isSpeaking = false;
-    this.turnResultStartIndex = 0;
+    this.turnResultStartIndex = this.lastResultsLength;
     this.currentSessionFinalText = '';
     this.currentSessionInterimText = '';
+
+    if (this.restartDebounceTimer) {
+      clearTimeout(this.restartDebounceTimer);
+      this.restartDebounceTimer = null;
+    }
 
     // Stop Web Speech API cleanly and discard any buffered utterance
     if (this.webSpeechRecognition) {
@@ -509,7 +596,7 @@ export class AgoraVoiceEngine {
         this.webSpeechRecognition.onresult = null;
         this.webSpeechRecognition.onerror = null;
         this.webSpeechRecognition.onend = null;
-        this.webSpeechRecognition.abort();
+        this.webSpeechRecognition.stop();
       } catch (_) {}
       this.webSpeechRecognition = null;
     }
@@ -532,6 +619,14 @@ export class AgoraVoiceEngine {
     if (this.remoteAudioSilenceTimeout) {
       clearTimeout(this.remoteAudioSilenceTimeout);
       this.remoteAudioSilenceTimeout = null;
+    }
+
+    if (this.currentSourceNode) {
+      try {
+        this.currentSourceNode.stop();
+        this.currentSourceNode.disconnect();
+      } catch (_) {}
+      this.currentSourceNode = null;
     }
 
     // Also cancel browser SpeechSynthesis if used as fallback

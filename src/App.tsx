@@ -437,7 +437,6 @@ export default function App() {
     // 2. Halt all audio sources synchronously
     agoraVoiceEngine.interrupt();
     agoraVoiceEngine.setIsSpeaking(false);
-    import('./services/audioEngine').then(({ audioEngine }) => audioEngine.interrupt()).catch(() => {});
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
@@ -508,12 +507,11 @@ export default function App() {
       // Record last AI question to filter out any acoustic speaker echo
       lastAIQuestionRef.current = cleanDialogue;
 
-      // Stop candidate speech recognition and reset speech buffer while interviewer speaks
+      // Reset candidate speech buffer for clean isolation while interviewer speaks
       if (speechSilenceTimerRef.current) {
         clearTimeout(speechSilenceTimerRef.current);
         speechSilenceTimerRef.current = null;
       }
-      agoraVoiceEngine.stopSpeechRecognition();
       agoraVoiceEngine.clearSpeechBuffer();
       setCurrentInterimTranscript('');
       candidateVolumeRef.current = 0;
@@ -529,10 +527,9 @@ export default function App() {
         if (currentTurnIdRef.current !== turnId) return; // Interrupted during fetch!
 
         if (fastResult && (fastResult as any).audioBase64) {
-          const { audioEngine } = await import('./services/audioEngine');
           if (currentTurnIdRef.current !== turnId) return;
           agoraVoiceEngine.muteRemoteAudioTrack(true); // Prevent double voice / echo!
-          await audioEngine.playGeminiTTS((fastResult as any).audioBase64, (fastResult as any).sampleRate);
+          await agoraVoiceEngine.playGeminiTTS((fastResult as any).audioBase64, (fastResult as any).sampleRate);
         } else {
           // Instant browser SpeechSynthesis fallback (<100ms)
           if (currentTurnIdRef.current !== turnId) return;
@@ -570,24 +567,19 @@ export default function App() {
           agoraVoiceEngine.clearSpeechBuffer();
           setCurrentInterimTranscript('');
 
-          // Allow 350ms for room reverberation/speaker sound to decay, then activate mic cleanly
-          setTimeout(() => {
-            if (isListeningRef.current && currentTurnIdRef.current === turnId && inInterviewRef.current) {
-              agoraVoiceEngine.clearSpeechBuffer();
-              setCurrentInterimTranscript('');
-              agoraVoiceEngine.startSpeechRecognition(
-                (fullText) => {
-                  const cleanIncoming = fullText.trim();
-                  console.log('[App] Candidate transcript incoming:', cleanIncoming, '| isAISpeaking:', isAISpeakingRef.current, '| isProcessing:', isProcessingRef.current);
-                  if (!isProcessingRef.current && !isAISpeakingRef.current) {
-                    if (!cleanIncoming || isEchoOfLastQuestion(cleanIncoming)) return;
-                    setCurrentInterimTranscript(cleanIncoming);
-                    scheduleSilenceAutoSubmit(cleanIncoming);
-                  }
+          if (isListeningRef.current && currentTurnIdRef.current === turnId && inInterviewRef.current) {
+            agoraVoiceEngine.startSpeechRecognition(
+              (fullText) => {
+                const cleanIncoming = fullText.trim();
+                console.log('[App] Candidate transcript incoming:', cleanIncoming, '| isAISpeaking:', isAISpeakingRef.current, '| isProcessing:', isProcessingRef.current);
+                if (!isProcessingRef.current && !isAISpeakingRef.current) {
+                  if (!cleanIncoming || isEchoOfLastQuestion(cleanIncoming)) return;
+                  setCurrentInterimTranscript(cleanIncoming);
+                  scheduleSilenceAutoSubmit(cleanIncoming);
                 }
-              );
-            }
-          }, 350);
+              }
+            );
+          }
         }
       }
     },
@@ -781,14 +773,12 @@ export default function App() {
     if (speechSilenceTimerRef.current) {
       clearTimeout(speechSilenceTimerRef.current);
     }
-    agoraVoiceEngine.stopSpeechRecognition();
     agoraVoiceEngine.clearSpeechBuffer();
     candidateVolumeRef.current = 0;
     setCandidateVolume(0);
 
     // Halt any active AI speech immediately when candidate responds
     agoraVoiceEngine.interrupt();
-    import('./services/audioEngine').then(({ audioEngine }) => audioEngine.interrupt()).catch(() => {});
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
@@ -1222,7 +1212,6 @@ export default function App() {
     agoraVoiceEngine.interrupt();
     agoraVoiceEngine.stopSpeechRecognition();
     agoraVoiceEngine.cleanup();
-    import('./services/audioEngine').then(({ audioEngine }) => audioEngine.interrupt()).catch(() => {});
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }

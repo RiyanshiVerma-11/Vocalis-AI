@@ -224,7 +224,7 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({
 
                 {/* Adaptive Strategy & Resume Reference Header for Interviewers */}
                 {!isCandidate && (msg.adaptiveStrategy || msg.referencedResumePoint) && (
-                  <div className="flex flex-wrap items-center gap-1.5 mb-1.5 pb-1 border-b border-slate-200/80">
+                  <div className="flex flex-wrap items-center gap-1.5 mb-1.5 pb-1 border-b border-slate-700/60 select-none">
                     {getStrategyBadge(msg.adaptiveStrategy)}
                     {msg.referencedResumePoint && (
                       <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">

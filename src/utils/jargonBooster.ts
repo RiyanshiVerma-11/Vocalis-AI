@@ -199,10 +199,20 @@ export function analyzeSemanticPause(
     };
   }
 
-  // 3. Short utterance ending without punctuation (e.g., "The reason we chose Redis")
   const wordCount = trimmed.split(/\s+/).length;
   const endsWithTerminalPunctuation = /[.!?]$/.test(transcript.trim());
 
+  // 0. Initial greeting or very short opening thought (e.g. "Hello", "Hi Rohan", "Sure")
+  // Candidates naturally greet the committee before launching into their comprehensive answer.
+  if (wordCount < 3) {
+    return {
+      isIncompleteThought: true,
+      reason: 'Opening greeting / initial thought — holding floor for complete response',
+      recommendedGraceMs: 3500,
+    };
+  }
+
+  // 3. Short utterance ending without punctuation (e.g., "The reason we chose Redis")
   if (!endsWithTerminalPunctuation && wordCount >= 3 && wordCount <= 8) {
     return {
       isIncompleteThought: true,
