@@ -2636,6 +2636,11 @@ VOICE INTERVIEW STYLE:
 
 
 
+// Fast TTS fallback handler (returns clean 200 so browser SpeechSynthesis handles client-side speech directly)
+app.post('/api/tts', authenticateToken, async (_req, res) => {
+  res.json({ success: false, fallback: true, message: 'Browser SpeechSynthesis handles client-side voice.' });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // LIVEAVATAR REAL-TIME VIDEO STREAMING LAYER (DISABLED)
 app.post('/api/liveavatar/start-session', authenticateToken, async (_req, res) => {

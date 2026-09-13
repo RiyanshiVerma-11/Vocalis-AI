@@ -566,8 +566,9 @@ export default function App() {
               setCurrentInterimTranscript('');
               agoraVoiceEngine.startSpeechRecognition(
                 (fullText) => {
+                  const cleanIncoming = fullText.trim();
+                  console.log('[App] Candidate transcript incoming:', cleanIncoming, '| isAISpeaking:', isAISpeakingRef.current, '| isProcessing:', isProcessingRef.current);
                   if (!isProcessingRef.current && !isAISpeakingRef.current) {
-                    const cleanIncoming = fullText.trim();
                     if (!cleanIncoming || isEchoOfLastQuestion(cleanIncoming)) return;
                     setCurrentInterimTranscript(cleanIncoming);
                     scheduleSilenceAutoSubmit(cleanIncoming);
@@ -712,8 +713,9 @@ export default function App() {
     // Arm speech recognition immediately so Chrome requests mic permissions and listens from turn 1
     agoraVoiceEngine.startSpeechRecognition(
       (fullText) => {
+        const cleanIncoming = fullText.trim();
+        console.log('[App] Candidate transcript incoming:', cleanIncoming, '| isAISpeaking:', isAISpeakingRef.current, '| isProcessing:', isProcessingRef.current);
         if (!isProcessingRef.current && !isAISpeakingRef.current) {
-          const cleanIncoming = fullText.trim();
           if (!cleanIncoming || isEchoOfLastQuestion(cleanIncoming)) return;
           setCurrentInterimTranscript(cleanIncoming);
           scheduleSilenceAutoSubmit(cleanIncoming);

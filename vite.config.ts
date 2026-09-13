@@ -24,9 +24,6 @@ export default defineConfig(() => {
           manualChunks: {
             // Split large vendor libs into separate cacheable chunks
             'vendor-agora': ['agora-rtc-sdk-ng', 'agora-token'],
-            'vendor-livekit': ['livekit-client'],
-            'vendor-google': ['@google/genai'],
-            'vendor-motion': ['motion'],
           },
         },
       },

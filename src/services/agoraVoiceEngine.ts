@@ -386,9 +386,21 @@ export class AgoraVoiceEngine {
       recognition.interimResults = true;
       recognition.lang = 'en-US';
 
+      recognition.onstart = () => {
+        console.log('[AgoraVoiceEngine] 🎙️ Web Speech API started listening!');
+      };
+
+      recognition.onaudiostart = () => {
+        console.log('[AgoraVoiceEngine] 🔊 Microphone audio stream captured by Web Speech API!');
+      };
+
+      recognition.onspeechstart = () => {
+        console.log('[AgoraVoiceEngine] 🗣️ Candidate speech detected by browser!');
+      };
+
       recognition.onresult = (event: any) => {
-        // Discard candidate speech ONLY if local browser TTS is actively playing audio through speakers
         if (this.isBrowserSpeaking) {
+          console.log('[AgoraVoiceEngine] 🔇 Gated candidate speech because browser TTS is actively speaking.');
           return;
         }
 
@@ -415,17 +427,20 @@ export class AgoraVoiceEngine {
 
         const fullSpeech = parts.join(' ').trim();
 
-        if (fullSpeech && this.callbacks.onTranscript) {
-          const boostedSpeech = boostTechnicalJargon(fullSpeech);
-          this.callbacks.onTranscript(boostedSpeech, Boolean(sessionFinal));
+        if (fullSpeech) {
+          console.log('[AgoraVoiceEngine] 📝 Candidate transcript recognized:', fullSpeech);
+          if (this.callbacks.onTranscript) {
+            const boostedSpeech = boostTechnicalJargon(fullSpeech);
+            this.callbacks.onTranscript(boostedSpeech, Boolean(sessionFinal));
+          }
         }
       };
 
       recognition.onerror = (e: any) => {
         const err: string = e.error || 'unknown';
-        if (err === 'no-speech' || err === 'aborted') return; // ignorable
+        console.warn('[AgoraVoiceEngine] ⚠️ Speech recognition error event:', err);
 
-        console.warn('[AgoraVoiceEngine] Speech recognition error:', err);
+        if (err === 'no-speech' || err === 'aborted') return; // ignorable
 
         if (err === 'not-allowed' || err === 'service-not-allowed') {
           // Permanent denial — stop trying and notify UI
