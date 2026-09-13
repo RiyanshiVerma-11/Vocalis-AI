@@ -447,13 +447,14 @@ A full enterprise-grade hiring intelligence hub for talent acquisition leaders. 
 
 ---
 
-## 🎭 Interactive Photorealistic Avatar Engine
+## 🎭 High-Fidelity Multi-Persona Visual Studio
 
-In addition to pure real-time voice, Vocalis AI features optional photorealistic visual interviewer presence powered by **HeyGen Interactive Streaming Avatar**:
+Vocalis AI features a rich, responsive visual interviewer presence powered by the **TalkingFaceAvatar** and **InterviewerStage** component architecture:
 
-- **Real-Time WebRTC Video Feed:** Video streams live into the browser using the `livekit-client` WebRTC SDK (`src/services/liveAvatarService.ts`), syncing lip movements directly with audio output.
-- **Natural Micro-Expressions:** Visual facial expressions and natural head nods provide realistic visual cues during complex technical interviews.
-- **Graceful Fallback:** If HeyGen API credentials are not provided, the interface seamlessly falls back to the native responsive SVG `TalkingFaceAvatar` with audio frequency spectrum reaction.
+- **Photorealistic Persona Cards:** High-fidelity visual cards for all 5 interview committee members featuring custom cinematic vignettes, dynamic role color palettes (technical blue, product purple, executive amber, client emerald, behavioural rose), and role badges.
+- **Dynamic Speaking Aura & Audio Spectrum:** Active speaker glow pulse animations (`ma-photo-pulse`, `ma-speak-glow`) and animated audio equalizer spectrum bars directly synchronized with cloud voice playback.
+- **Backstage Ambient Reactions:** Inactive panelists visually display real-time micro-state reaction badges (Taking Notes 📝, Skeptical 🤔, Nodding 👍, Concerned ⚠️, Intrigued ✨) driven by backstage Gemini deliberation.
+- **Interactive Persona Inspection:** Dedicated modal drawer for reviewing each panelist's evaluation rubric, focus areas, voice characteristics, and system prompt.
 
 ---
 
