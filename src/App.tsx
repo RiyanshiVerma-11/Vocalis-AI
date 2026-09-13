@@ -280,6 +280,7 @@ export default function App() {
   // residual final-chunk results after the AI echo shield drops.
   const aiFinishedSpeakingAtRef = useRef<number>(0);
   const lastAIQuestionRef = useRef<string>('');
+  const reverbDecayTimerRef = useRef<any>(null);
 
   // Acoustic Echo Decontamination Guard
   // Compares speech recognition text against recent AI question words to discard speaker echo
@@ -451,7 +452,13 @@ export default function App() {
     setIsAISpeaking(false);
     isAISpeakingRef.current = false;
     setIsProcessing(false);
+    isProcessingRef.current = false;
     setThoughtGraceActive(false);
+
+    if (reverbDecayTimerRef.current) {
+      clearTimeout(reverbDecayTimerRef.current);
+      reverbDecayTimerRef.current = null;
+    }
 
     // 3. Clear candidate speech buffer cleanly so new speech starts fresh
     latestCandidateSpeechRef.current = '';
@@ -486,11 +493,18 @@ export default function App() {
   // Speak interviewer message via Agora Conversational AI Agent (or fallback to Gemini/Browser TTS)
   const speakInterviewerMessage = useCallback(
     async (text: string, interviewer: Interviewer) => {
-      const turnId = ++currentTurnIdRef.current;
+      const turnId = currentTurnIdRef.current;
       isAISpeakingRef.current = true;
       setIsAISpeaking(true);
       agoraVoiceEngine.setIsSpeaking(true);
       setActiveSpeakerId(interviewer.id);
+
+      // Stop speech recognition immediately while AI speaks to ensure zero speaker echo into candidate transcript
+      agoraVoiceEngine.stopSpeechRecognition();
+      if (reverbDecayTimerRef.current) {
+        clearTimeout(reverbDecayTimerRef.current);
+        reverbDecayTimerRef.current = null;
+      }
 
       // Clean dialogue text of emoji badges, strategy labels, and metadata before synthesis
       const cleanDialogue = text
@@ -517,6 +531,7 @@ export default function App() {
         clearTimeout(speechSilenceTimerRef.current);
         speechSilenceTimerRef.current = null;
       }
+      latestCandidateSpeechRef.current = '';
       agoraVoiceEngine.clearSpeechBuffer();
       setCurrentInterimTranscript('');
       candidateVolumeRef.current = 0;
@@ -569,23 +584,31 @@ export default function App() {
             clearTimeout(speechSilenceTimerRef.current);
             speechSilenceTimerRef.current = null;
           }
+          latestCandidateSpeechRef.current = '';
           agoraVoiceEngine.clearSpeechBuffer();
           setCurrentInterimTranscript('');
 
-          if (isListeningRef.current && currentTurnIdRef.current === turnId && inInterviewRef.current) {
-            agoraVoiceEngine.startSpeechRecognition(
-              (fullText) => {
-                const cleanIncoming = fullText.trim();
-                console.log('[App] Candidate transcript incoming:', cleanIncoming, '| isAISpeaking:', isAISpeakingRef.current, '| isProcessing:', isProcessingRef.current);
-                if (!isProcessingRef.current && !isAISpeakingRef.current) {
-                  if (!cleanIncoming || isEchoOfLastQuestion(cleanIncoming)) return;
-                  latestCandidateSpeechRef.current = cleanIncoming;
-                  setCurrentInterimTranscript(cleanIncoming);
-                  scheduleSilenceAutoSubmit(cleanIncoming);
-                }
-              }
-            );
+          if (reverbDecayTimerRef.current) {
+            clearTimeout(reverbDecayTimerRef.current);
           }
+          // 300ms acoustic reverb decay delay so physical room speaker vibrations drop to zero before opening candidate mic
+          reverbDecayTimerRef.current = setTimeout(() => {
+            if (isListeningRef.current && currentTurnIdRef.current === turnId && inInterviewRef.current) {
+              console.log('[App] 🎙️ Reverb decayed. Arming microphone for candidate turn...');
+              agoraVoiceEngine.startSpeechRecognition(
+                (fullText) => {
+                  const cleanIncoming = fullText.trim();
+                  console.log('[App] Candidate transcript incoming:', cleanIncoming, '| isAISpeaking:', isAISpeakingRef.current, '| isProcessing:', isProcessingRef.current);
+                  if (!isProcessingRef.current && !isAISpeakingRef.current) {
+                    if (!cleanIncoming || isEchoOfLastQuestion(cleanIncoming)) return;
+                    latestCandidateSpeechRef.current = cleanIncoming;
+                    setCurrentInterimTranscript(cleanIncoming);
+                    scheduleSilenceAutoSubmit(cleanIncoming);
+                  }
+                }
+              );
+            }
+          }, 300);
         }
       }
     },
@@ -719,20 +742,6 @@ export default function App() {
       setCandidateVolume(vol);
     });
 
-    // Arm speech recognition immediately so Chrome requests mic permissions and listens from turn 1
-    agoraVoiceEngine.startSpeechRecognition(
-      (fullText) => {
-        const cleanIncoming = fullText.trim();
-        console.log('[App] Candidate transcript incoming:', cleanIncoming, '| isAISpeaking:', isAISpeakingRef.current, '| isProcessing:', isProcessingRef.current);
-        if (!isProcessingRef.current && !isAISpeakingRef.current) {
-          if (!cleanIncoming || isEchoOfLastQuestion(cleanIncoming)) return;
-          latestCandidateSpeechRef.current = cleanIncoming;
-          setCurrentInterimTranscript(cleanIncoming);
-          scheduleSilenceAutoSubmit(cleanIncoming);
-        }
-      }
-    );
-
     // ── Join Agora RTC channel + start Conversational AI agent in background ──
     (async () => {
       try {
@@ -777,8 +786,16 @@ export default function App() {
 
     const thisTurnId = ++currentTurnIdRef.current;
 
+    // Immediately stop speech recognition while turn is processed
+    agoraVoiceEngine.stopSpeechRecognition();
+    if (reverbDecayTimerRef.current) {
+      clearTimeout(reverbDecayTimerRef.current);
+      reverbDecayTimerRef.current = null;
+    }
+
     if (speechSilenceTimerRef.current) {
       clearTimeout(speechSilenceTimerRef.current);
+      speechSilenceTimerRef.current = null;
     }
     latestCandidateSpeechRef.current = '';
     agoraVoiceEngine.clearSpeechBuffer();
@@ -795,6 +812,7 @@ export default function App() {
     isAISpeakingRef.current = false;
     agoraVoiceEngine.setIsSpeaking(false);
     setIsProcessing(true);
+    isProcessingRef.current = true;
     setThoughtGraceActive(false);
     setThoughtGraceReason('');
     setCurrentInterimTranscript('');
@@ -1000,6 +1018,10 @@ export default function App() {
         setLastTurnTakingReason(`⚡ Committee Debate: ${speaker1.name} & ${speaker2.name} are deliberating trade-offs.`);
         setLastInternalThought(step1.internalThought || turnResult.internalThought);
 
+        // Turn deliberation completed — clear processing flag before speech starts
+        setIsProcessing(false);
+        isProcessingRef.current = false;
+
         if (currentTurnIdRef.current === thisTurnId) {
           await speakInterviewerMessage(speech1, speaker1);
         }
@@ -1057,6 +1079,10 @@ export default function App() {
         setTranscript((prev) => [...prev, interviewerMsg]);
         setSelectedTargetInterviewerId(null);
 
+        // Turn deliberation completed — clear processing flag before speech starts
+        setIsProcessing(false);
+        isProcessingRef.current = false;
+
         // Speak response if not interrupted
         if (currentTurnIdRef.current === thisTurnId) {
           await speakInterviewerMessage(mainSpeech, nextInterviewer);
@@ -1068,6 +1094,7 @@ export default function App() {
       setTimeout(() => setErrorToast(null), 4000);
     } finally {
       setIsProcessing(false);
+      isProcessingRef.current = false;
     }
   };
 

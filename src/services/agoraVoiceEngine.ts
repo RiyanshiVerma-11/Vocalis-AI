@@ -100,7 +100,6 @@ export class AgoraVoiceEngine {
     this.turnAccumulatedFinalText = '';
     this.currentSessionFinalText = '';
     this.currentSessionInterimText = '';
-    this.isSpeaking = false;
   }
 
   public getIsSpeaking(): boolean {
@@ -424,6 +423,17 @@ export class AgoraVoiceEngine {
     this.onSpeechDetectedCallback = onSpeechDetected || null;
     this.isListening = true;
     this.isSpeaking = false;
+    this.isBrowserSpeaking = false;
+
+    // Reset turn text buffers completely so this turn starts with 0 residual text
+    this.turnAccumulatedFinalText = '';
+    this.currentSessionFinalText = '';
+    this.currentSessionInterimText = '';
+
+    if (this.restartDebounceTimer) {
+      clearTimeout(this.restartDebounceTimer);
+      this.restartDebounceTimer = null;
+    }
 
     // 1. Background Agora mic publishing (non-blocking, only once if not already published)
     if (this.isJoined && this.client && !this.localMicTrack) {
@@ -448,22 +458,32 @@ export class AgoraVoiceEngine {
       })();
     }
 
-    // 2. Start Web Speech API recognizer immediately
-    return this._startWebSpeech();
+    // 2. Start Web Speech API recognizer with a FRESH instance (forceFresh = true)
+    return this._startWebSpeech(true);
   }
 
   // Resilient Web Speech API starter and restart manager
-  private _startWebSpeech(): boolean {
+  private _startWebSpeech(forceFresh: boolean = false): boolean {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) {
       console.warn('[AgoraVoiceEngine] Web Speech API not available — transcript display disabled.');
       return false;
     }
 
-    // If an instance is ALREADY running and healthy, KEEP IT!
-    // Do NOT abort it, because aborting in Chromium triggers an abort-restart storm.
+    // If an instance exists:
+    // If not forcing fresh and still valid, keep it.
+    // If starting a fresh turn, cleanly detach callbacks and abort old instance so Chrome's internal event.results buffer resets to 0!
     if (this.webSpeechRecognition) {
-      return true;
+      if (!forceFresh) {
+        return true;
+      }
+      try {
+        this.webSpeechRecognition.onresult = null;
+        this.webSpeechRecognition.onerror = null;
+        this.webSpeechRecognition.onend = null;
+        this.webSpeechRecognition.abort();
+      } catch (_) {}
+      this.webSpeechRecognition = null;
     }
 
     try {
@@ -473,7 +493,7 @@ export class AgoraVoiceEngine {
       recognition.lang = 'en-US';
 
       recognition.onstart = () => {
-        console.log('[AgoraVoiceEngine] 🎙️ Web Speech API started listening!');
+        console.log('[AgoraVoiceEngine] 🎙️ Web Speech API started listening for turn!');
       };
 
       recognition.onaudiostart = () => {
@@ -485,6 +505,11 @@ export class AgoraVoiceEngine {
       };
 
       recognition.onresult = (event: any) => {
+        // Acoustic Echo Shield: Drop mic recognition immediately if AI is speaking
+        if (this.isSpeaking || this.isBrowserSpeaking) {
+          return;
+        }
+
         let sessionFinal = '';
         let sessionInterim = '';
 
@@ -550,25 +575,25 @@ export class AgoraVoiceEngine {
         }
 
         // When recognition session ends on a pause or phrase boundary,
-        // commit finalized text into turnAccumulatedFinalText so it persists across reconnects!
-        if (this.currentSessionFinalText) {
+        // commit finalized text into turnAccumulatedFinalText ONLY if AI is not speaking!
+        if (!this.isSpeaking && !this.isBrowserSpeaking && this.currentSessionFinalText) {
           this.turnAccumulatedFinalText = [this.turnAccumulatedFinalText, this.currentSessionFinalText]
             .filter(Boolean)
             .join(' ')
             .trim();
-          this.currentSessionFinalText = '';
         }
+        this.currentSessionFinalText = '';
         this.currentSessionInterimText = '';
 
-        // Auto-reconnect with ultra-fast 80ms debounce so candidate speech is never dropped
-        if (this.isListening) {
+        // Auto-reconnect with ultra-fast 80ms debounce ONLY if still listening and AI is NOT speaking
+        if (this.isListening && !this.isSpeaking && !this.isBrowserSpeaking) {
           if (this.restartDebounceTimer) {
             clearTimeout(this.restartDebounceTimer);
           }
           this.restartDebounceTimer = setTimeout(() => {
-            if (this.isListening && !this.webSpeechRecognition) {
-              console.log('[AgoraVoiceEngine] 🔄 Web Speech API reconnecting...');
-              this._startWebSpeech();
+            if (this.isListening && !this.isSpeaking && !this.isBrowserSpeaking && !this.webSpeechRecognition) {
+              console.log('[AgoraVoiceEngine] 🔄 Web Speech API reconnecting for turn...');
+              this._startWebSpeech(false);
             }
           }, 80);
         }
@@ -601,7 +626,7 @@ export class AgoraVoiceEngine {
         this.webSpeechRecognition.onresult = null;
         this.webSpeechRecognition.onerror = null;
         this.webSpeechRecognition.onend = null;
-        this.webSpeechRecognition.stop();
+        this.webSpeechRecognition.abort();
       } catch (_) {}
       this.webSpeechRecognition = null;
     }
