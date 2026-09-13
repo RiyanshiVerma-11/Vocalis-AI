@@ -270,6 +270,50 @@ export default function App() {
   // Used to reject spurious auto-submits caused by Web Speech API flushing
   // residual final-chunk results after the AI echo shield drops.
   const aiFinishedSpeakingAtRef = useRef<number>(0);
+  const lastAIQuestionRef = useRef<string>('');
+
+  // Acoustic Echo Decontamination Guard
+  // Compares speech recognition text against recent AI question words to discard speaker echo
+  const isEchoOfLastQuestion = useCallback((candidateText: string): boolean => {
+    const lastQuestion = (lastAIQuestionRef.current || '').toLowerCase().trim();
+    if (!lastQuestion) return false;
+
+    // Only apply echo check within 6 seconds of AI speech stopping
+    const msSinceAIStopped = Date.now() - aiFinishedSpeakingAtRef.current;
+    if (msSinceAIStopped > 6000) return false;
+
+    const text = candidateText.toLowerCase().trim();
+    if (!text) return false;
+
+    // Exact or long substring match
+    if (lastQuestion.includes(text) && text.length > 8) {
+      console.log('[EchoShield] Discarded substring echo of AI question:', text);
+      return true;
+    }
+    if (text.includes(lastQuestion.slice(0, 25)) && text.length > 12) {
+      console.log('[EchoShield] Discarded prefix match echo of AI question:', text);
+      return true;
+    }
+
+    // Word overlap comparison against opening of AI question
+    const aiWords = lastQuestion
+      .replace(/[^\w\s]/g, '')
+      .split(/\s+/)
+      .filter((w) => w.length > 3)
+      .slice(0, 15);
+
+    if (aiWords.length >= 3) {
+      const candidateWords = text.replace(/[^\w\s]/g, '').split(/\s+/).filter((w) => w.length > 3);
+      if (candidateWords.length > 0) {
+        const overlap = candidateWords.filter((w) => aiWords.includes(w)).length;
+        if (overlap >= 2 && overlap / candidateWords.length >= 0.5) {
+          console.log('[EchoShield] Discarded word overlap echo of AI question:', candidateText);
+          return true;
+        }
+      }
+    }
+    return false;
+  }, []);
 
   // Guaranteed Quota Preservation: Stop cloud agent if tab is closed, reloaded, or navigated away
   useEffect(() => {
@@ -408,24 +452,14 @@ export default function App() {
     setIsListening(true);
     isListeningRef.current = true;
 
-    agoraVoiceEngine.startSpeechRecognition(
-      (fullText) => {
-        if (isAISpeakingRef.current) {
-          handleInterrupt();
-        }
-        if (!isProcessingRef.current) {
-          const cleanIncoming = fullText.trim();
-          setCurrentInterimTranscript(cleanIncoming);
-          scheduleSilenceAutoSubmit(cleanIncoming);
-        }
-      },
-      () => {
-        if (currentTurnIdRef.current === turnId) {
-          agoraVoiceEngine.interrupt();
-          setIsAISpeaking(false);
-        }
+    agoraVoiceEngine.startSpeechRecognition((fullText) => {
+      if (!isProcessingRef.current && !isAISpeakingRef.current) {
+        const cleanIncoming = fullText.trim();
+        if (!cleanIncoming || isEchoOfLastQuestion(cleanIncoming)) return;
+        setCurrentInterimTranscript(cleanIncoming);
+        scheduleSilenceAutoSubmit(cleanIncoming);
       }
-    ).then((started) => {
+    }).then((started) => {
       if (started) {
         agoraVoiceEngine.initMicVisualizer((vol) => {
           candidateVolumeRef.current = vol;
@@ -436,7 +470,7 @@ export default function App() {
 
     setErrorToast('Interrupted — Microphone active. Speak now.');
     setTimeout(() => setErrorToast(null), 3000);
-  }, [agoraAgentId, scheduleSilenceAutoSubmit]);
+  }, [agoraAgentId, scheduleSilenceAutoSubmit, isEchoOfLastQuestion]);
 
   // Speak interviewer message via Agora Conversational AI Agent (or fallback to Gemini/Browser TTS)
   const speakInterviewerMessage = useCallback(
@@ -464,6 +498,14 @@ export default function App() {
         return;
       }
 
+      // Record last AI question to filter out any acoustic speaker echo
+      lastAIQuestionRef.current = cleanDialogue;
+
+      // STOP candidate speech recognition completely while interviewer speaks!
+      // This prevents the computer speakers from echoing into the microphone
+      // and causing self-interruption or echoed transcript loops.
+      agoraVoiceEngine.stopSpeechRecognition();
+
       // Reset candidate interim transcript and speech buffer before interviewer speaks
       if (speechSilenceTimerRef.current) {
         clearTimeout(speechSilenceTimerRef.current);
@@ -471,9 +513,6 @@ export default function App() {
       }
       agoraVoiceEngine.clearSpeechBuffer();
       setCurrentInterimTranscript('');
-
-      // [RES-01 Resolved] Avoid triggering duplicate Agora cloud TTS since audio track is muted for Studio Gemini TTS
-      // This preserves cloud MiniMax & Agora minutes from double-generation waste.
 
       try {
         // Race Studio TTS with a 1500ms timeout for instant speech response
@@ -512,46 +551,41 @@ export default function App() {
         }
       } finally {
         if (currentTurnIdRef.current === turnId) {
-          // Record EXACT timestamp AI stopped speaking — used by echo decontamination guard
+          // Record timestamp AI stopped speaking
           aiFinishedSpeakingAtRef.current = Date.now();
           setIsAISpeaking(false);
           isAISpeakingRef.current = false;
           agoraVoiceEngine.setIsSpeaking(false);
           agoraVoiceEngine.muteRemoteAudioTrack(false);
-          // IMPORTANT: Delay buffer clear by 700ms to let Web Speech API flush its
-          // pending final results safely WITHOUT triggering an auto-submit of AI echo.
+
           if (speechSilenceTimerRef.current) {
             clearTimeout(speechSilenceTimerRef.current);
             speechSilenceTimerRef.current = null;
           }
-          // Flushes all previous turn speech from memory and aborts stale browser SpeechRecognition
           agoraVoiceEngine.clearSpeechBuffer();
           setCurrentInterimTranscript('');
 
-          // Start a 100% fresh, clean recognition session for candidate's next turn
-          if (isListeningRef.current) {
-            agoraVoiceEngine.startSpeechRecognition(
-              (fullText) => {
-                if (isAISpeakingRef.current) {
-                  handleInterrupt();
+          // Allow 350ms for room reverberation/speaker sound to decay, then activate mic cleanly
+          setTimeout(() => {
+            if (isListeningRef.current && currentTurnIdRef.current === turnId && inInterviewRef.current) {
+              agoraVoiceEngine.clearSpeechBuffer();
+              setCurrentInterimTranscript('');
+              agoraVoiceEngine.startSpeechRecognition(
+                (fullText) => {
+                  if (!isProcessingRef.current && !isAISpeakingRef.current) {
+                    const cleanIncoming = fullText.trim();
+                    if (!cleanIncoming || isEchoOfLastQuestion(cleanIncoming)) return;
+                    setCurrentInterimTranscript(cleanIncoming);
+                    scheduleSilenceAutoSubmit(cleanIncoming);
+                  }
                 }
-                if (!isProcessingRef.current) {
-                  const cleanIncoming = fullText.trim();
-                  setCurrentInterimTranscript(cleanIncoming);
-                  scheduleSilenceAutoSubmit(cleanIncoming);
-                }
-              },
-              () => {
-                if (isAISpeakingRef.current) {
-                  handleInterrupt();
-                }
-              }
-            );
-          }
+              );
+            }
+          }, 350);
         }
       }
     },
-    [agoraMode, agoraAgentId]
+    [agoraMode, agoraAgentId, scheduleSilenceAutoSubmit, isEchoOfLastQuestion]
   );
 
   // Start an interview session (Instant Opening Speech <200ms)
@@ -673,30 +707,13 @@ export default function App() {
     setIsSidebarOpen(false); // Automatically hide sidebar for max focus during live interview
     setAssessment(null);
 
-    // Auto-arm microphone and speech recognition so candidate can speak hands-free from second 0!
+    // Auto-arm microphone state and volume visualizer for candidate
     setIsListening(true);
     isListeningRef.current = true;
     agoraVoiceEngine.initMicVisualizer((vol) => {
       candidateVolumeRef.current = vol;
       setCandidateVolume(vol);
     });
-    agoraVoiceEngine.startSpeechRecognition(
-      (fullText) => {
-        if (isAISpeakingRef.current) {
-          handleInterrupt();
-        }
-        if (!isProcessingRef.current) {
-          const cleanIncoming = fullText.trim();
-          setCurrentInterimTranscript(cleanIncoming);
-          scheduleSilenceAutoSubmit(cleanIncoming);
-        }
-      },
-      () => {
-        if (isAISpeakingRef.current) {
-          handleInterrupt();
-        }
-      }
-    );
 
     // ── Join Agora RTC channel + start Conversational AI agent in background ──
     (async () => {
@@ -1148,18 +1165,11 @@ export default function App() {
       setCurrentInterimTranscript('');
       const started = await agoraVoiceEngine.startSpeechRecognition(
         (fullText) => {
-          if (isAISpeakingRef.current) {
-            handleInterrupt();
-          }
-          if (!isProcessingRef.current) {
+          if (!isProcessingRef.current && !isAISpeakingRef.current) {
             const cleanIncoming = fullText.trim();
+            if (!cleanIncoming || isEchoOfLastQuestion(cleanIncoming)) return;
             setCurrentInterimTranscript(cleanIncoming);
             scheduleSilenceAutoSubmit(cleanIncoming);
-          }
-        },
-        () => {
-          if (isAISpeakingRef.current) {
-            handleInterrupt();
           }
         }
       );

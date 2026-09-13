@@ -392,14 +392,8 @@ export class AgoraVoiceEngine {
       recognition.lang = 'en-US';
 
       recognition.onresult = (event: any) => {
-        // Only discard candidate speech if LOCAL TTS (browser/MiniMax) is actively playing.
-        // Do NOT discard based on this.isSpeaking — that flag is also set by the remote Agora
-        // agent's audio track (via the silence check interval), which would silently swallow
-        // all candidate speech on Vercel where Agora cloud agent is active.
-        if (this.isBrowserSpeaking) {
-          if (this.onSpeechDetectedCallback) {
-            this.onSpeechDetectedCallback();
-          }
+        // Discard candidate speech if AI is actively speaking (prevents speaker audio from looping back into mic)
+        if (this.isBrowserSpeaking || this.isSpeaking) {
           return;
         }
 
@@ -737,16 +731,16 @@ export class AgoraVoiceEngine {
 
       utterance.pitch = pitch;
       utterance.rate = rate;
+      utterance.volume = 1.0;
 
-      // Keep-alive heartbeat for longer utterances in Chromium
+      // Keep-alive heartbeat: only resume if paused unexpectedly in Chromium
       const heartbeat = setInterval(() => {
-        if (window.speechSynthesis.speaking) {
-          window.speechSynthesis.pause();
+        if (window.speechSynthesis.paused) {
           window.speechSynthesis.resume();
-        } else {
+        } else if (!window.speechSynthesis.speaking) {
           clearInterval(heartbeat);
         }
-      }, 3000);
+      }, 1000);
 
       // Robust safety timeout to guarantee Promise resolves even if Chromium drops onend
       const wordCount = cleaned.split(/\s+/).length;

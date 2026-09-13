@@ -180,18 +180,18 @@ export class AudioEngine {
 
       utterance.pitch = pitch;
       utterance.rate = rate;
+      utterance.volume = 1.0;
       this.setSpeaking(true);
 
       (window as any).__audio_engine_utterance = utterance;
 
       const heartbeat = setInterval(() => {
-        if (window.speechSynthesis.speaking) {
-          window.speechSynthesis.pause();
+        if (window.speechSynthesis.paused) {
           window.speechSynthesis.resume();
-        } else {
+        } else if (!window.speechSynthesis.speaking) {
           clearInterval(heartbeat);
         }
-      }, 3000);
+      }, 1000);
 
       const wordCount = cleaned.split(/\s+/).length;
       const maxDurationMs = Math.max(5000, Math.ceil((wordCount / 2.2) * 1000) + 4000);
