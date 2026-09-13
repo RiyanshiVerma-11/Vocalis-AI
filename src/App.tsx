@@ -173,6 +173,14 @@ export default function App() {
   // Setup Backchannel Listener Callback on mount
   useEffect(() => {
     agoraVoiceEngine.setCallbacks({
+      onSpeakingStateChange: (speaking) => {
+        setIsAISpeaking(speaking);
+        isAISpeakingRef.current = speaking;
+        if (speaking) {
+          candidateVolumeRef.current = 0;
+          setCandidateVolume(0);
+        }
+      },
       onBackchannelDetected: (phrase) => {
         setBackchannelDetectedPhrase(phrase);
         setTimeout(() => setBackchannelDetectedPhrase(null), 2500);
@@ -500,13 +508,16 @@ export default function App() {
       // Record last AI question to filter out any acoustic speaker echo
       lastAIQuestionRef.current = cleanDialogue;
 
-      // Reset candidate interim transcript and speech buffer before interviewer speaks
+      // Stop candidate speech recognition and reset speech buffer while interviewer speaks
       if (speechSilenceTimerRef.current) {
         clearTimeout(speechSilenceTimerRef.current);
         speechSilenceTimerRef.current = null;
       }
+      agoraVoiceEngine.stopSpeechRecognition();
       agoraVoiceEngine.clearSpeechBuffer();
       setCurrentInterimTranscript('');
+      candidateVolumeRef.current = 0;
+      setCandidateVolume(0);
 
       try {
         // Race Studio TTS with a 1500ms timeout for instant speech response
@@ -770,7 +781,10 @@ export default function App() {
     if (speechSilenceTimerRef.current) {
       clearTimeout(speechSilenceTimerRef.current);
     }
+    agoraVoiceEngine.stopSpeechRecognition();
     agoraVoiceEngine.clearSpeechBuffer();
+    candidateVolumeRef.current = 0;
+    setCandidateVolume(0);
 
     // Halt any active AI speech immediately when candidate responds
     agoraVoiceEngine.interrupt();

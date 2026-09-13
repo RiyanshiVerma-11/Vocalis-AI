@@ -112,7 +112,7 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
   ];
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const isSpeaking = isListening && candidateVolume > 12;
+  const isSpeaking = !isAISpeaking && isListening && candidateVolume > 15;
 
   // Live 60fps Canvas Audio Waveform (Real FFT Frequencies + Organic Harmonic Motion)
   useEffect(() => {
@@ -144,7 +144,7 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
       phase += 0.06;
       const freqData = agoraVoiceEngine.getMicFrequencyData();
       const rawVol = candidateVolume;
-      const isVoiceActive = isListening && (rawVol > 12 || (freqData ? freqData.some((v) => v > 20) : false));
+      const isVoiceActive = !isAISpeaking && isListening && (rawVol > 15 || (freqData ? freqData.some((v) => v > 20) : false));
 
       const totalGap = 3;
       const availableWidth = displayWidth - 16;
@@ -230,7 +230,7 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
     return () => {
       cancelAnimationFrame(animId);
     };
-  }, [isListening, candidateVolume]);
+  }, [isListening, candidateVolume, isAISpeaking]);
 
   return (
     <div id="voice-controller-panel" className="bg-[#0b101b] rounded-xl border border-slate-800/90 p-2 sm:p-2.5 shadow-xl flex flex-col justify-between h-full min-h-0 space-y-1.5">
@@ -268,7 +268,9 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
         {/* Live Speaking Status label */}
         <div className="flex items-center justify-between w-full px-2 pt-1">
           <span className="text-[9px] font-bold text-emerald-400 font-mono tracking-wider truncate">
-            {isSpeaking
+            {isAISpeaking
+              ? `🔊 AI PANEL SPEAKING (MIC MUTED FOR ECHO)`
+              : isSpeaking
               ? `🎤 ${candidateName.toUpperCase()} - SPEAKING`
               : isListening
               ? `🎤 LISTENING • READY FOR SPEECH`
@@ -276,7 +278,7 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
           </span>
 
           <span className="text-[9px] font-mono text-slate-400">
-            Level: {isListening ? `${Math.round(Math.min(100, candidateVolume))}%` : '0%'}
+            Level: {!isAISpeaking && isListening ? `${Math.round(Math.min(100, candidateVolume))}%` : '0%'}
           </span>
         </div>
       </div>

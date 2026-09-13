@@ -53,8 +53,8 @@ export class AgoraVoiceEngine {
   private webSpeechRecognition: any = null;
   public micAnalyser: AnalyserNode | null = null;
   private activeUtterance: SpeechSynthesisUtterance | null = null;
-  // Multi-session speech accumulators: guarantees no duplicate text and zero lost words across pauses
-  private completedSessionsText = '';
+  // Index pointer into event.results to guarantee each candidate turn starts with 0 previous sentences
+  private turnResultStartIndex = 0;
   private currentSessionFinalText = '';
   private currentSessionInterimText = '';
   private speechSilenceTimer: any = null;
@@ -82,17 +82,28 @@ export class AgoraVoiceEngine {
   }
 
   public getMicFrequencyData(): Uint8Array | null {
-    if (!this.micAnalyser) return null;
+    if (!this.micAnalyser || this.isSpeaking || this.isBrowserSpeaking) return null;
     const data = new Uint8Array(this.micAnalyser.frequencyBinCount);
     this.micAnalyser.getByteFrequencyData(data);
     return data;
   }
 
   public clearSpeechBuffer() {
-    this.completedSessionsText = '';
     this.currentSessionFinalText = '';
     this.currentSessionInterimText = '';
+    this.turnResultStartIndex = 0;
     this.isSpeaking = false;
+
+    // Reset the active Web Speech API recognizer so event.results is cleanly wiped for the next turn
+    if (this.webSpeechRecognition) {
+      try {
+        this.webSpeechRecognition.onresult = null;
+        this.webSpeechRecognition.onerror = null;
+        this.webSpeechRecognition.onend = null;
+        this.webSpeechRecognition.abort();
+      } catch (_) {}
+      this.webSpeechRecognition = null;
+    }
   }
 
   public getIsSpeaking() {
@@ -399,15 +410,16 @@ export class AgoraVoiceEngine {
       };
 
       recognition.onresult = (event: any) => {
-        if (this.isBrowserSpeaking) {
-          console.log('[AgoraVoiceEngine] 🔇 Gated candidate speech because browser TTS is actively speaking.');
+        if (this.isBrowserSpeaking || this.isSpeaking) {
+          console.log('[AgoraVoiceEngine] 🔇 Gated candidate speech because AI is actively speaking.');
           return;
         }
 
         let sessionFinal = '';
         let sessionInterim = '';
 
-        for (let i = 0; i < event.results.length; i++) {
+        const startIdx = Math.min(this.turnResultStartIndex, event.results.length);
+        for (let i = startIdx; i < event.results.length; i++) {
           const chunk = event.results[i][0].transcript;
           if (event.results[i].isFinal) {
             sessionFinal += (sessionFinal ? ' ' : '') + chunk.trim();
@@ -419,13 +431,7 @@ export class AgoraVoiceEngine {
         this.currentSessionFinalText = sessionFinal;
         this.currentSessionInterimText = sessionInterim;
 
-        const parts = [
-          this.completedSessionsText,
-          this.currentSessionFinalText,
-          this.currentSessionInterimText,
-        ].filter(Boolean);
-
-        const fullSpeech = parts.join(' ').trim();
+        const fullSpeech = [sessionFinal, sessionInterim].filter(Boolean).join(' ').trim();
 
         if (fullSpeech) {
           console.log('[AgoraVoiceEngine] 📝 Candidate transcript recognized:', fullSpeech);
@@ -468,18 +474,8 @@ export class AgoraVoiceEngine {
           this.webSpeechRecognition = null;
         }
 
-        const sessionFinishedText = [
-          this.currentSessionFinalText,
-          this.currentSessionInterimText,
-        ].filter(Boolean).join(' ').trim();
-
-        if (sessionFinishedText) {
-          if (!this.completedSessionsText.endsWith(sessionFinishedText)) {
-            this.completedSessionsText = (this.completedSessionsText + ' ' + sessionFinishedText).trim();
-          }
-          this.currentSessionFinalText = '';
-          this.currentSessionInterimText = '';
-        }
+        this.currentSessionFinalText = '';
+        this.currentSessionInterimText = '';
 
         if (this.isListening) {
           setTimeout(() => {
@@ -503,28 +499,19 @@ export class AgoraVoiceEngine {
   public stopSpeechRecognition(): void {
     this.isListening = false;
     this.isSpeaking = false;
+    this.turnResultStartIndex = 0;
+    this.currentSessionFinalText = '';
+    this.currentSessionInterimText = '';
 
-    if (this.currentMicVisualizerCleanup) {
-      try {
-        this.currentMicVisualizerCleanup();
-      } catch (_) {}
-      this.currentMicVisualizerCleanup = null;
-    }
-
-    // Stop Web Speech API
+    // Stop Web Speech API cleanly and discard any buffered utterance
     if (this.webSpeechRecognition) {
       try {
         this.webSpeechRecognition.onresult = null;
         this.webSpeechRecognition.onerror = null;
         this.webSpeechRecognition.onend = null;
-        this.webSpeechRecognition.stop();
+        this.webSpeechRecognition.abort();
       } catch (_) {}
       this.webSpeechRecognition = null;
-    }
-
-    // Unpublish mic from Agora channel
-    if (this.localMicTrack && this.client && this.isJoined) {
-      this.client.unpublish([this.localMicTrack]).catch(() => {});
     }
   }
 
@@ -614,7 +601,9 @@ export class AgoraVoiceEngine {
       const tick = () => {
         analyser.getByteFrequencyData(data);
         const avg = data.reduce((a, b) => a + b, 0) / data.length;
-        const vol = Math.min(100, Math.round((avg / 128) * 100));
+        const rawVol = Math.min(100, Math.round((avg / 128) * 100));
+        // Suppress volume while AI is speaking so speaker audio bleed never triggers false candidate speaking
+        const vol = (this.isSpeaking || this.isBrowserSpeaking) ? 0 : rawVol;
         onVolume(vol);
         this.volAnimFrameId = requestAnimationFrame(tick);
       };

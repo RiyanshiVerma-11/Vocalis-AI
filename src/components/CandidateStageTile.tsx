@@ -6,7 +6,8 @@ interface CandidateStageTileProps {
   candidateName?: string;
   candidateHeadline?: string;
   isListening?: boolean;
-  candidateVolume?: number; // 0 to 1
+  isAISpeaking?: boolean;
+  candidateVolume?: number; // 0 to 100
   className?: string;
 }
 
@@ -14,6 +15,7 @@ export const CandidateStageTile: React.FC<CandidateStageTileProps> = ({
   candidateName = 'Jordan Reed',
   candidateHeadline = 'Candidate • Full Stack AI Engineer',
   isListening = false,
+  isAISpeaking = false,
   candidateVolume = 0,
   className = '',
 }) => {
@@ -22,7 +24,7 @@ export const CandidateStageTile: React.FC<CandidateStageTileProps> = ({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
 
-  const isSpeaking = isListening && candidateVolume > 12;
+  const isSpeaking = !isAISpeaking && isListening && candidateVolume > 15;
 
   // Auto-enable camera on mount when interview room opens
   useEffect(() => {
@@ -190,7 +192,7 @@ export const CandidateStageTile: React.FC<CandidateStageTileProps> = ({
           <div className="flex items-center gap-0.5 h-3">
             {[30, 70, 45, 90, 60, 100, 50, 80, 40, 65, 85, 35].map((h, i) => {
               const normVol = Math.min(1, candidateVolume / 65);
-              const dynamicH = isSpeaking ? Math.max(25, Math.min(100, normVol * h * (0.8 + 0.35 * Math.sin(i * 1.5)))) : (isListening ? 14 : 8);
+              const dynamicH = isSpeaking ? Math.max(25, Math.min(100, normVol * h * (0.8 + 0.35 * Math.sin(i * 1.5)))) : (isListening && !isAISpeaking ? 14 : 8);
               return (
                 <div
                   key={i}

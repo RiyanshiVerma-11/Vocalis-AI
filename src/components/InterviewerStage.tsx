@@ -149,6 +149,7 @@ export const InterviewerStage: React.FC<InterviewerStageProps> = ({
           candidateName={candidateName}
           candidateHeadline={candidateHeadline}
           isListening={isListening}
+          isAISpeaking={isAISpeaking}
           candidateVolume={candidateVolume}
         />
 
