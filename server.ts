@@ -816,7 +816,7 @@ function extractJsonFromContent(str: string): any {
 }
 
 // Normalizer to ensure turn response data adheres strictly to expected frontend schema
-function normalizeTurnResponse(raw: any, activePanel: any[], scenario: any, sharedContext: any, isClarificationRequest = false, preferredInterviewer?: any) {
+function normalizeTurnResponse(raw: any, activePanel: any[], scenario: any, sharedContext: any, isClarificationRequest = false, preferredInterviewer?: any, isGreetingOrIntroPrompt = false) {
   const fallbackInterviewer =
     activePanel && activePanel.length > 0
       ? activePanel[0]
@@ -824,8 +824,8 @@ function normalizeTurnResponse(raw: any, activePanel: any[], scenario: any, shar
 
   let matchedInterviewer: any = null;
 
-  // If candidate requested clarification, keep the turn with the interviewer who asked the question
-  if (isClarificationRequest && preferredInterviewer) {
+  // If candidate requested clarification or gave an initial greeting, keep the turn with the interviewer who asked the question
+  if ((isClarificationRequest || isGreetingOrIntroPrompt) && preferredInterviewer) {
     matchedInterviewer = activePanel.find((p: any) => p.id === preferredInterviewer.id || p.name === preferredInterviewer.name) || preferredInterviewer;
   }
 
@@ -927,7 +927,7 @@ function normalizeTurnResponse(raw: any, activePanel: any[], scenario: any, shar
 
   // Clean and filter detected flags — eliminate empty or whitespace quotes/explanations
   const rawFlags = Array.isArray(raw.detectedFlags) ? raw.detectedFlags : [];
-  const validFlags = isClarificationRequest
+  const validFlags = (isClarificationRequest || isGreetingOrIntroPrompt)
     ? []
     : rawFlags.filter(
         (f: any) =>
@@ -939,13 +939,19 @@ function normalizeTurnResponse(raw: any, activePanel: any[], scenario: any, shar
           f.type
       );
 
-  const analysisKeywords = isClarificationRequest
+  const analysisKeywords = isGreetingOrIntroPrompt
+    ? ['greeting', 'intro_pending']
+    : isClarificationRequest
     ? ['clarification_request']
     : Array.isArray(raw.analysisOfCandidateAnswer?.detectedKeywords)
     ? raw.analysisOfCandidateAnswer.detectedKeywords.filter((k: any) => typeof k === 'string' && k.trim().length > 0)
     : [];
 
-  if (!speechText || speechText.length < 10) {
+  const candidateFirstName = (sharedContext?.candidateResume?.fullName || sharedContext?.candidateName || 'there').split(' ')[0];
+
+  if (isGreetingOrIntroPrompt) {
+    speechText = `Hello ${candidateFirstName}! It's wonderful to meet you, and we can hear you loud and clear. To kick things off, could you please introduce yourself and walk us through your journey, your core strengths, and the key projects you've worked on?`;
+  } else if (!speechText || speechText.length < 10) {
     const pRole = matchedInterviewer.role || 'technical';
     const pName = matchedInterviewer.name || 'Interviewer';
     if (pRole === 'product' || pName.toLowerCase().includes('priya')) {
@@ -962,23 +968,37 @@ function normalizeTurnResponse(raw: any, activePanel: any[], scenario: any, shar
     nextSpeakerName: matchedInterviewer.name,
     nextSpeakerRole: matchedInterviewer.role,
     speech: speechText,
-    internalThought: isClarificationRequest
+    internalThought: isGreetingOrIntroPrompt
+      ? `Candidate greeted the committee. Welcoming ${candidateFirstName} warmly and inviting their personal background introduction.`
+      : isClarificationRequest
       ? `${matchedInterviewer.name} rephrased the previous question to clarify the topic for the candidate.`
       : raw.internalThought || 'Panel evaluated candidate response. Formulated adaptive follow-up question.',
-    turnTakingReason: isClarificationRequest
+    turnTakingReason: isGreetingOrIntroPrompt
+      ? `${matchedInterviewer.name} welcomed ${candidateFirstName} and prompted them for their introductory background.`
+      : isClarificationRequest
       ? `${matchedInterviewer.name} clarified the previous question.`
       : raw.turnTakingReason || `${matchedInterviewer.name} asked the next probing question.`,
-    questionTopic: raw.questionTopic || scenario.title || 'System Architecture & Engineering Trade-offs',
-    targetCompetency: isClarificationRequest ? 'communicationAndClarity' : (raw.targetCompetency || 'technicalArchitecture'),
-    adaptiveStrategyApplied: isClarificationRequest ? 'Clarify & Simplify' : (raw.adaptiveStrategyApplied || 'Deep Probe'),
-    resumePointReferenced: raw.resumePointReferenced || undefined,
+    questionTopic: isGreetingOrIntroPrompt
+      ? 'Candidate Introduction & Professional Journey'
+      : (raw.questionTopic || scenario.title || 'System Architecture & Engineering Trade-offs'),
+    targetCompetency: (isClarificationRequest || isGreetingOrIntroPrompt) ? 'communicationAndClarity' : (raw.targetCompetency || 'technicalArchitecture'),
+    adaptiveStrategyApplied: isGreetingOrIntroPrompt
+      ? 'Introductory Warm-Up'
+      : (isClarificationRequest ? 'Clarify & Simplify' : (raw.adaptiveStrategyApplied || 'Deep Probe')),
+    resumePointReferenced: isGreetingOrIntroPrompt ? undefined : (raw.resumePointReferenced || undefined),
     analysisOfCandidateAnswer: {
-      sentiment: isClarificationRequest ? 'Inquisitive / Clarifying' : (raw.analysisOfCandidateAnswer?.sentiment || 'Analytical & Deep'),
-      depthLevel: isClarificationRequest ? 'Clarification Requested' : (raw.analysisOfCandidateAnswer?.depthLevel || 'Intermediate (Practical)'),
+      sentiment: isGreetingOrIntroPrompt
+        ? 'Enthusiastic & Collaborative'
+        : (isClarificationRequest ? 'Inquisitive / Clarifying' : (raw.analysisOfCandidateAnswer?.sentiment || 'Analytical & Deep')),
+      depthLevel: isGreetingOrIntroPrompt
+        ? 'Introductory Warm-Up'
+        : (isClarificationRequest ? 'Clarification Requested' : (raw.analysisOfCandidateAnswer?.depthLevel || 'Intermediate (Practical)')),
       detectedKeywords: analysisKeywords,
-      candidateResponseSummary: isClarificationRequest
+      candidateResponseSummary: isGreetingOrIntroPrompt
+        ? 'Candidate greeted the committee; awaiting personal background introduction.'
+        : (isClarificationRequest
         ? 'Candidate asked to repeat or clarify the previous question.'
-        : (raw.analysisOfCandidateAnswer?.candidateResponseSummary || 'Candidate explained technical approach.'),
+        : (raw.analysisOfCandidateAnswer?.candidateResponseSummary || 'Candidate explained technical approach.')),
     },
     detectedFlags: validFlags,
     updatedDifficulty: raw.updatedDifficulty || sharedContext.currentDifficulty || 'Intermediate',
@@ -1371,9 +1391,17 @@ ${candidateResume.rawText ? `Resume Excerpt: ${candidateResume.rawText.slice(0, 
     const lastAISpeakerRole = lastAITurn?.speakerRole || activePanel[0]?.role || 'technical';
     const lastAISpeakerId = lastAITurn?.speakerId || activePanel[0]?.id || 'alex-vance';
 
+    const cleanCandSpeech = (lastCandidateSpeech || '').trim().toLowerCase().replace(/[^\w\s]/g, '');
     const isClarificationRequest = /rephrase|repeat|clarify|what do you mean|didn't understand|could you explain|can you explain|what is meant|reword|pardon|say that again|could you say that/i.test(lastCandidateSpeech || '');
-    const isSkipOrPassRequest = /skip|pass|next question|don't know|dont know|not sure|don't remember|dont remember|can't recall|cant recall|long time ago|long time since|move on|another question|different question/i.test(lastCandidateSpeech || '');
+    const isSkipOrPassRequest = /skip|pass|next question|don't know|dont know|not sure|don't remember|dont remember|can't recall|cant recall|long time ago|long time since|move on|another question|different question|haven't worked with|havent worked with|no experience with|never used|haven't used|havent used/i.test(lastCandidateSpeech || '');
     const wantsNonProjectSection = /other section|not project|instead of project|stop project|other parts|skills|education|experience|internship|work experience|achievements|hackathon|behavioral|different section|non-project/i.test(lastCandidateSpeech || '');
+    const isGreetingOrIntroPrompt =
+      /^(hello|hi|hey|good morning|good afternoon|good evening|greetings|can you hear me|am i audible|test|testing|yes hello|hello there|hi there)(\s+(there|everyone|panel|team|all|rohan|priya|neha|vikram|alex|sir|maam|how are you|can you hear me|am i audible|nice to meet you|pleasure to meet you|glad to be here))?$/i.test(cleanCandSpeech) ||
+      /^(can you hear me|am i audible|are you able to hear me|is my mic working|testing mic)[\.\?!, ]*$/i.test(cleanCandSpeech) ||
+      /^(hello|hi|hey)\s*,?\s*(can you hear me|am i audible|good morning|good afternoon|nice to meet you|how are you)[\.\?!, ]*$/i.test(cleanCandSpeech);
+
+    const candWords = cleanCandSpeech.split(/\s+/).filter(Boolean);
+    const isVeryShortHesitation = !isGreetingOrIntroPrompt && !isClarificationRequest && candWords.length <= 2 && cleanCandSpeech.length <= 12;
 
     // Identify the last AI question asked and the interviewer who asked it
     const previousQuestionText = lastAITurn ? lastAITurn.content : '';
@@ -1382,6 +1410,77 @@ ${candidateResume.rawText ? `Resume Excerpt: ${candidateResume.rawText.slice(0, 
          activePanel.find((p: any) => p.name === lastAITurn?.speakerName) ||
          activePanel[0])
       : { id: 'tech-alex', name: 'Rohan Sharma', role: 'technical', title: 'Lead Systems Architect' };
+
+    // ── 1. FAST-PATH: Immediate Greeting & Mic Check Handling ──
+    // When the candidate greets the panel or does a mic check, the SAME interviewer
+    // who initiated the conversation MUST warmly greet them back and ask for their personal introduction.
+    if (isGreetingOrIntroPrompt) {
+      const candidateFirstName = (candidateResume.fullName || sharedContext.candidateName || 'there').split(' ')[0];
+      const speakerToUse = previousSpeaker || activePanel[0] || { id: 'alex-vance', name: 'Rohan Sharma', role: 'technical' };
+      const greetingTurn = {
+        nextSpeakerId: speakerToUse.id,
+        nextSpeakerName: speakerToUse.name,
+        nextSpeakerRole: speakerToUse.role || 'technical',
+        speech: `Hello ${candidateFirstName}! It's wonderful to meet you, and we can hear you loud and clear. To kick things off, could you please introduce yourself and walk us through your journey, your core strengths, and the key projects you've worked on?`,
+        internalThought: `Candidate greeted the committee. Welcoming ${candidateFirstName} warmly and inviting their personal background introduction.`,
+        turnTakingReason: `${speakerToUse.name} welcomed ${candidateFirstName} and prompted them for their introductory background.`,
+        questionTopic: 'Candidate Introduction & Professional Journey',
+        targetCompetency: 'communicationAndClarity',
+        adaptiveStrategyApplied: 'Introductory Warm-Up',
+        analysisOfCandidateAnswer: {
+          sentiment: 'Enthusiastic & Collaborative',
+          depthLevel: 'Intermediate (Practical)',
+          detectedKeywords: ['greeting', 'mic_check'],
+          candidateResponseSummary: 'Candidate greeted the committee; awaiting personal background introduction.',
+        },
+        detectedFlags: [],
+        updatedDifficulty: sharedContext.currentDifficulty || 'Intermediate',
+        updatedCompetencyScores: sharedContext.competencyScores || {
+          technicalArchitecture: 50,
+          businessAndCustomerImpact: 50,
+          communicationAndClarity: 50,
+          leadershipAndOwnership: 50,
+          problemSolvingAndAgility: 50,
+        },
+        updatedRunningSummary: (sharedContext.runningSummary || '') + ` Candidate connected and greeted ${speakerToUse.name}.`,
+      };
+      return res.json({ success: true, data: greetingTurn });
+    }
+
+    // ── 2. FAST-PATH: Very Short Hesitation Floor Reassurance ──
+    // If the candidate only uttered 1-2 words (like "i dont", "well", "um") before pausing,
+    // reassure them to take their time instead of prematurely cutting them off or assuming a full answer.
+    if (isVeryShortHesitation) {
+      const speakerToUse = previousSpeaker || activePanel[0] || { id: 'alex-vance', name: 'Rohan Sharma', role: 'technical' };
+      const hesitationTurn = {
+        nextSpeakerId: speakerToUse.id,
+        nextSpeakerName: speakerToUse.name,
+        nextSpeakerRole: speakerToUse.role || 'technical',
+        speech: `Take your time! Whenever you're ready, feel free to walk us through your thoughts or approach, or let us know if you'd like to explore a different angle.`,
+        internalThought: `Candidate paused briefly after "${lastCandidateSpeech}". Offering gentle floor reassurance without penalizing.`,
+        turnTakingReason: `${speakerToUse.name} encouraged candidate to take their time and elaborate.`,
+        questionTopic: previousQuestionText ? 'Follow-Up Clarification' : 'System Architecture & Implementation',
+        targetCompetency: 'communicationAndClarity',
+        adaptiveStrategyApplied: 'Gentle Encouragement',
+        analysisOfCandidateAnswer: {
+          sentiment: 'Hesitant / Uncertain',
+          depthLevel: 'Intermediate (Practical)',
+          detectedKeywords: ['hesitation', 'pause'],
+          candidateResponseSummary: `Candidate paused briefly ("${lastCandidateSpeech}"); floor held for completion.`,
+        },
+        detectedFlags: [],
+        updatedDifficulty: sharedContext.currentDifficulty || 'Intermediate',
+        updatedCompetencyScores: sharedContext.competencyScores || {
+          technicalArchitecture: 50,
+          businessAndCustomerImpact: 50,
+          communicationAndClarity: 50,
+          leadershipAndOwnership: 50,
+          problemSolvingAndAgility: 50,
+        },
+        updatedRunningSummary: sharedContext.runningSummary || '',
+      };
+      return res.json({ success: true, data: hesitationTurn });
+    }
 
     // Dynamically resolve personas strictly from activePanel so ghost interviewers not in the room are never assigned
     const getPanelMember = (roles: string[], fallbackIndex = 0) => {
@@ -1591,17 +1690,27 @@ The interview panel MUST immediately acknowledge with warm human grace and pivot
    - Dialogue: "You got it, let's switch gears completely! I'm Dr. Meera Rao. Can you tell me about a time when you had a disagreement with a peer or mentor over a technical decision, and how you worked through it?"
 ` : ''}
 
+${isGreetingOrIntroPrompt ? `
+=== ⚠️ CRITICAL CANDIDATE GREETING & INTRO PROBE INSTRUCTION ===
+1. The candidate (${candidateResume.fullName || 'Candidate'}) only gave an initial greeting or mic check ("${lastCandidateSpeech}") and has NOT answered the question or introduced their background yet!
+2. YOU MUST NOT HAND OFF TO ANOTHER INTERVIEWER AND MUST NOT MOVE TO A DIFFERENT TOPIC!
+3. The SAME interviewer (${previousSpeaker.name}) MUST warmly acknowledge their greeting and clearly prompt them to introduce themselves:
+   - "Hello ${candidateResume.fullName ? candidateResume.fullName.split(' ')[0] : 'there'}! It's wonderful to meet you. We're really glad to have you with us today. To get us started, could you please introduce yourself and walk us through your journey, your core strengths, and the key projects you've worked on?"
+4. nextSpeakerId MUST BE "${previousSpeaker.id}" (${previousSpeaker.name})!
+5. adaptiveStrategyApplied MUST BE "Introductory Warm-Up". Do NOT penalize the candidate.
+` : ''}
+
 === ⚠️ FACTUAL INTEGRITY & RESUME CITATION RULES (ANTI-HALLUCINATION) ===
 - NEVER say "You mentioned [X]" or "You stated [X]" unless the candidate actually SPOKE the word [X] in their recent verbal utterances (${recentTranscript}).
 - If introducing a technical detail or project from their written resume that they have not spoken yet, phrase it accurately: "Looking at your resume, you noted...", "In your experience with [Project]...", or "Your background highlights...". Do NOT falsely claim the candidate spoke it verbally!
 
 === PANEL HANDOFF & CONVERSATIONAL SMOOTHNESS RULES ===
 - LAST AI SPEAKER IN ROOM: "${lastAISpeakerName}" (${lastAISpeakerRole})
-- **MANDATORY PANEL HANDOFF**: If the chosen interviewer (nextSpeakerId) is DIFFERENT from "${lastAISpeakerId}" and THIS IS NOT A CLARIFICATION REQUEST AND THIS IS NOT A SKIP/PASS REQUEST AND THIS IS NOT A SECTION SHIFT, you MUST start your response with a natural, conversational handoff phrase acknowledging "${lastAISpeakerName}" and their previous point!
+- **MANDATORY PANEL HANDOFF**: If the chosen interviewer (nextSpeakerId) is DIFFERENT from "${lastAISpeakerId}" and THIS IS NOT A CLARIFICATION REQUEST AND THIS IS NOT A SKIP/PASS REQUEST AND THIS IS NOT A SECTION SHIFT AND THIS IS NOT A GREETING, you MUST start your response with a natural, conversational handoff phrase acknowledging "${lastAISpeakerName}" and their previous point!
   - Examples of natural handoffs:
     * "Thanks ${lastAISpeakerName}, that covers the system architecture side well. Building on your point, as [your role], I want to understand..."
     * "Great overview. Taking over from ${lastAISpeakerName}'s question, let's look at this from a product ROI perspective..."
-- If this IS a clarification request, skip/pass request, or section shift, do NOT thank the other interviewer; address the candidate directly and warmly!
+- If this IS a clarification request, skip/pass request, section shift, or candidate greeting, do NOT thank the other interviewer; address the candidate directly and warmly!
 
 === CORE ADAPTIVE QUESTIONING & EVALUATION LOGIC ===
 1. **Analyze Candidate Answer**:
@@ -1684,9 +1793,9 @@ The interview panel MUST immediately acknowledge with warm human grace and pivot
       try {
         const rawGroq = await generateContentWithGroq(prompt);
         if (rawGroq && (rawGroq.nextSpeakerId || rawGroq.speech)) {
-          const groqNormalized = normalizeTurnResponse(rawGroq, activePanel, scenario, sharedContext, isClarificationRequest, previousSpeaker);
-          // Prepend smooth handoff bridge if persona changed and wasn't mentioned (NEVER on clarification, skip/pass, or section shift requests)
-          if (lastAISpeakerId && groqNormalized.nextSpeakerId !== lastAISpeakerId && !groqNormalized.isDebateExchange && !isClarificationRequest && !isSkipOrPassRequest && !wantsNonProjectSection) {
+          const groqNormalized = normalizeTurnResponse(rawGroq, activePanel, scenario, sharedContext, isClarificationRequest, previousSpeaker, isGreetingOrIntroPrompt);
+          // Prepend smooth handoff bridge if persona changed and wasn't mentioned (NEVER on clarification, skip/pass, section shift, or candidate greeting requests)
+          if (lastAISpeakerId && groqNormalized.nextSpeakerId !== lastAISpeakerId && !groqNormalized.isDebateExchange && !isClarificationRequest && !isSkipOrPassRequest && !wantsNonProjectSection && !isGreetingOrIntroPrompt) {
             const firstName = lastAISpeakerName.split(' ')[0];
             const speechLower = groqNormalized.speech.toLowerCase();
             const startsWithEmpatheticAck = speechLower.startsWith('no worries') || speechLower.startsWith('no problem') || speechLower.startsWith('totally fine') || speechLower.startsWith('fair enough') || speechLower.startsWith('that makes sense') || speechLower.startsWith('fair point') || speechLower.startsWith('understood') || speechLower.startsWith('you got it');
@@ -1813,10 +1922,10 @@ The interview panel MUST immediately acknowledge with warm human grace and pivot
     });
 
     const parsedRaw = JSON.parse(response.text || '{}');
-    const parsed = normalizeTurnResponse(parsedRaw, activePanel, scenario, sharedContext, isClarificationRequest, previousSpeaker);
+    const parsed = normalizeTurnResponse(parsedRaw, activePanel, scenario, sharedContext, isClarificationRequest, previousSpeaker, isGreetingOrIntroPrompt);
 
-    // Prepend smooth handoff bridge if persona changed and wasn't mentioned (NEVER on clarification, skip/pass, or section shift requests)
-    if (parsed.nextSpeakerId && lastAISpeakerId && parsed.nextSpeakerId !== lastAISpeakerId && !parsed.isDebateExchange && !isClarificationRequest && !isSkipOrPassRequest && !wantsNonProjectSection) {
+    // Prepend smooth handoff bridge if persona changed and wasn't mentioned (NEVER on clarification, skip/pass, section shift, or candidate greeting requests)
+    if (parsed.nextSpeakerId && lastAISpeakerId && parsed.nextSpeakerId !== lastAISpeakerId && !parsed.isDebateExchange && !isClarificationRequest && !isSkipOrPassRequest && !wantsNonProjectSection && !isGreetingOrIntroPrompt) {
       const speechText = parsed.speech || '';
       const firstName = lastAISpeakerName.split(' ')[0];
       const speechLower = speechText.toLowerCase();
@@ -1836,8 +1945,12 @@ The interview panel MUST immediately acknowledge with warm human grace and pivot
 });
 
 function generateFallbackTurn(lastCandidateSpeech: string, activePanel: any[], scenario: any, sharedContext: any) {
-  const nextInterviewer = (activePanel && activePanel.length > 0)
-    ? activePanel[Math.floor(Math.random() * activePanel.length)]
+  const speechLower = (lastCandidateSpeech || '').toLowerCase().trim();
+  const candWords = speechLower.split(/\s+/).filter(Boolean);
+  const candidateFirstName = (sharedContext?.candidateResume?.fullName || sharedContext?.candidateName || 'there').split(' ')[0];
+
+  const primaryInterviewer = (activePanel && activePanel.length > 0)
+    ? activePanel[0]
     : {
         id: 'alex-vance',
         name: 'Rohan Sharma',
@@ -1845,21 +1958,44 @@ function generateFallbackTurn(lastCandidateSpeech: string, activePanel: any[], s
         title: 'Lead Systems Architect'
       };
 
+  let nextInterviewer = primaryInterviewer;
   let speech = '';
   let topic = 'System Architecture & Engineering Trade-offs';
   let strategy = 'Deep Probe';
 
-  const speechLower = (lastCandidateSpeech || '').toLowerCase();
+  const isGreeting = /^(hello|hi|hey|good morning|good afternoon|good evening|can you hear me|am i audible|test|testing)/i.test(speechLower);
+  const isSkipOrPass = /skip|pass|next question|don't know|dont know|not sure|don't remember|dont remember|can't recall|cant recall|long time|haven't|havent/i.test(speechLower);
+  const isVeryShort = candWords.length <= 2 && speechLower.length <= 12;
 
-  if (speechLower.includes('agent') || speechLower.includes('hospital') || speechLower.includes('notes') || speechLower.includes('prompt')) {
+  if (isGreeting) {
+    nextInterviewer = primaryInterviewer;
+    speech = `Hello ${candidateFirstName}! It's wonderful to meet you, and we can hear you loud and clear. To kick things off, could you please introduce yourself and walk us through your journey, your core strengths, and the key projects you've worked on?`;
+    topic = 'Candidate Introduction & Professional Journey';
+    strategy = 'Introductory Warm-Up';
+  } else if (isVeryShort) {
+    nextInterviewer = primaryInterviewer;
+    speech = `Take your time! Whenever you're ready, feel free to walk us through your thoughts or approach, or let us know if you'd like to explore a different angle.`;
+    topic = 'Follow-Up Clarification';
+    strategy = 'Gentle Encouragement';
+  } else if (isSkipOrPass) {
+    nextInterviewer = activePanel.find((p: any) => p.role === 'technical' || p.role === 'product') || primaryInterviewer;
+    speech = `No worries at all, that's completely fair! Let's pivot to your broader experience. Looking at your engineering background, what core principles do you prioritize when designing resilient APIs and backend services?`;
+    topic = 'API Design & Backend Architecture';
+    strategy = 'Pivot to Core Fundamentals';
+  } else if (speechLower.includes('agent') || speechLower.includes('hospital') || speechLower.includes('notes') || speechLower.includes('prompt')) {
+    nextInterviewer = activePanel.find((p: any) => p.role === 'technical') || primaryInterviewer;
     speech = `That multi-agent architecture for clinical notes is very interesting! How do you handle concurrency, state synchronization, and fault-tolerance across those 5 agents if one agent fails or encounters latency spikes under heavy load?`;
     topic = 'Multi-Agent Synchronization & Resiliency';
     strategy = 'Deep Probe';
   } else if (speechLower.includes('cache') || speechLower.includes('redis') || speechLower.includes('db') || speechLower.includes('postgres')) {
+    nextInterviewer = activePanel.find((p: any) => p.role === 'technical') || primaryInterviewer;
     speech = `Good point on the caching strategy! What exact cache invalidation rules and TTL limits do you enforce when patient records are updated across multiple concurrent services?`;
     topic = 'Cache Invalidation & Consistency';
     strategy = 'Challenge Assumption';
   } else {
+    nextInterviewer = (activePanel && activePanel.length > 0)
+      ? activePanel[Math.floor(Math.random() * activePanel.length)]
+      : primaryInterviewer;
     speech = `Thank you for sharing that architectural overview. Could you walk us through the performance benchmarks, failure recovery procedures, and key trade-offs you evaluated for this implementation?`;
     topic = 'Performance & Disaster Recovery';
     strategy = 'Deep Probe';

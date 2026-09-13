@@ -52,12 +52,12 @@ export class AgoraVoiceEngine {
   private volAnimFrameId: number | null = null;
   private webSpeechRecognition: any = null;
   public micAnalyser: AnalyserNode | null = null;
-  private activeUtterance: SpeechSynthesisUtterance | null = null;
-  // Index pointer into event.results to guarantee each candidate turn starts with 0 previous sentences
-  private turnResultStartIndex = 0;
-  private lastResultsLength = 0;
+  // Turn speech accumulation buffer: guarantees candidate speech is preserved seamlessly
+  // across pauses, phrase boundaries, and Chromium Web Speech API reconnects.
+  private turnAccumulatedFinalText = '';
   private currentSessionFinalText = '';
   private currentSessionInterimText = '';
+  private activeUtterance: SpeechSynthesisUtterance | null = null;
   private speechSilenceTimer: any = null;
   private restartDebounceTimer: any = null;
   private outputAudioCtx: AudioContext | null = null;
@@ -97,14 +97,10 @@ export class AgoraVoiceEngine {
   }
 
   public clearSpeechBuffer() {
+    this.turnAccumulatedFinalText = '';
     this.currentSessionFinalText = '';
     this.currentSessionInterimText = '';
-    // Advance index slice to current results length to seamlessly start fresh turn
-    this.turnResultStartIndex = this.lastResultsLength;
     this.isSpeaking = false;
-    // CRITICAL: We intentionally do NOT call webSpeechRecognition.abort() here!
-    // Keeping the continuous recognizer active prevents Chromium audio pipeline contention
-    // and eliminates the fatal abort-restart loop.
   }
 
   public getIsSpeaking(): boolean {
@@ -489,14 +485,10 @@ export class AgoraVoiceEngine {
       };
 
       recognition.onresult = (event: any) => {
-        // Track total results count to maintain clean turn isolation without aborting
-        this.lastResultsLength = event.results.length;
-
         let sessionFinal = '';
         let sessionInterim = '';
 
-        const startIdx = Math.min(this.turnResultStartIndex, event.results.length);
-        for (let i = startIdx; i < event.results.length; i++) {
+        for (let i = 0; i < event.results.length; i++) {
           const chunk = event.results[i][0].transcript;
           if (event.results[i].isFinal) {
             sessionFinal += (sessionFinal ? ' ' : '') + chunk.trim();
@@ -508,14 +500,18 @@ export class AgoraVoiceEngine {
         this.currentSessionFinalText = sessionFinal;
         this.currentSessionInterimText = sessionInterim;
 
-        const fullSpeech = [sessionFinal, sessionInterim].filter(Boolean).join(' ').trim();
+        // Compute cumulative turn speech: all finalized text from previous pauses + current session final + current interim
+        const turnSpeech = [this.turnAccumulatedFinalText, sessionFinal, sessionInterim]
+          .filter(Boolean)
+          .join(' ')
+          .trim();
 
-        if (fullSpeech) {
+        if (turnSpeech) {
           if (this.onSpeechDetectedCallback) {
             this.onSpeechDetectedCallback();
           }
           if (this.callbacks.onTranscript) {
-            const boostedSpeech = boostTechnicalJargon(fullSpeech);
+            const boostedSpeech = boostTechnicalJargon(turnSpeech);
             this.callbacks.onTranscript(boostedSpeech, Boolean(sessionFinal));
           }
         }
@@ -553,19 +549,28 @@ export class AgoraVoiceEngine {
           this.webSpeechRecognition = null;
         }
 
+        // When recognition session ends on a pause or phrase boundary,
+        // commit finalized text into turnAccumulatedFinalText so it persists across reconnects!
+        if (this.currentSessionFinalText) {
+          this.turnAccumulatedFinalText = [this.turnAccumulatedFinalText, this.currentSessionFinalText]
+            .filter(Boolean)
+            .join(' ')
+            .trim();
+          this.currentSessionFinalText = '';
+        }
         this.currentSessionInterimText = '';
 
-        // Auto-reconnect with healthy 600ms debounce to prevent Chromium audio pipeline crash
+        // Auto-reconnect with ultra-fast 80ms debounce so candidate speech is never dropped
         if (this.isListening) {
           if (this.restartDebounceTimer) {
             clearTimeout(this.restartDebounceTimer);
           }
           this.restartDebounceTimer = setTimeout(() => {
             if (this.isListening && !this.webSpeechRecognition) {
-              console.log('[AgoraVoiceEngine] 🔄 Auto-reconnecting speech recognition...');
+              console.log('[AgoraVoiceEngine] 🔄 Web Speech API reconnecting...');
               this._startWebSpeech();
             }
-          }, 600);
+          }, 80);
         }
       };
 
@@ -581,7 +586,7 @@ export class AgoraVoiceEngine {
   // ─── Stop microphone ─────────────────────────────────────
   public stopSpeechRecognition(): void {
     this.isListening = false;
-    this.turnResultStartIndex = this.lastResultsLength;
+    this.turnAccumulatedFinalText = '';
     this.currentSessionFinalText = '';
     this.currentSessionInterimText = '';
 

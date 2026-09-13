@@ -169,6 +169,7 @@ export default function App() {
   const isFloorHeldRef = useRef<boolean>(isFloorHeld);
   isFloorHeldRef.current = isFloorHeld;
   const candidateVolumeRef = useRef<number>(0);
+  const latestCandidateSpeechRef = useRef<string>('');
 
   // Setup Backchannel Listener Callback on mount
   useEffect(() => {
@@ -394,10 +395,10 @@ export default function App() {
     const effectiveTimeout = currentTimeout + pauseAnalysis.recommendedGraceMs;
 
     const checkAndSubmit = () => {
-      // Guard 1: If candidate is actively talking/making sound (volume > 25), defer briefly
-      if (candidateVolumeRef.current > 25) {
+      // Guard 1: If candidate is actively talking/making sound (volume > 8), defer auto-submit
+      if (candidateVolumeRef.current > 8) {
         console.log(`[AutoSubmit Guard] Candidate active speech detected (vol: ${candidateVolumeRef.current}%). Deferring submit.`);
-        speechSilenceTimerRef.current = setTimeout(checkAndSubmit, 800);
+        speechSilenceTimerRef.current = setTimeout(checkAndSubmit, 1000);
         return;
       }
 
@@ -407,8 +408,9 @@ export default function App() {
       }
 
       setThoughtGraceActive(false);
-      const textToSubmit = fullText.trim();
+      const textToSubmit = (latestCandidateSpeechRef.current || fullText).trim();
       if (!textToSubmit) return;
+      latestCandidateSpeechRef.current = '';
       agoraVoiceEngine.clearSpeechBuffer();
       setCurrentInterimTranscript('');
       handleCandidateResponse(textToSubmit);
@@ -423,6 +425,7 @@ export default function App() {
       clearTimeout(speechSilenceTimerRef.current);
       speechSilenceTimerRef.current = null;
     }
+    latestCandidateSpeechRef.current = '';
     setCurrentInterimTranscript('');
     agoraVoiceEngine.clearSpeechBuffer();
     setThoughtGraceActive(false);
@@ -451,6 +454,7 @@ export default function App() {
     setThoughtGraceActive(false);
 
     // 3. Clear candidate speech buffer cleanly so new speech starts fresh
+    latestCandidateSpeechRef.current = '';
     agoraVoiceEngine.clearSpeechBuffer();
     setCurrentInterimTranscript('');
 
@@ -462,6 +466,7 @@ export default function App() {
       if (!isProcessingRef.current && !isAISpeakingRef.current) {
         const cleanIncoming = fullText.trim();
         if (!cleanIncoming || isEchoOfLastQuestion(cleanIncoming)) return;
+        latestCandidateSpeechRef.current = cleanIncoming;
         setCurrentInterimTranscript(cleanIncoming);
         scheduleSilenceAutoSubmit(cleanIncoming);
       }
@@ -574,6 +579,7 @@ export default function App() {
                 console.log('[App] Candidate transcript incoming:', cleanIncoming, '| isAISpeaking:', isAISpeakingRef.current, '| isProcessing:', isProcessingRef.current);
                 if (!isProcessingRef.current && !isAISpeakingRef.current) {
                   if (!cleanIncoming || isEchoOfLastQuestion(cleanIncoming)) return;
+                  latestCandidateSpeechRef.current = cleanIncoming;
                   setCurrentInterimTranscript(cleanIncoming);
                   scheduleSilenceAutoSubmit(cleanIncoming);
                 }
@@ -720,6 +726,7 @@ export default function App() {
         console.log('[App] Candidate transcript incoming:', cleanIncoming, '| isAISpeaking:', isAISpeakingRef.current, '| isProcessing:', isProcessingRef.current);
         if (!isProcessingRef.current && !isAISpeakingRef.current) {
           if (!cleanIncoming || isEchoOfLastQuestion(cleanIncoming)) return;
+          latestCandidateSpeechRef.current = cleanIncoming;
           setCurrentInterimTranscript(cleanIncoming);
           scheduleSilenceAutoSubmit(cleanIncoming);
         }
@@ -773,6 +780,7 @@ export default function App() {
     if (speechSilenceTimerRef.current) {
       clearTimeout(speechSilenceTimerRef.current);
     }
+    latestCandidateSpeechRef.current = '';
     agoraVoiceEngine.clearSpeechBuffer();
     candidateVolumeRef.current = 0;
     setCandidateVolume(0);
