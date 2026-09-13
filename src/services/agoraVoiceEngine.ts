@@ -179,24 +179,19 @@ export class AgoraVoiceEngine {
                 ? this.remoteAudioTrack.getVolumeLevel()
                 : 0;
 
-            // If volume drops below threshold (< 0.05) for a finish window, release floor
+            // If volume drops below threshold (< 0.08) for a finish window, release floor
             // ONLY if local TTS is not actively speaking
-            if (volume < 0.05) {
+            if (volume < 0.08) {
               if (!this.remoteAudioSilenceTimeout) {
                 this.remoteAudioSilenceTimeout = setTimeout(() => {
-                  if (
-                    !this.isBrowserSpeaking &&
-                    this.remoteAudioTrack &&
-                    typeof this.remoteAudioTrack.getVolumeLevel === 'function' &&
-                    this.remoteAudioTrack.getVolumeLevel() < 0.05
-                  ) {
+                  if (!this.isBrowserSpeaking) {
                     this._setSpeaking(false);
                   }
                   this.remoteAudioSilenceTimeout = null;
-                }, 500); // 500ms silence tolerance
+                }, 350); // 350ms silence tolerance
               }
-            } else if (volume >= 0.08 && !this.isBrowserSpeaking) {
-              // Remote agent is actively producing audible sound (>8% volume)
+            } else if (volume >= 0.15 && !this.isBrowserSpeaking) {
+              // Remote agent is actively producing audible sound (>15% volume)
               if (this.remoteAudioSilenceTimeout) {
                 clearTimeout(this.remoteAudioSilenceTimeout);
                 this.remoteAudioSilenceTimeout = null;
@@ -392,8 +387,8 @@ export class AgoraVoiceEngine {
       recognition.lang = 'en-US';
 
       recognition.onresult = (event: any) => {
-        // Discard candidate speech if AI is actively speaking (prevents speaker audio from looping back into mic)
-        if (this.isBrowserSpeaking || this.isSpeaking) {
+        // Discard candidate speech ONLY if local browser TTS is actively playing audio through speakers
+        if (this.isBrowserSpeaking) {
           return;
         }
 

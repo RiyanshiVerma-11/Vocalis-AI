@@ -278,35 +278,34 @@ export default function App() {
     const lastQuestion = (lastAIQuestionRef.current || '').toLowerCase().trim();
     if (!lastQuestion) return false;
 
-    // Only apply echo check within 6 seconds of AI speech stopping
+    // Only apply echo check within 1.5s of AI speech stopping (pure acoustic reverberation)
     const msSinceAIStopped = Date.now() - aiFinishedSpeakingAtRef.current;
-    if (msSinceAIStopped > 6000) return false;
+    if (msSinceAIStopped > 1500) return false;
 
     const text = candidateText.toLowerCase().trim();
     if (!text) return false;
 
-    // Exact or long substring match
-    if (lastQuestion.includes(text) && text.length > 8) {
+    // Substring match requires long utterance (>15 chars) and inclusion in AI question
+    if (text.length > 15 && lastQuestion.includes(text)) {
       console.log('[EchoShield] Discarded substring echo of AI question:', text);
       return true;
     }
-    if (text.includes(lastQuestion.slice(0, 25)) && text.length > 12) {
+    if (text.length > 20 && text.includes(lastQuestion.slice(0, 30))) {
       console.log('[EchoShield] Discarded prefix match echo of AI question:', text);
       return true;
     }
 
-    // Word overlap comparison against opening of AI question
+    // High word overlap comparison against AI question (only discard if candidate speech is >75% identical to question words)
     const aiWords = lastQuestion
       .replace(/[^\w\s]/g, '')
       .split(/\s+/)
-      .filter((w) => w.length > 3)
-      .slice(0, 15);
+      .filter((w) => w.length > 3);
 
-    if (aiWords.length >= 3) {
+    if (aiWords.length >= 4) {
       const candidateWords = text.replace(/[^\w\s]/g, '').split(/\s+/).filter((w) => w.length > 3);
-      if (candidateWords.length > 0) {
+      if (candidateWords.length >= 4) {
         const overlap = candidateWords.filter((w) => aiWords.includes(w)).length;
-        if (overlap >= 2 && overlap / candidateWords.length >= 0.5) {
+        if (overlap >= 4 && overlap / candidateWords.length >= 0.75) {
           console.log('[EchoShield] Discarded word overlap echo of AI question:', candidateText);
           return true;
         }
@@ -500,11 +499,6 @@ export default function App() {
 
       // Record last AI question to filter out any acoustic speaker echo
       lastAIQuestionRef.current = cleanDialogue;
-
-      // STOP candidate speech recognition completely while interviewer speaks!
-      // This prevents the computer speakers from echoing into the microphone
-      // and causing self-interruption or echoed transcript loops.
-      agoraVoiceEngine.stopSpeechRecognition();
 
       // Reset candidate interim transcript and speech buffer before interviewer speaks
       if (speechSilenceTimerRef.current) {
@@ -714,6 +708,18 @@ export default function App() {
       candidateVolumeRef.current = vol;
       setCandidateVolume(vol);
     });
+
+    // Arm speech recognition immediately so Chrome requests mic permissions and listens from turn 1
+    agoraVoiceEngine.startSpeechRecognition(
+      (fullText) => {
+        if (!isProcessingRef.current && !isAISpeakingRef.current) {
+          const cleanIncoming = fullText.trim();
+          if (!cleanIncoming || isEchoOfLastQuestion(cleanIncoming)) return;
+          setCurrentInterimTranscript(cleanIncoming);
+          scheduleSilenceAutoSubmit(cleanIncoming);
+        }
+      }
+    );
 
     // ── Join Agora RTC channel + start Conversational AI agent in background ──
     (async () => {
@@ -1222,9 +1228,6 @@ export default function App() {
     }
     setAgoraChannelName(null);
     setAgoraMode('offline');
-
-    // Also stop LiveAvatar session cleanly
-    import('./services/liveAvatarService').then(({ liveAvatarService }) => liveAvatarService.stopSession()).catch(() => {});
 
     if (transcript.length === 0) {
       addToast('Interview Ended', 'Session closed with no transcript recorded.', 'info');

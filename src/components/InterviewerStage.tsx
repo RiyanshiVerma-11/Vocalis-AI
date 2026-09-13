@@ -9,13 +9,10 @@ import {
   Volume2,
   Sparkles,
   Info,
-  Wifi,
-  WifiOff,
 } from 'lucide-react';
 import { InterviewerPersonaModal } from './InterviewerPersonaModal';
 import { TalkingFaceAvatar } from './TalkingFaceAvatar';
 import { CandidateStageTile } from './CandidateStageTile';
-import { useLiveAvatar } from '../services/useLiveAvatar';
 
 import { PanelistReactionType } from '../types';
 
@@ -53,34 +50,6 @@ export const InterviewerStage: React.FC<InterviewerStageProps> = ({
   ambientReactions = {},
 }) => {
   const [selectedPersona, setSelectedPersona] = useState<Interviewer | null>(null);
-
-  // ── LiveAvatar LITE mode integration ─────────────────────────
-  const { status: liveStatus, videoRef: liveVideoRef, startAvatar, stopAvatar, setAvatarListening } = useLiveAvatar();
-  const sessionStartedRef = useRef(false);
-
-  // Auto-start LiveAvatar session when the panel is ready
-  useEffect(() => {
-    if (panel.length > 0 && !sessionStartedRef.current) {
-      sessionStartedRef.current = true;
-      console.log('[InterviewerStage] Starting LiveAvatar session...');
-      startAvatar({ isSandbox: true }).catch(err => {
-        console.warn('[InterviewerStage] LiveAvatar start failed (will use photo fallback):', err.message);
-        sessionStartedRef.current = false;
-      });
-    }
-    return () => {
-      // stop session when component unmounts (interview ends)
-    };
-  }, [panel.length]);
-
-  // Signal avatar listening state
-  useEffect(() => {
-    if (liveStatus === 'connected') {
-      setAvatarListening(isListening && !isAISpeaking);
-    }
-  }, [isListening, isAISpeaking, liveStatus]);
-
-  const isLiveStreaming = liveStatus === 'connected';
 
   const getRoleIcon = (role: string) => {
     switch (role) {
@@ -131,17 +100,6 @@ export const InterviewerStage: React.FC<InterviewerStageProps> = ({
           </h2>
           <span className="hidden sm:inline-flex text-[9px] font-bold text-cyan-300 bg-cyan-500/10 border border-cyan-500/30 px-2 py-0.2 rounded-full items-center gap-1">
             <Sparkles className="w-2.5 h-2.5 text-cyan-400" /> Multi-Role Deliberation Sync
-          </span>
-          {/* LiveAvatar Stream Status */}
-          <span className={`text-[8px] font-bold px-2 py-0.2 rounded-full flex items-center gap-1 border ${
-            isLiveStreaming
-              ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
-              : liveStatus === 'connecting'
-              ? 'text-amber-400 bg-amber-500/10 border-amber-500/30 animate-pulse'
-              : 'text-slate-500 bg-slate-800/50 border-slate-700/40'
-          }`}>
-            {isLiveStreaming ? <Wifi className="w-2 h-2" /> : <WifiOff className="w-2 h-2" />}
-            {isLiveStreaming ? 'LIVE AVATAR' : liveStatus === 'connecting' ? 'CONNECTING...' : 'AVATAR READY'}
           </span>
           {/* Whiteboard Canvas Action */}
           {onOpenWhiteboard && (
@@ -197,17 +155,6 @@ export const InterviewerStage: React.FC<InterviewerStageProps> = ({
         {panel.map((interviewer) => {
           const isSpeakingNow = activeSpeakerId === interviewer.id && isAISpeaking;
           const isTargeted   = selectedTargetInterviewerId === interviewer.id;
-          
-          const isFemaleInterviewer =
-            interviewer.name.toLowerCase().includes('priya') ||
-            interviewer.name.toLowerCase().includes('neha') ||
-            interviewer.voiceName === 'Kore' ||
-            interviewer.voiceName === 'Aoede';
-
-          const isLiveTile =
-            isFemaleInterviewer &&
-            (activeSpeakerId === interviewer.id || (!activeSpeakerId && panel.find(p => p.name.toLowerCase().includes('priya'))?.id === interviewer.id));
-
           const reaction = ambientReactions[interviewer.id];
 
           return (
@@ -256,8 +203,6 @@ export const InterviewerStage: React.FC<InterviewerStageProps> = ({
                   name={interviewer.name}
                   isSpeaking={isSpeakingNow}
                   className="w-full h-full rounded-none"
-                  liveVideoRef={isLiveTile ? liveVideoRef : undefined}
-                  isLiveStreaming={isLiveTile && isLiveStreaming}
                   ambientReaction={reaction}
                 />
 

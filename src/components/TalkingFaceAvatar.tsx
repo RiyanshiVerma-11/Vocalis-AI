@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { liveAvatarService } from '../services/liveAvatarService';
 import { Cpu, Layers, Briefcase, Users, HeartPulse, Sparkles, Volume2 } from 'lucide-react';
 import { PanelistReactionType } from '../types';
 
@@ -14,10 +13,6 @@ export interface TalkingFaceAvatarProps {
   className?: string;
   imgClassName?: string;
   objectPosition?: string;
-  /** If provided, this video element ref is shown as the live avatar stream */
-  liveVideoRef?: React.RefObject<HTMLVideoElement>;
-  /** Whether LiveAvatar is actively connected and streaming */
-  isLiveStreaming?: boolean;
   /** Inactive panelist ambient reaction state */
   ambientReaction?: { reactionType: PanelistReactionType; label: string };
 }
@@ -92,8 +87,6 @@ export const TalkingFaceAvatar: React.FC<TalkingFaceAvatarProps> = ({
   className = '',
   imgClassName = '',
   objectPosition,
-  liveVideoRef,
-  isLiveStreaming = false,
   ambientReaction,
 }) => {
   const [imgError, setImgError] = useState(false);
@@ -101,17 +94,6 @@ export const TalkingFaceAvatar: React.FC<TalkingFaceAvatarProps> = ({
   useEffect(() => {
     injectKF();
   }, []);
-
-  // Ensure video track is attached whenever liveVideoRef mounts or isLiveStreaming turns true
-  useEffect(() => {
-    if (liveVideoRef?.current && isLiveStreaming) {
-      const track = liveAvatarService.getVideoTrack();
-      if (track) {
-        track.attach(liveVideoRef.current);
-        console.log('[TalkingFaceAvatar] Attached LiveAvatar WebRTC video track');
-      }
-    }
-  }, [liveVideoRef, isLiveStreaming]);
 
   const photoSrc = avatarPhoto || avatarUrl;
   const palette = resolvePalette(avatarColor);
@@ -177,22 +159,7 @@ export const TalkingFaceAvatar: React.FC<TalkingFaceAvatarProps> = ({
   return (
     <div style={containerStyle} className={`group flex flex-col items-center justify-center select-none ${className}`}>
 
-      {/* ── 1. LIVE VIDEO STREAM (When LiveAvatar WebRTC is streaming) ── */}
-      {liveVideoRef && (
-        <video
-          ref={liveVideoRef}
-          autoPlay
-          playsInline
-          muted={false}
-          className="absolute inset-0 w-full h-full object-cover z-20 transition-opacity duration-300"
-          style={{
-            display: isLiveStreaming ? 'block' : 'none',
-            objectPosition: objectPosition || '50% 18%',
-          }}
-        />
-      )}
-
-      {/* ── 2. REALISTIC AVATAR PHOTO (Default / Idle / Speaking base) ── */}
+      {/* ── REALISTIC AVATAR PHOTO (Default / Idle / Speaking base) ── */}
       {photoSrc && !imgError ? (
         <div className="absolute inset-0 w-full h-full overflow-hidden">
           <img
@@ -249,14 +216,6 @@ export const TalkingFaceAvatar: React.FC<TalkingFaceAvatarProps> = ({
           <span className="mt-2 text-[10px] font-bold text-slate-300 tracking-wider uppercase text-center truncate max-w-full px-2">
             {name}
           </span>
-        </div>
-      )}
-
-      {/* ── 3. LIVE STREAM CONNECTING PILL (Subtle top banner, non-blocking) ── */}
-      {liveVideoRef && !isLiveStreaming && (
-        <div className="absolute top-2 left-2 z-20 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-900/85 backdrop-blur-md border border-indigo-500/40 text-[8px] font-bold text-indigo-300 shadow-sm animate-pulse">
-          <div className="w-1.5 h-1.5 rounded-full border border-indigo-400 border-t-transparent animate-spin" />
-          <span>LiveAvatar Connecting</span>
         </div>
       )}
 

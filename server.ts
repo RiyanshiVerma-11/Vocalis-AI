@@ -2637,121 +2637,17 @@ VOICE INTERVIEW STYLE:
 
 
 // ─────────────────────────────────────────────────────────────────────────────
-// LIVEAVATAR REAL-TIME VIDEO STREAMING LAYER
-// Uses LiveAvatar LITE mode: we control STT/LLM/TTS, LiveAvatar renders video
-// Docs: https://docs.liveavatar.com/docs/lite-mode/overview.md
-// ─────────────────────────────────────────────────────────────────────────────
-
-// 5. Create LiveAvatar LITE Session Token + Start Session
-app.post('/api/liveavatar/start-session', authenticateToken, async (req, res) => {
-  try {
-    const liveAvatarKey = process.env.LIVE_AVATAR_API_KEY;
-    if (!liveAvatarKey) {
-      return res.status(500).json({ success: false, error: 'LIVE_AVATAR_API_KEY not configured.' });
-    }
-
-    const { avatarId, isSandbox = true } = req.body;
-
-    let resolvedAvatarId = avatarId;
-
-    // If no avatarId given, find a sandbox-compatible public avatar automatically
-    if (!resolvedAvatarId) {
-      const avatarsRes = await fetch('https://api.liveavatar.com/v1/avatars/public?limit=100', {
-        headers: { 'X-API-KEY': liveAvatarKey }
-      });
-      const avatarsData = await avatarsRes.json();
-      const publicAvatars: any[] = avatarsData.data?.results || [];
-
-      for (const av of publicAvatars) {
-        const tokenTestRes = await fetch('https://api.liveavatar.com/v1/sessions/token', {
-          method: 'POST',
-          headers: { 'X-API-KEY': liveAvatarKey, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode: 'LITE', avatar_id: av.id, is_sandbox: isSandbox })
-        });
-        if (tokenTestRes.ok) {
-          resolvedAvatarId = av.id;
-          console.log(`[LiveAvatar] Using sandbox-compatible avatar: "${av.name}" (${av.id})`);
-          break;
-        }
-      }
-    }
-
-    if (!resolvedAvatarId) {
-      return res.status(404).json({ success: false, error: 'No sandbox-compatible avatar found. Try with is_sandbox: false.' });
-    }
-
-    // Create session token
-    const tokenRes = await fetch('https://api.liveavatar.com/v1/sessions/token', {
-      method: 'POST',
-      headers: { 'X-API-KEY': liveAvatarKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode: 'LITE', avatar_id: resolvedAvatarId, is_sandbox: isSandbox })
-    });
-    const tokenData = await tokenRes.json();
-    if (!tokenRes.ok || !tokenData.data?.session_token) {
-      return res.status(500).json({ success: false, error: 'Failed to create session token.', details: tokenData });
-    }
-
-    const { session_id, session_token } = tokenData.data;
-    console.log(`[LiveAvatar] Session token created: ${session_id}`);
-
-    // Start the session
-    const startRes = await fetch('https://api.liveavatar.com/v1/sessions/start', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${session_token}`, 'Content-Type': 'application/json' }
-    });
-    const startData = await startRes.json();
-    if (!startRes.ok || !startData.data?.livekit_url) {
-      return res.status(500).json({ success: false, error: 'Failed to start LiveAvatar session.', details: startData });
-    }
-
-    const { livekit_url, livekit_client_token, ws_url } = startData.data;
-    console.log(`[LiveAvatar] Session STARTED! LiveKit: ${livekit_url} | WS: ${ws_url}`);
-
-    res.json({
-      success: true,
-      sessionId: session_id,
-      sessionToken: session_token,
-      livekitUrl: livekit_url,
-      livekitClientToken: livekit_client_token,
-      wsUrl: ws_url,
-      avatarId: resolvedAvatarId,
-    });
-  } catch (err: any) {
-    console.error('[LiveAvatar] start-session error:', err);
-    res.status(500).json({ success: false, error: err.message });
-  }
+// LIVEAVATAR REAL-TIME VIDEO STREAMING LAYER (DISABLED)
+app.post('/api/liveavatar/start-session', authenticateToken, async (_req, res) => {
+  res.json({ success: true, disabled: true, message: 'LiveAvatar has been disabled.' });
 });
 
-// 6. Stop LiveAvatar Session
-app.post('/api/liveavatar/stop-session', authenticateToken, async (req, res) => {
-  try {
-    const { sessionId, sessionToken } = req.body;
-    if (sessionId && sessionToken) {
-      await fetch(`https://api.liveavatar.com/v1/sessions/${sessionId}/stop`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${sessionToken}` }
-      }).catch((e: any) => console.warn('[LiveAvatar] Stop warning:', e.message));
-      console.log(`[LiveAvatar] Session ${sessionId} stopped.`);
-    }
-    res.json({ success: true });
-  } catch (_) {
-    res.json({ success: true });
-  }
+app.post('/api/liveavatar/stop-session', authenticateToken, async (_req, res) => {
+  res.json({ success: true, disabled: true });
 });
 
-// 7. List LiveAvatar Public Avatars
 app.get('/api/liveavatar/avatars', authenticateToken, async (_req, res) => {
-  try {
-    const liveAvatarKey = process.env.LIVE_AVATAR_API_KEY;
-    if (!liveAvatarKey) return res.status(500).json({ success: false, error: 'LIVE_AVATAR_API_KEY not configured.' });
-    const r = await fetch('https://api.liveavatar.com/v1/avatars/public?limit=100', {
-      headers: { 'X-API-KEY': liveAvatarKey }
-    });
-    const data = await r.json();
-    res.json({ success: true, avatars: data.data?.results || [] });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
-  }
+  res.json({ success: true, disabled: true, avatars: [] });
 });
 
 async function startServer() {
