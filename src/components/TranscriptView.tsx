@@ -51,26 +51,26 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({
     switch (flag.type) {
       case 'contradiction':
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-red-50 text-red-700 border border-red-200 uppercase tracking-wider">
-            <AlertTriangle className="w-3 h-3" /> Contradiction Detected
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-red-950/60 text-red-300 border border-red-800/60 uppercase tracking-wider">
+            <AlertTriangle className="w-3 h-3 text-red-400" /> Contradiction Detected
           </span>
         );
       case 'vague':
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 uppercase tracking-wider">
-            <HelpCircle className="w-3 h-3" /> Vague / Needs Probing
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-950/60 text-amber-300 border border-amber-800/60 uppercase tracking-wider">
+            <HelpCircle className="w-3 h-3 text-amber-400" /> Vague / Needs Probing
           </span>
         );
       case 'missing_impact':
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200 uppercase tracking-wider">
-            <AlertCircle className="w-3 h-3" /> Missing Business/Customer Impact
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-950/60 text-purple-300 border border-purple-800/60 uppercase tracking-wider">
+            <AlertCircle className="w-3 h-3 text-purple-400" /> Missing Business/Customer Impact
           </span>
         );
       case 'strong_insight':
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase tracking-wider">
-            <CheckCircle className="w-3 h-3" /> Strong Architectural Insight
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-950/60 text-emerald-300 border border-emerald-800/60 uppercase tracking-wider">
+            <CheckCircle className="w-3 h-3 text-emerald-400" /> Strong Architectural Insight
           </span>
         );
       default:
@@ -82,8 +82,8 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({
     if (!strategy) return null;
     if (strategy === 'Clarify & Simplify' || strategy === 'Simplify & Rephrase') {
       return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-teal-50 text-teal-700 border border-teal-200">
-          <Sparkles className="w-3 h-3 text-teal-600" /> 💡 Question Rephrased (No Penalty)
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-teal-950/60 text-teal-300 border border-teal-800/60">
+          <Sparkles className="w-3 h-3 text-teal-400" /> 💡 Question Rephrased (No Penalty)
         </span>
       );
     }
@@ -91,32 +91,32 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({
     switch (strategy) {
       case 'Deep Probe':
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
-            <Target className="w-3 h-3" /> Deep Architectural Probe
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-950/60 text-blue-300 border border-blue-800/60">
+            <Target className="w-3 h-3 text-blue-400" /> Deep Architectural Probe
           </span>
         );
       case 'Challenge Assumption':
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-            <Zap className="w-3 h-3" /> Challenge Assumption
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-950/60 text-amber-300 border border-amber-800/60">
+            <Zap className="w-3 h-3 text-amber-400" /> Challenge Assumption
           </span>
         );
       case 'Explore Alternative':
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
-            <Brain className="w-3 h-3" /> Explore Alternatives & Trade-offs
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-950/60 text-purple-300 border border-purple-800/60">
+            <Brain className="w-3 h-3 text-purple-400" /> Explore Alternatives & Trade-offs
           </span>
         );
       case 'Off-Script Pivot':
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-            <Sparkles className="w-3 h-3" /> Dynamic Resume Pivot
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-950/60 text-emerald-300 border border-emerald-800/60">
+            <Sparkles className="w-3 h-3 text-emerald-400" /> Dynamic Resume Pivot
           </span>
         );
       case 'Cross-Role Handoff':
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-            <User className="w-3 h-3" /> Cross-Role Handoff
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-950/60 text-indigo-300 border border-indigo-800/60">
+            <User className="w-3 h-3 text-indigo-400" /> Cross-Role Handoff
           </span>
         );
       default:
@@ -177,7 +177,7 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({
                           : 'bg-indigo-600 text-white'
                       }`}
                     >
-                      {msg.speakerName[0]}
+                      {msg.speakerName?.[0] || '?'}
                     </span>
                     <span className="text-[11px] font-bold text-white">
                       {msg.speakerName}
@@ -227,8 +227,8 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({
                   <div className="flex flex-wrap items-center gap-1.5 mb-1.5 pb-1 border-b border-slate-700/60 select-none">
                     {getStrategyBadge(msg.adaptiveStrategy)}
                     {msg.referencedResumePoint && (
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                        <FileText className="w-3 h-3" /> Resume Highlight: {msg.referencedResumePoint}
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-950/60 text-emerald-300 border border-emerald-800/60">
+                        <FileText className="w-3 h-3 text-emerald-400" /> Resume Highlight: {msg.referencedResumePoint}
                       </span>
                     )}
                   </div>
@@ -247,7 +247,7 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({
                   <div className="mt-1.5 pt-1 border-t border-indigo-500/20 flex flex-wrap items-center gap-1 text-[9px]">
                     {msg.adaptiveAnalysis.depthLevel === 'Clarification Requested' ||
                     (msg.adaptiveAnalysis.detectedKeywords && msg.adaptiveAnalysis.detectedKeywords.includes('clarification_request')) ||
-                    /rephrase|repeat|clarify|what do you mean|didn't understand|could you explain/i.test(msg.content) ? (
+                    /(?:could|can)\s+you\s+(?:repeat|clarify|rephrase)|what\s+do\s+you\s+mean|didn't\s+(?:quite\s+)?understand|please\s+(?:clarify|rephrase|repeat)|pardon\s+me/i.test(msg.content) ? (
                       <span className="inline-flex items-center gap-1 text-teal-300 bg-teal-950/80 px-1.5 py-0.2 rounded border border-teal-700/60 font-semibold text-[9px]">
                         <Sparkles className="w-2.5 h-2.5 text-teal-400" /> Clarification Requested (No Penalty)
                       </span>

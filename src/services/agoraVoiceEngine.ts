@@ -52,13 +52,13 @@ export class AgoraVoiceEngine {
   private volAnimFrameId: number | null = null;
   private webSpeechRecognition: any = null;
   public micAnalyser: AnalyserNode | null = null;
+  private freqDataArray: Uint8Array<ArrayBuffer> | null = null;
   // Turn speech accumulation buffer: guarantees candidate speech is preserved seamlessly
   // across pauses, phrase boundaries, and Chromium Web Speech API reconnects.
   private turnAccumulatedFinalText = '';
   private currentSessionFinalText = '';
   private currentSessionInterimText = '';
   private activeUtterance: SpeechSynthesisUtterance | null = null;
-  private speechSilenceTimer: any = null;
   private restartDebounceTimer: any = null;
   private outputAudioCtx: AudioContext | null = null;
   private currentSourceNode: AudioBufferSourceNode | null = null;
@@ -91,9 +91,11 @@ export class AgoraVoiceEngine {
 
   public getMicFrequencyData(): Uint8Array | null {
     if (!this.micAnalyser || this.isSpeaking || this.isBrowserSpeaking) return null;
-    const data = new Uint8Array(this.micAnalyser.frequencyBinCount);
-    this.micAnalyser.getByteFrequencyData(data);
-    return data;
+    if (!this.freqDataArray || this.freqDataArray.length !== this.micAnalyser.frequencyBinCount) {
+      this.freqDataArray = new Uint8Array(this.micAnalyser.frequencyBinCount);
+    }
+    this.micAnalyser.getByteFrequencyData(this.freqDataArray);
+    return this.freqDataArray;
   }
 
   public clearSpeechBuffer() {
@@ -108,13 +110,18 @@ export class AgoraVoiceEngine {
 
   public setIsSpeaking(val: boolean) {
     this.isSpeaking = val;
-    this.isBrowserSpeaking = val;
+    if (!val) {
+      if (this.remoteAudioSilenceTimeout) {
+        clearTimeout(this.remoteAudioSilenceTimeout);
+        this.remoteAudioSilenceTimeout = null;
+      }
+    }
     this.callbacks.onSpeakingStateChange?.(val);
   }
 
   // Play PCM audio from Studio/Gemini TTS using a unified, clean AudioContext
   public async playGeminiTTS(base64Data: string, sampleRate = 24000): Promise<void> {
-    this.interrupt();
+    this.interrupt(true);
     this.isBrowserSpeaking = true;
     this._setSpeaking(true);
 
@@ -198,9 +205,9 @@ export class AgoraVoiceEngine {
         this.client.enableAudioVolumeIndicator();
         this.client.on('volume-indicator', (volumes) => {
           for (const vol of volumes) {
-            // Check if remote agent is actively sending audio
+            // Check if remote agent is actively sending audio (must be genuinely audible and NOT during candidate's turn)
             if (vol.uid !== this.currentUid) {
-              if (vol.level > 5) {
+              if (vol.level > 25 && !this.isListening) {
                 if (this.remoteAudioSilenceTimeout) {
                   clearTimeout(this.remoteAudioSilenceTimeout);
                   this.remoteAudioSilenceTimeout = null;
@@ -275,8 +282,8 @@ export class AgoraVoiceEngine {
                   this.remoteAudioSilenceTimeout = null;
                 }, 350); // 350ms silence tolerance
               }
-            } else if (volume >= 0.15 && !this.isBrowserSpeaking) {
-              // Remote agent is actively producing audible sound (>15% volume)
+            } else if (volume >= 0.25 && !this.isBrowserSpeaking && !this.isListening) {
+              // Remote agent is actively producing audible sound (>25% volume) AND candidate is not armed to speak
               if (this.remoteAudioSilenceTimeout) {
                 clearTimeout(this.remoteAudioSilenceTimeout);
                 this.remoteAudioSilenceTimeout = null;
@@ -326,9 +333,9 @@ export class AgoraVoiceEngine {
         this.callbacks.onConnectionStateChange?.(state);
       });
 
-      await this.client.join(this.appId, channelName, token, uid);
+      const assignedUid = await this.client.join(this.appId, channelName, token, uid);
       this.currentChannelName = channelName;
-      this.currentUid = uid;
+      this.currentUid = assignedUid ?? uid;
       this.isJoined = true;
 
       // ── Publish local microphone track to Agora SD-RTN™ channel ──
@@ -386,6 +393,10 @@ export class AgoraVoiceEngine {
         this.localMicTrack.close();
         this.localMicTrack = null;
       }
+      if (this.remoteAudioTrack) {
+        try { this.remoteAudioTrack.stop(); } catch (_) {}
+        this.remoteAudioTrack = null;
+      }
       if (this.client) {
         try {
           if (this.isJoined) {
@@ -408,9 +419,32 @@ export class AgoraVoiceEngine {
         clearTimeout(this.remoteAudioSilenceTimeout);
         this.remoteAudioSilenceTimeout = null;
       }
+      this.remoteAudioTrack = null;
       this.isJoined = false;
       this.isListening = false;
       this._setSpeaking(false);
+    }
+  }
+
+  // Ensure local mic track is created and published once to avoid double getUserMedia calls
+  private async _ensureLocalMicTrack(): Promise<IMicrophoneAudioTrack | null> {
+    if (this.localMicTrack) return this.localMicTrack;
+    if (!this.client || !this.isJoined) return null;
+    try {
+      this.localMicTrack = await AgoraRTC.createMicrophoneAudioTrack({
+        encoderConfig: 'high_quality_stereo',
+        AEC: true,
+        ANS: true,
+        AGC: true,
+      });
+      if (this.client && this.isJoined) {
+        await this.client.publish([this.localMicTrack]);
+        console.log('[AgoraVoiceEngine] 🎙️ Candidate microphone PUBLISHED to Agora SD-RTN™ channel.');
+      }
+      return this.localMicTrack;
+    } catch (err) {
+      console.warn('[AgoraVoiceEngine] Microphone audio track acquisition notice:', err);
+      return null;
     }
   }
 
@@ -424,6 +458,11 @@ export class AgoraVoiceEngine {
     this.isListening = true;
     this.isSpeaking = false;
     this.isBrowserSpeaking = false;
+    if (this.remoteAudioSilenceTimeout) {
+      clearTimeout(this.remoteAudioSilenceTimeout);
+      this.remoteAudioSilenceTimeout = null;
+    }
+    this.callbacks.onSpeakingStateChange?.(false);
 
     // Reset turn text buffers completely so this turn starts with 0 residual text
     this.turnAccumulatedFinalText = '';
@@ -435,27 +474,9 @@ export class AgoraVoiceEngine {
       this.restartDebounceTimer = null;
     }
 
-    // 1. Background Agora mic publishing (non-blocking, only once if not already published)
+    // 1. Ensure Agora mic publishing before arming visualizer or recognition
     if (this.isJoined && this.client && !this.localMicTrack) {
-      (async () => {
-        try {
-          this.localMicTrack = await AgoraRTC.createMicrophoneAudioTrack({
-            AEC: true, // Acoustic Echo Cancellation
-            ANS: true, // Automatic Noise Suppression
-            AGC: true, // Automatic Gain Control
-          }).catch((err) => {
-            console.warn('[AgoraVoiceEngine] createMicrophoneAudioTrack failed:', err);
-            return null;
-          });
-          if (this.localMicTrack && this.client && this.isJoined) {
-            await this.client.publish([this.localMicTrack]).catch((err) => {
-              console.warn('[AgoraVoiceEngine] Publish mic track failed:', err);
-            });
-          }
-        } catch (err) {
-          console.warn('[AgoraVoiceEngine] Non-critical Agora mic publish warning:', err);
-        }
-      })();
+      await this._ensureLocalMicTrack();
     }
 
     // 2. Start Web Speech API recognizer with a FRESH instance (forceFresh = true)
@@ -505,8 +526,8 @@ export class AgoraVoiceEngine {
       };
 
       recognition.onresult = (event: any) => {
-        // Acoustic Echo Shield: Drop mic recognition immediately if AI is speaking
-        if (this.isSpeaking || this.isBrowserSpeaking) {
+        // Acoustic Echo Shield: Drop mic recognition immediately ONLY while local TTS is actively speaking
+        if (this.isBrowserSpeaking) {
           return;
         }
 
@@ -635,7 +656,7 @@ export class AgoraVoiceEngine {
   // ─── Interrupt AI speech ─────────────────────────────────
   // Mutes the remote audio track immediately. The server agent
   // is notified separately via /api/interview/turn with interrupted:true
-  public interrupt(): void {
+  public interrupt(silent: boolean = false): void {
     if (this.remoteAudioTrack) {
       try {
         this.remoteAudioTrack.stop();
@@ -664,11 +685,18 @@ export class AgoraVoiceEngine {
       window.speechSynthesis.cancel();
     }
 
+    this.activeUtterance = null;
+    if (typeof window !== 'undefined') {
+      (window as any).__vocalis_active_utterance = null;
+    }
+
     this.isBrowserSpeaking = false;
 
     if (this.isSpeaking) {
       this._setSpeaking(false);
-      this.callbacks.onInterrupted?.();
+      if (!silent) {
+        this.callbacks.onInterrupted?.();
+      }
     }
   }
 
@@ -727,8 +755,8 @@ export class AgoraVoiceEngine {
         analyser.getByteFrequencyData(data);
         const avg = data.reduce((a, b) => a + b, 0) / data.length;
         const rawVol = Math.min(100, Math.round((avg / 128) * 100));
-        // Suppress volume while AI is speaking so speaker audio bleed never triggers false candidate speaking
-        const vol = (this.isSpeaking || this.isBrowserSpeaking) ? 0 : rawVol;
+        // Suppress volume while local AI TTS is actively speaking so speaker audio bleed never triggers false candidate speaking
+        const vol = this.isBrowserSpeaking ? 0 : rawVol;
         onVolume(vol);
         this.volAnimFrameId = requestAnimationFrame(tick);
       };
@@ -876,6 +904,11 @@ export class AgoraVoiceEngine {
         isFinished = true;
         clearTimeout(safetyTimer);
         clearInterval(heartbeat);
+        if ('speechSynthesis' in window && window.speechSynthesis.speaking) {
+          try {
+            window.speechSynthesis.cancel();
+          } catch (_) {}
+        }
         this.activeUtterance = null;
         (window as any).__vocalis_active_utterance = null;
         this.isBrowserSpeaking = false;
@@ -901,12 +934,27 @@ export class AgoraVoiceEngine {
   // ─── Full cleanup ────────────────────────────────────────
   public cleanup(): void {
     this.isBrowserSpeaking = false;
-    this.interrupt();
+    this.interrupt(true);
     this.stopSpeechRecognition();
     this.leaveChannel().catch(() => {});
 
+    if (this.currentMicVisualizerCleanup) {
+      try {
+        this.currentMicVisualizerCleanup();
+      } catch (_) {}
+      this.currentMicVisualizerCleanup = null;
+    }
+
+    if (this.outputAudioCtx && this.outputAudioCtx.state !== 'closed') {
+      try {
+        this.outputAudioCtx.close().catch(() => {});
+      } catch (_) {}
+      this.outputAudioCtx = null;
+    }
+
     if (this.volAnimFrameId !== null) {
       cancelAnimationFrame(this.volAnimFrameId);
+      this.volAnimFrameId = null;
     }
     if (this.remoteAudioSilenceCheckInterval) {
       clearInterval(this.remoteAudioSilenceCheckInterval);
@@ -916,19 +964,32 @@ export class AgoraVoiceEngine {
       clearTimeout(this.remoteAudioSilenceTimeout);
       this.remoteAudioSilenceTimeout = null;
     }
-    if (this.speechSilenceTimer) {
-      clearTimeout(this.speechSilenceTimer);
-    }
+    this.freqDataArray = null;
+    this.activeUtterance = null;
+  }
+
+  // ─── Drop-in Compatibility Aliases for AudioEngine ────────
+  public async speak(
+    text: string,
+    voiceName: string = 'Kore',
+    pitch = 1.0,
+    rate = 1.0
+  ): Promise<void> {
+    return this.speakWithBrowserFallback(text, voiceName, pitch, rate);
+  }
+
+  public setSpeaking(val: boolean): void {
+    this.setIsSpeaking(val);
   }
 
   // ─── Private helpers ─────────────────────────────────────
   private _setSpeaking(val: boolean) {
+    if (this.isListening && val && !this.isBrowserSpeaking) {
+      // If candidate turn is active (isListening === true) and local browser TTS is NOT speaking,
+      // ignore spurious remote Agora track volume pulses! Candidate has the floor.
+      return;
+    }
     this.isSpeaking = val;
-    // NOTE: Do NOT call clearSpeechBuffer() here.
-    // _setSpeaking is called by the remote Agora agent's audio track events (silence check interval).
-    // If we aborted recognition every time the remote track changes state, it would create a
-    // constant abort→restart loop on Vercel (where Agora cloud agent is active), causing mic
-    // flickering and lost transcripts. Local TTS is handled separately via isBrowserSpeaking.
     this.callbacks.onSpeakingStateChange?.(val);
   }
 }

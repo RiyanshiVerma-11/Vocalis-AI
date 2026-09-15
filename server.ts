@@ -38,9 +38,9 @@ app.use((_req, res, next) => {
   const allowedOrigin =
     process.env.NODE_ENV !== 'production' || !origin || appUrl === '*'
       ? '*'
-      : origin === appUrl
+      : origin === appUrl || origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')
       ? origin
-      : '';
+      : appUrl;
   if (allowedOrigin) res.header('Access-Control-Allow-Origin', allowedOrigin);
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -71,8 +71,8 @@ const JWT_SECRET = process.env.JWT_SECRET;
 function getMailTransporter() {
   const host = process.env.SMTP_HOST || 'smtp.gmail.com';
   const port = parseInt(process.env.SMTP_PORT || '465', 10);
-  const user = process.env.SMTP_USER || 'riyanshi.verma.5356@gmail.com';
-  const pass = process.env.SMTP_PASS || 'jcdvxxnbijifjpdq';
+  const user = process.env.SMTP_USER || '';
+  const pass = process.env.SMTP_PASS || '';
 
   if (user && pass) {
     return nodemailer.createTransport({

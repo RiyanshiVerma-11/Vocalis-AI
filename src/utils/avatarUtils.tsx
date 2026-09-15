@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   Cpu,
   Layers,
@@ -10,6 +10,7 @@ import {
   Building2,
   Sparkles,
 } from 'lucide-react';
+import { TalkingFaceAvatar } from '../components/TalkingFaceAvatar';
 
 export const renderAvatarIcon = (iconName?: string, iconClassName = 'w-4 h-4 text-white') => {
   switch (iconName) {
@@ -42,8 +43,6 @@ export const getAvatarGradientClass = (avatarColor?: string) => {
   return 'bg-gradient-to-br from-indigo-600 to-purple-700';
 };
 
-import { TalkingFaceAvatar } from '../components/TalkingFaceAvatar';
-
 export interface InterviewerAvatarProps {
   avatarUrl?: string;
   avatarPhoto?: string;
@@ -67,5 +66,3 @@ export const InterviewerAvatar: React.FC<InterviewerAvatarProps> = (props) => {
     />
   );
 };
-
-

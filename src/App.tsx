@@ -578,7 +578,8 @@ export default function App() {
           setIsAISpeaking(false);
           isAISpeakingRef.current = false;
           agoraVoiceEngine.setIsSpeaking(false);
-          agoraVoiceEngine.muteRemoteAudioTrack(false);
+          // Keep remote audio track muted so cloud agent background noise does not leak into candidate turn
+          agoraVoiceEngine.muteRemoteAudioTrack(true);
 
           if (speechSilenceTimerRef.current) {
             clearTimeout(speechSilenceTimerRef.current);
@@ -593,8 +594,13 @@ export default function App() {
           }
           // 300ms acoustic reverb decay delay so physical room speaker vibrations drop to zero before opening candidate mic
           reverbDecayTimerRef.current = setTimeout(() => {
-            if (isListeningRef.current && currentTurnIdRef.current === turnId && inInterviewRef.current) {
+            if (currentTurnIdRef.current === turnId && inInterviewRef.current) {
               console.log('[App] 🎙️ Reverb decayed. Arming microphone for candidate turn...');
+              setIsAISpeaking(false);
+              isAISpeakingRef.current = false;
+              agoraVoiceEngine.setIsSpeaking(false);
+              setIsListening(true);
+              isListeningRef.current = true;
               agoraVoiceEngine.startSpeechRecognition(
                 (fullText) => {
                   const cleanIncoming = fullText.trim();
@@ -606,7 +612,14 @@ export default function App() {
                     scheduleSilenceAutoSubmit(cleanIncoming);
                   }
                 }
-              );
+              ).then((started) => {
+                if (started) {
+                  agoraVoiceEngine.initMicVisualizer((vol) => {
+                    candidateVolumeRef.current = vol;
+                    setCandidateVolume(vol);
+                  });
+                }
+              });
             }
           }, 300);
         }

@@ -43,6 +43,22 @@ export const ExperienceRatioVisualizer: React.FC<ExperienceRatioVisualizerProps>
   const midPct = total > 0 ? Math.round((midCount / total) * 100) : 0;
   const seniorPct = total > 0 ? Math.round((seniorCount / total) * 100) : 0;
 
+  // Normalized segment widths to strictly guarantee sum <= 100% without bar track overflow
+  const rawSum = experienceBreakdown.reduce((sum, item) => sum + (item.count > 0 ? Math.max(item.percentage, 3) : 0), 0) || 100;
+
+  let healthLabel = 'Balanced Funnel';
+  let healthColor = 'text-emerald-600';
+  if (seniorPct >= 55) {
+    healthLabel = 'Top-Heavy (Senior Focused)';
+    healthColor = 'text-purple-600';
+  } else if (juniorPct >= 55) {
+    healthLabel = 'Foundational (Entry Focused)';
+    healthColor = 'text-blue-600';
+  } else if (midPct >= 50) {
+    healthLabel = 'Mid-Tier Clustered';
+    healthColor = 'text-indigo-600';
+  }
+
   const getTierIcon = (tier: ExperienceTier) => {
     switch (tier) {
       case 'fresher':
@@ -106,7 +122,8 @@ export const ExperienceRatioVisualizer: React.FC<ExperienceRatioVisualizerProps>
           {experienceBreakdown.map((item) => {
             const isHovered = hoveredTier === item.tier;
             const isSelected = selectedExperienceFilter === item.tier;
-            const widthPct = Math.max(item.percentage, item.count > 0 ? 3 : 0);
+            const effectiveWeight = item.count > 0 ? Math.max(item.percentage, 3) : 0;
+            const widthPct = effectiveWeight > 0 ? (effectiveWeight / rawSum) * 100 : 0;
 
             return (
               <div
@@ -283,7 +300,7 @@ export const ExperienceRatioVisualizer: React.FC<ExperienceRatioVisualizerProps>
 
         <div className="flex items-center gap-2 self-stretch md:self-auto shrink-0">
           <span className="text-[11px] font-semibold text-slate-600 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-2xs">
-            Distribution Health: <strong className="text-emerald-600 font-bold">Balanced Funnel</strong>
+            Distribution Health: <strong className={`${healthColor} font-bold`}>{healthLabel}</strong>
           </span>
         </div>
       </div>

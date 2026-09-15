@@ -44,12 +44,13 @@ export const DemographicTransparencyModal: React.FC<DemographicTransparencyModal
 
   const filteredList = candidates.filter((c) => {
     const matchesGender = filterGender === 'all' || c.gender === filterGender;
+    const q = filterQuery.toLowerCase();
     const matchesQuery =
       !filterQuery ||
-      c.name.toLowerCase().includes(filterQuery.toLowerCase()) ||
-      c.role.toLowerCase().includes(filterQuery.toLowerCase()) ||
-      c.city.toLowerCase().includes(filterQuery.toLowerCase());
-    return matchesGender && matchesQuery;
+      (c.name && c.name.toLowerCase().includes(q)) ||
+      (c.role && c.role.toLowerCase().includes(q)) ||
+      (c.city && c.city.toLowerCase().includes(q));
+    return matchesGender && Boolean(matchesQuery);
   });
 
   return (
