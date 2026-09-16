@@ -32,6 +32,7 @@
 
 ---
 
+<span id="table-of-contents"></span><a name="table-of-contents"></a>
 ## 📌 Table of Contents
 
 - [Executive Summary](#executive-summary)
@@ -40,14 +41,14 @@
 - [Core Platform Capabilities Matrix](#core-platform-capabilities-matrix)
 - [System Architecture](#system-architecture)
   - [1. High-Level Dual-Workspace Component Architecture](#1-high-level-dual-workspace-component-architecture)
-  - [2. Agora Conversational AI Cloud Pipeline](#2-agora-conversational-ai-cloud-pipeline-agora-agents-v270)
+  - [2. Agora Conversational AI Cloud Pipeline](#2-agora-conversational-ai-cloud-pipeline)
   - [3. Sub-100ms VAD Barge-In & Deliberation Sequence](#3-sub-100ms-vad-barge-in--deliberation-sequence)
   - [4. Dynamic Calibration State Machine](#4-dynamic-calibration-state-machine)
-  - [5. Recruiter Hiring Intelligence Pipeline](#5-recruiter-hiring-intelligence--merit-plus-parity-pipeline)
+  - [5. Recruiter Hiring Intelligence Pipeline](#5-recruiter-hiring-intelligence-pipeline)
 - [The AI Interview Committee & Deliberation Bus](#the-ai-interview-committee--deliberation-bus)
 - [Key Core Capabilities](#key-core-capabilities)
 - [Workspace Modes](#workspace-modes)
-- [Interactive Photorealistic Avatar Engine](#interactive-photorealistic-avatar-engine)
+- [High-Fidelity Multi-Persona Visual Studio](#high-fidelity-multi-persona-visual-studio)
 - [API Specifications](#api-specifications)
 - [Repository Structure](#repository-structure)
 - [Quick Start & Installation](#quick-start--installation)
@@ -57,14 +58,18 @@
 
 ---
 
+<span id="executive-summary"></span><span id="-executive-summary"></span><a name="executive-summary"></a>
 ## 💡 Executive Summary
 
 **Vocalis AI** is an enterprise-ready, autonomous multi-role AI voice interviewing platform built with Agora's official **Conversational AI Agent SDK (`agora-agents` v2.7.0)**. Traditional AI interview tools deploy a single static persona that listens passively to one-off text prompts. In contrast, **Vocalis AI** deploys a dynamic panel of 5 specialized AI personas—**Lead Systems Architect**, **Principal Product Manager**, **VP of Engineering**, **Enterprise Client Director**, and **Lead Org Psychologist**.
 
 The audio engine streams over the **Agora Software-Defined Real-Time Network (SDRTN)** with sub-100ms Voice Activity Detection (VAD) barge-in. The live voice pipeline orchestrates **Deepgram Nova-3 (ASR)** ➔ **Groq Qwen 3.8 27B / Compound Mini (Sub-100ms LLM)** ➔ **MiniMax / ElevenLabs (TTS)** directly in the cloud. After every response, **Google Gemini 2.5 Flash** coordinates cross-functional deliberation backstage to evaluate answer depth, detect vague buzzwords or resume contradictions, adjust interview difficulty dynamically (Foundational → Staff/Principal), and generate an **executive evaluation scorecard backed by verbatim transcript quote citations**.
 
+[▲ Back to Top](#table-of-contents)
+
 ---
 
+<span id="live-production-deployments"></span><span id="-live-production-deployments"></span><a name="live-production-deployments"></a>
 ## 🌐 Live Production Deployments
 
 | Component | Platform | Direct URL | Status |
@@ -72,8 +77,11 @@ The audio engine streams over the **Agora Software-Defined Real-Time Network (SD
 | **Frontend Application** | **Vercel** | **[https://vocalis-ai-phi.vercel.app](https://vocalis-ai-phi.vercel.app/)** | 🟢 **Live** |
 | **Backend API & Real-Time Engine** | **Render** | **[https://vocalis-ai-ty8j.onrender.com](https://vocalis-ai-ty8j.onrender.com/)** | 🟢 **Live** |
 
+[▲ Back to Top](#table-of-contents)
+
 ---
 
+<span id="agora-conversational-ai-engine"></span><span id="-agora-conversational-ai-engine"></span><span id="agora-pipeline"></span><a name="agora-conversational-ai-engine"></a><a name="agora-pipeline"></a>
 ## 🎙️ Agora Conversational AI Engine
 
 Vocalis AI is built with the official `agora-agents` TypeScript SDK to deploy autonomous voice agents directly onto Agora's SDRTN media channels:
@@ -106,8 +114,11 @@ Candidate Speaker ◄──────────── Agora Audio Stream (Op
 | **Client RTC Engine** | `agora-rtc-sdk-ng` subscribing to remote audio tracks with automated `.play()` | ✅ **100% Verified** |
 | **Lifecycle & Teardown** | Clean graceful shutdown via `session.stop()` and `agoraClient.stopAgent(agentId)` | ✅ **100% Verified** |
 
+[▲ Back to Top](#table-of-contents)
+
 ---
 
+<span id="core-platform-capabilities-matrix"></span><span id="-core-platform-capabilities-matrix"></span><a name="core-platform-capabilities-matrix"></a>
 ## 🎯 Core Platform Capabilities Matrix
 
 Vocalis AI implements 11 core enterprise conversational interviewing capabilities:
@@ -126,10 +137,14 @@ Vocalis AI implements 11 core enterprise conversational interviewing capabilitie
 | **10. Evidence-Based Feedback** | Final assessment report with verbatim quote citations linked to exact timestamped transcript turns. | `FinalAssessmentModal` | ✅ **Fully Integrated** |
 | **11. Clear AI Disclosure** | Persistent `AIDisclosureBanner` explicitly notifying candidate they are interacting with an AI panel. | Top Banner Notice | ✅ **Fully Integrated** |
 
+[▲ Back to Top](#table-of-contents)
+
 ---
 
+<span id="system-architecture"></span><span id="-system-architecture"></span><span id="architecture--diagrams"></span><span id="architecture-diagrams"></span><a name="system-architecture"></a><a name="architecture-diagrams"></a>
 ## 🏗️ System Architecture
 
+<span id="1-high-level-dual-workspace-component-architecture"></span>
 ### 1. High-Level Dual-Workspace Component Architecture
 
 ```mermaid
@@ -206,6 +221,7 @@ graph TD
 
 ---
 
+<span id="2-agora-conversational-ai-cloud-pipeline"></span><span id="2-agora-conversational-ai-cloud-pipeline-agora-agents-v270"></span>
 ### 2. Agora Conversational AI Cloud Pipeline (`agora-agents` v2.7.0)
 
 ```mermaid
@@ -238,6 +254,7 @@ flowchart LR
 
 ---
 
+<span id="3-sub-100ms-vad-barge-in--deliberation-sequence"></span><span id="3-sub-100ms-vad-barge-in-deliberation-sequence"></span>
 ### 3. Sub-100ms VAD Barge-In & Deliberation Sequence
 
 ```mermaid
@@ -283,6 +300,7 @@ sequenceDiagram
 
 ---
 
+<span id="4-dynamic-calibration-state-machine"></span>
 ### 4. Dynamic Calibration State Machine
 
 ```mermaid
@@ -313,6 +331,7 @@ flowchart TD
 
 ---
 
+<span id="5-recruiter-hiring-intelligence-pipeline"></span><span id="5-recruiter-hiring-intelligence--merit-plus-parity-pipeline"></span>
 ### 5. Recruiter Hiring Intelligence & Merit-Plus-Parity Pipeline
 
 ```mermaid
@@ -352,8 +371,11 @@ flowchart TD
     end
 ```
 
+[▲ Back to Top](#table-of-contents)
+
 ---
 
+<span id="the-ai-interview-committee--deliberation-bus"></span><span id="the-ai-interview-committee-deliberation-bus"></span><span id="-the-ai-interview-committee--deliberation-bus"></span><span id="ai-interview-committee"></span><a name="the-ai-interview-committee--deliberation-bus"></a>
 ## 👥 The AI Interview Committee & Deliberation Bus
 
 Vocalis AI deploys a balanced, 5-persona cross-functional panel. Each persona maintains a distinct voice profile, focus area, and evaluation bias, interconnected through a shared deliberation bus:
@@ -395,8 +417,11 @@ graph TD
 | **Neha Kapoor** | Enterprise Customer | SLAs, Zero-Downtime, Compliance, Security | Protects enterprise trust; challenges breaking API changes and downtime. |
 | **Dr. Meera Rao** | Org Psychologist | STAR Framework, EQ, Conflict Resolution | Evaluates personal accountability vs team "we" claims and growth mindset. |
 
+[▲ Back to Top](#table-of-contents)
+
 ---
 
+<span id="key-core-capabilities"></span><span id="-key-core-capabilities"></span><a name="key-core-capabilities"></a>
 ## 🚀 Key Core Capabilities
 
 1. **🎙️ Sub-100ms VAD Barge-In & Voice Streaming:** Powered by Agora RTC Engine (`agora-rtc-sdk-ng`). Speech recognition automatically pauses when the candidate holds the floor (`Hold Floor` mode) and yields control smoothly.
@@ -406,8 +431,11 @@ graph TD
 5. **📄 Verbatim Quote-Citing Executive Scorecards:** Generates 360° hiring reports featuring overall hiring recommendations, radar competency breakdown, and transcript quote citations.
 6. **🔒 Nodemailer SMTP OTP & Auth Sessions:** Demo authentication with instant 1-click test login presets for Candidates (`candidate@vocalis.ai`) and Hiring Teams (`recruiter@vocalis.ai`).
 
+[▲ Back to Top](#table-of-contents)
+
 ---
 
+<span id="workspace-modes"></span><span id="-workspace-modes"></span><a name="workspace-modes"></a>
 ## 💻 Workspace Modes
 
 Vocalis AI features two tailored workspace environments:
@@ -445,8 +473,11 @@ A full enterprise-grade hiring intelligence hub for talent acquisition leaders. 
 - **`DemographicTransparencyModal`** — Full audit report of the evaluated cohort: gender ratio breakdown with goal tracking (from recruiter's `diversityGoal` profile field), individual candidate list filterable by gender, score distribution comparison, and direct link to parity shortlist.
 - **`ParityShortlistModal`** — Side-by-side merit-plus-parity shortlist builder. Recruiter sets a target female/male ratio and cohort size; the system surfaces the highest-scoring candidates from each group meeting the threshold. Each candidate card is clickable to open the 360° scorecard drawer.
 
+[▲ Back to Top](#table-of-contents)
+
 ---
 
+<span id="high-fidelity-multi-persona-visual-studio"></span><span id="-high-fidelity-multi-persona-visual-studio"></span><span id="interactive-photorealistic-avatar-engine"></span><span id="visual-studio"></span><a name="high-fidelity-multi-persona-visual-studio"></a><a name="interactive-photorealistic-avatar-engine"></a>
 ## 🎭 High-Fidelity Multi-Persona Visual Studio
 
 Vocalis AI features a rich, responsive visual interviewer presence powered by the **TalkingFaceAvatar** and **InterviewerStage** component architecture:
@@ -456,8 +487,11 @@ Vocalis AI features a rich, responsive visual interviewer presence powered by th
 - **Backstage Ambient Reactions:** Inactive panelists visually display real-time micro-state reaction badges (Taking Notes 📝, Skeptical 🤔, Nodding 👍, Concerned ⚠️, Intrigued ✨) driven by backstage Gemini deliberation.
 - **Interactive Persona Inspection:** Dedicated modal drawer for reviewing each panelist's evaluation rubric, focus areas, voice characteristics, and system prompt.
 
+[▲ Back to Top](#table-of-contents)
+
 ---
 
+<span id="api-specifications"></span><span id="api-specification"></span><span id="-api-specifications"></span><a name="api-specifications"></a><a name="api-specification"></a>
 ## 📡 API Specifications
 
 ### 1. Agora Conversational AI Lifecycle Endpoints
@@ -634,8 +668,11 @@ Content-Type: application/json
 }
 ```
 
+[▲ Back to Top](#table-of-contents)
+
 ---
 
+<span id="repository-structure"></span><span id="-repository-structure"></span><a name="repository-structure"></a>
 ## 📁 Repository Structure
 
 ```
@@ -697,8 +734,11 @@ Content-Type: application/json
     └── utils/                         # Jargon booster, rubric parser & audio visualizer utilities
 ```
 
+[▲ Back to Top](#table-of-contents)
+
 ---
 
+<span id="quick-start--installation"></span><span id="quick-start-installation"></span><span id="quick-start"></span><span id="-quick-start--installation"></span><a name="quick-start--installation"></a><a name="quick-start"></a>
 ## ⚡ Quick Start & Installation
 
 ### Prerequisites
@@ -741,8 +781,11 @@ npm run dev
 ```
 Open **`http://localhost:3000`** in your browser.
 
+[▲ Back to Top](#table-of-contents)
+
 ---
 
+<span id="environment-configuration"></span><span id="-environment-configuration"></span><a name="environment-configuration"></a>
 ## 🛡️ Environment Configuration
 
 | Variable | Description | Managed by Agora? | Status |
@@ -759,8 +802,11 @@ Open **`http://localhost:3000`** in your browser.
 | `JWT_SECRET` | Secret key for signed session authentication tokens | N/A | **Configured** |
 | `SMTP_USER` / `PASS` | Nodemailer SMTP credentials for email OTPs | Optional | **Configurable via .env** |
 
+[▲ Back to Top](#table-of-contents)
+
 ---
 
+<span id="verification--testing"></span><span id="verification-testing"></span><span id="-verification--testing"></span><a name="verification--testing"></a><a name="verification-testing"></a>
 ## 🧪 Verification & Testing
 
 Verify system compilation, type correctness, and linting rules:
@@ -773,12 +819,17 @@ npm run lint
 npm run build
 ```
 
+[▲ Back to Top](#table-of-contents)
+
 ---
 
+<span id="license--acknowledgments"></span><span id="license-acknowledgments"></span><span id="-license--acknowledgments"></span><a name="license--acknowledgments"></a><a name="license-acknowledgments"></a>
 ## 📄 License & Acknowledgments
 
 - Powered by **Agora Real-Time Engagement Platform**, **Groq Qwen 3.8 27B / Compound Mini**, and **Google Gemini 2.5 Flash**.
 - Released under the [MIT License](LICENSE).
+
+[▲ Back to Top](#table-of-contents)
 
 <div align="center">
   <sub>Created with ❤️ by <strong><a href="https://github.com/RiyanshiVerma-11">Riyanshi Verma (@RiyanshiVerma-11)</a></strong></sub>
