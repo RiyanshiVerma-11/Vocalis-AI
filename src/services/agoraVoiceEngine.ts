@@ -60,6 +60,8 @@ export class AgoraVoiceEngine {
   private currentSessionInterimText = '';
   private activeUtterance: SpeechSynthesisUtterance | null = null;
   private restartDebounceTimer: any = null;
+  private recognitionStartTime: number = 0;
+  private rapidRestartCount: number = 0;
   private outputAudioCtx: AudioContext | null = null;
   private currentSourceNode: AudioBufferSourceNode | null = null;
 
@@ -342,10 +344,10 @@ export class AgoraVoiceEngine {
       // This allows the Agora Conversational AI cloud agent (Deepgram STT) to hear the candidate live over WebRTC!
       try {
         this.localMicTrack = await AgoraRTC.createMicrophoneAudioTrack({
-          encoderConfig: 'high_quality_stereo',
-          AEC: true,
-          ANS: true,
-          AGC: true,
+          encoderConfig: 'speech_standard',
+          AEC: false,
+          ANS: false,
+          AGC: false,
         });
         await this.client.publish([this.localMicTrack]);
         console.log(`[AgoraVoiceEngine] 🎙️ Candidate microphone PUBLISHED to Agora SD-RTN™ channel! Cloud agent can now hear live audio.`);
@@ -432,10 +434,10 @@ export class AgoraVoiceEngine {
     if (!this.client || !this.isJoined) return null;
     try {
       this.localMicTrack = await AgoraRTC.createMicrophoneAudioTrack({
-        encoderConfig: 'high_quality_stereo',
-        AEC: true,
-        ANS: true,
-        AGC: true,
+        encoderConfig: 'speech_standard',
+        AEC: false,
+        ANS: false,
+        AGC: false,
       });
       if (this.client && this.isJoined) {
         await this.client.publish([this.localMicTrack]);
@@ -468,6 +470,7 @@ export class AgoraVoiceEngine {
     this.turnAccumulatedFinalText = '';
     this.currentSessionFinalText = '';
     this.currentSessionInterimText = '';
+    this.rapidRestartCount = 0;
 
     if (this.restartDebounceTimer) {
       clearTimeout(this.restartDebounceTimer);
@@ -514,6 +517,7 @@ export class AgoraVoiceEngine {
       recognition.lang = 'en-US';
 
       recognition.onstart = () => {
+        this.recognitionStartTime = Date.now();
         console.log('[AgoraVoiceEngine] 🎙️ Web Speech API started listening for turn!');
       };
 
@@ -566,9 +570,11 @@ export class AgoraVoiceEngine {
       recognition.onerror = (e: any) => {
         const err: string = e.error || 'unknown';
 
-        // 'no-speech' is normal silence timeout; 'aborted' occurs on intentional stop.
-        // Neither requires error toast or restart storm.
-        if (err === 'no-speech' || err === 'aborted') return;
+        // Normal silence timeout on phrase boundary
+        if (err === 'no-speech') return;
+
+        // Ignore aborted if we explicitly requested stop
+        if (err === 'aborted' && !this.isListening) return;
 
         console.warn('[AgoraVoiceEngine] ⚠️ Speech recognition notice:', err);
 
@@ -578,15 +584,12 @@ export class AgoraVoiceEngine {
           this.callbacks.onSpeechError?.(
             `Microphone blocked (${err}). Please click the lock icon next to the URL and allow Microphone access.`
           );
-        } else if (err === 'network') {
-          // Transient network glitch on Google Speech cloud backend — onend will cleanly reconnect
         } else if (err === 'audio-capture') {
-          this.isListening = false;
           this.callbacks.onSpeechError?.(
-            `Microphone hardware error (${err}). Please check your microphone is connected and not locked by another app.`
+            `Microphone hardware conflict (${err}). Please check your microphone is connected and not locked by another app.`
           );
-        } else {
-          this.callbacks.onSpeechError?.(`Speech recognition error: ${err}`);
+        } else if (err !== 'aborted' && err !== 'network') {
+          this.callbacks.onSpeechError?.(`Speech recognition notice: ${err}`);
         }
       };
 
@@ -606,17 +609,36 @@ export class AgoraVoiceEngine {
         this.currentSessionFinalText = '';
         this.currentSessionInterimText = '';
 
-        // Auto-reconnect with ultra-fast 80ms debounce ONLY if still listening and AI is NOT speaking
+        // Detect if the session terminated immediately (< 1200ms)
+        const sessionDuration = this.recognitionStartTime > 0 ? Date.now() - this.recognitionStartTime : 0;
+        if (sessionDuration > 0 && sessionDuration < 1200) {
+          this.rapidRestartCount++;
+        } else if (sessionDuration >= 1200) {
+          this.rapidRestartCount = 0;
+        }
+
+        // Auto-reconnect with progressive backoff ONLY if still listening and AI is NOT speaking
         if (this.isListening && !this.isSpeaking && !this.isBrowserSpeaking) {
           if (this.restartDebounceTimer) {
             clearTimeout(this.restartDebounceTimer);
           }
+
+          // Safety circuit-breaker: stop infinite restart storms if browser repeatedly crashes recognition
+          if (this.rapidRestartCount >= 6) {
+            console.warn('[AgoraVoiceEngine] 🛑 Pausing auto-reconnect: Web Speech API disconnected rapidly 6 times. Please click mic button to re-arm.');
+            this.callbacks.onSpeechError?.('Speech recognition interrupted. Click the microphone button to speak.');
+            return;
+          }
+
+          // Progressive backoff: 80ms normally, 600ms on first quick close, 1500ms on repeated quick closes
+          const restartDelay = this.rapidRestartCount > 3 ? 1500 : this.rapidRestartCount > 1 ? 600 : 80;
+
           this.restartDebounceTimer = setTimeout(() => {
             if (this.isListening && !this.isSpeaking && !this.isBrowserSpeaking && !this.webSpeechRecognition) {
-              console.log('[AgoraVoiceEngine] 🔄 Web Speech API reconnecting for turn...');
+              console.log(`[AgoraVoiceEngine] 🔄 Web Speech API reconnecting for turn (attempt ${this.rapidRestartCount + 1}, delay ${restartDelay}ms)...`);
               this._startWebSpeech(false);
             }
-          }, 80);
+          }, restartDelay);
         }
       };
 
@@ -632,6 +654,7 @@ export class AgoraVoiceEngine {
   // ─── Stop microphone ─────────────────────────────────────
   public stopSpeechRecognition(): void {
     this.isListening = false;
+    this.rapidRestartCount = 0;
     this.turnAccumulatedFinalText = '';
     this.currentSessionFinalText = '';
     this.currentSessionInterimText = '';

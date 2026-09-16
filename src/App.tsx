@@ -689,7 +689,7 @@ export default function App() {
       runningSummary: `Scenario: ${config.scenario.title}. Candidate: ${config.candidateName}${config.customRubric ? ` (Calibrated to ${config.customRubric.companyName} Bar)` : ''}`,
       demonstratedStrengths: [],
       identifiedWeaknesses: [],
-      unresolvedProbes: ['Awaiting candidate introduction & initial solution architecture'],
+      unresolvedProbes: [`Awaiting candidate opening response on ${config.scenario.title}`],
       activeTopic: config.scenario.title,
       candidateResume: config.candidateResume,
       questionHistory: [
@@ -951,11 +951,75 @@ export default function App() {
         newQuestionRecord,
       ];
 
+      // Dynamically update unresolvedProbes from LLM deliberation and candidate answers
+      let currentProbes = [...(sharedContextRef.current.unresolvedProbes || [])];
+
+      // 1. Remove initial introduction placeholder once candidate has responded
+      currentProbes = currentProbes.filter(
+        (p) => !p.toLowerCase().includes('awaiting candidate')
+      );
+
+      // 2. Remove probes that were resolved by candidate's answer
+      if (Array.isArray(turnResult.resolvedProbesToRemove) && turnResult.resolvedProbesToRemove.length > 0) {
+        const resolvedLower = turnResult.resolvedProbesToRemove.map((r) => r.toLowerCase().trim());
+        currentProbes = currentProbes.filter(
+          (p) => !resolvedLower.some((r) => p.toLowerCase().includes(r) || r.includes(p.toLowerCase()))
+        );
+      }
+
+      // 3. Add new probes identified by the panel in this turn
+      if (Array.isArray(turnResult.unresolvedProbesToAdd) && turnResult.unresolvedProbesToAdd.length > 0) {
+        for (const probe of turnResult.unresolvedProbesToAdd) {
+          const trimmed = probe.trim();
+          if (trimmed && !currentProbes.includes(trimmed)) {
+            currentProbes.push(trimmed);
+          }
+        }
+      }
+
+      // 4. Add any probe suggested by detected flags if not already tracked
+      if (Array.isArray(turnResult.detectedFlags)) {
+        for (const flag of turnResult.detectedFlags) {
+          if (flag.suggestedProbe && flag.suggestedProbe.trim()) {
+            const probeStr = flag.suggestedProbe.trim();
+            if (!currentProbes.some((p) => p.toLowerCase().includes(probeStr.toLowerCase()))) {
+              currentProbes.push(probeStr);
+            }
+          }
+        }
+      }
+
+      // Keep active probes clean and concise (max 4)
+      if (currentProbes.length > 4) {
+        currentProbes = currentProbes.slice(-4);
+      }
+
+      // Update demonstrated strengths and identified weaknesses from turn evaluation
+      let updatedStrengths = [...(sharedContextRef.current.demonstratedStrengths || [])];
+      let updatedWeaknesses = [...(sharedContextRef.current.identifiedWeaknesses || [])];
+
+      if (Array.isArray(turnResult.detectedFlags)) {
+        for (const flag of turnResult.detectedFlags) {
+          if ((flag.type === 'strong_insight' || flag.type === 'technical_depth') && flag.explanation) {
+            if (!updatedStrengths.includes(flag.explanation)) {
+              updatedStrengths.push(flag.explanation);
+            }
+          } else if ((flag.type === 'contradiction' || flag.type === 'vague' || flag.type === 'missing_impact') && flag.explanation) {
+            if (!updatedWeaknesses.includes(flag.explanation)) {
+              updatedWeaknesses.push(flag.explanation);
+            }
+          }
+        }
+      }
+
       // Update Shared Context
       const newContext: SharedCandidateContext = {
         ...sharedContextRef.current,
         currentDifficulty: turnResult.updatedDifficulty || sharedContextRef.current.currentDifficulty,
         runningSummary: turnResult.updatedRunningSummary || sharedContextRef.current.runningSummary,
+        unresolvedProbes: currentProbes,
+        demonstratedStrengths: updatedStrengths.slice(-6),
+        identifiedWeaknesses: updatedWeaknesses.slice(-6),
         competencyScores: turnResult.updatedCompetencyScores
           ? {
               ...turnResult.updatedCompetencyScores,
