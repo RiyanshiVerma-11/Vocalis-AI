@@ -2842,6 +2842,75 @@ ${isBriefSession ? `
   }
 });
 
+// Endpoint: Audio transcription via Groq Whisper
+// Used by Chrome clients where webkitSpeechRecognition conflicts with Agora's WASAPI mic lock.
+// Client sends raw audio/webm binary from MediaRecorder (no new getUserMedia — reuses Agora track).
+app.post('/api/transcribe', authenticateToken,
+  express.raw({ type: ['audio/*', 'application/octet-stream'], limit: '15mb' }),
+  async (req, res) => {
+    try {
+      const audioBuffer = req.body as Buffer;
+      if (!audioBuffer || audioBuffer.length < 500) {
+        return res.json({ text: '' });
+      }
+
+      const groqKeys = [
+        process.env.GROQ_API_KEY,
+        process.env.GROQ_API_KEY_SECONDARY,
+      ].filter(Boolean) as string[];
+
+      if (groqKeys.length === 0) {
+        return res.status(503).json({ error: 'Groq API key not configured' });
+      }
+
+      const contentType = req.headers['content-type'] || 'audio/webm';
+      // Strip express.raw body-parser additions (e.g. charset), keep clean mime
+      const mimeType = contentType.split(';')[0].trim() || 'audio/webm';
+      const ext = mimeType.includes('ogg') ? 'ogg' : mimeType.includes('mp4') ? 'mp4' : 'webm';
+
+      let lastErr: any;
+      for (const key of groqKeys) {
+        try {
+          const formData = new FormData();
+          const blob = new Blob([audioBuffer], { type: mimeType });
+          formData.append('file', blob, `audio.${ext}`);
+          formData.append('model', 'whisper-large-v3-turbo');
+          formData.append('language', 'en');
+          formData.append('response_format', 'text');
+
+          const groqRes = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${key}` },
+            body: formData,
+          });
+
+          if (!groqRes.ok) {
+            const errText = await groqRes.text().catch(() => '');
+            lastErr = new Error(`Groq Whisper HTTP ${groqRes.status}: ${errText}`);
+            continue;
+          }
+
+          const text = (await groqRes.text()).trim();
+          // Filter common Whisper hallucinations on silence
+          const lower = text.toLowerCase();
+          const isHallucination = !text ||
+            /^(thank you|thanks|you|bye|okay|[\.\s]+)\.?$/i.test(text) ||
+            lower === 'you' || lower === 'thank you.' || lower === 'thank you';
+          return res.json({ text: isHallucination ? '' : text });
+        } catch (e) {
+          lastErr = e;
+        }
+      }
+
+      console.warn('[/api/transcribe] All Groq keys failed:', lastErr?.message);
+      return res.json({ text: '' });
+    } catch (err: any) {
+      console.error('[/api/transcribe] Error:', err?.message);
+      return res.json({ text: '' });
+    }
+  }
+);
+
 // Endpoint: Text to Speech with Gemini TTS API
 app.post('/api/tts', authenticateToken, async (req, res) => {
   try {

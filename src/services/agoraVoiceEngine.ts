@@ -51,6 +51,9 @@ export class AgoraVoiceEngine {
   private isJoined = false;
   private volAnimFrameId: number | null = null;
   private webSpeechRecognition: any = null;
+  // MediaRecorder-based transcription (Chrome-safe: reuses Agora's existing mic track)
+  private mediaRecorder: MediaRecorder | null = null;
+  private mediaRecorderActive: boolean = false;
   public micAnalyser: AnalyserNode | null = null;
   private freqDataArray: Uint8Array<ArrayBuffer> | null = null;
   // Turn speech accumulation buffer: guarantees candidate speech is preserved seamlessly
@@ -505,11 +508,121 @@ export class AgoraVoiceEngine {
       await this._ensureLocalMicTrack();
     }
 
-    // 2. Start Web Speech API recognizer with a FRESH instance (forceFresh = true)
+    // 2. Detect if Agora mic track is live (Chrome-compatible path) or fall back to Web Speech API
+    // Chrome: webkitSpeechRecognition conflicts with Agora's WASAPI exclusive mic lock →
+    //   use MediaRecorder on the EXISTING Agora track (no new getUserMedia) + Groq Whisper.
+    // Edge/Safari: Web Speech API works fine alongside Agora.
+    const agoraTrack = this.localMicTrack?.getMediaStreamTrack();
+    const useMediaRecorder = !!agoraTrack && agoraTrack.readyState === 'live' &&
+      typeof MediaRecorder !== 'undefined';
+
+    if (useMediaRecorder) {
+      return this._startMediaRecorderTranscription(agoraTrack!);
+    }
     return this._startWebSpeech(true);
   }
 
-  // Resilient Web Speech API starter and restart manager
+  // ─── MediaRecorder + Groq Whisper transcription (Chrome-safe) ──────────
+  // Uses Agora's already-captured MediaStreamTrack — no new getUserMedia call.
+  // This bypasses Chrome's WASAPI exclusive mode conflict entirely.
+  private _startMediaRecorderTranscription(track: MediaStreamTrack): boolean {
+    // Stop any existing recorder first
+    this._stopMediaRecorder();
+
+    try {
+      const stream = new MediaStream([track]);
+
+      // Pick best supported MIME type for Groq Whisper (supports webm, ogg, mp4)
+      const mimeType = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/ogg;codecs=opus',
+        'audio/mp4',
+      ].find(t => MediaRecorder.isTypeSupported(t)) || '';
+
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+      this.mediaRecorder = recorder;
+      this.mediaRecorderActive = true;
+
+      recorder.ondataavailable = (e) => {
+        if (!this.mediaRecorderActive || this.isBrowserSpeaking || this.isSpeaking) return;
+        // Require at least 2KB — empty/silence chunks are ~200 bytes
+        if (e.data && e.data.size > 2000) {
+          this._transcribeChunk(e.data, recorder.mimeType || mimeType || 'audio/webm');
+        }
+      };
+
+      recorder.onerror = (e) => {
+        console.warn('[AgoraVoiceEngine] MediaRecorder error:', (e as any).error);
+      };
+
+      recorder.onstart = () => {
+        console.log(`[AgoraVoiceEngine] 🎙️ MediaRecorder started (Groq Whisper transcription, mime: ${recorder.mimeType})`);
+      };
+
+      // 4-second chunks — good balance of latency vs Whisper overhead
+      recorder.start(4000);
+      return true;
+    } catch (err) {
+      console.warn('[AgoraVoiceEngine] MediaRecorder start failed, falling back to Web Speech API:', err);
+      this.mediaRecorderActive = false;
+      this.mediaRecorder = null;
+      return this._startWebSpeech(true);
+    }
+  }
+
+  private async _transcribeChunk(blob: Blob, mimeType: string): Promise<void> {
+    try {
+      const apiBase = (import.meta as any).env?.VITE_API_URL ||
+        'https://vocalis-ai-ty8j.onrender.com';
+
+      const res = await fetch(`${apiBase}/api/transcribe`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': mimeType,
+          // Forward auth token stored in localStorage
+          'Authorization': `Bearer ${localStorage.getItem('vocalis_token') || ''}`,
+        },
+        body: blob,
+      });
+
+      if (!res.ok) return;
+
+      const { text } = await res.json();
+      if (!text || !text.trim()) return;
+
+      const trimmed = text.trim();
+      // Accumulate transcript across chunks (same as Web Speech API final text)
+      this.turnAccumulatedFinalText = [this.turnAccumulatedFinalText, trimmed]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+
+      if (this.onSpeechDetectedCallback) this.onSpeechDetectedCallback();
+      if (this.callbacks.onTranscript) {
+        const boosted = boostTechnicalJargon(this.turnAccumulatedFinalText);
+        this.callbacks.onTranscript(boosted, true);
+      }
+
+      console.log(`[AgoraVoiceEngine] 📝 Whisper transcript chunk: "${trimmed}"`);
+    } catch (err) {
+      // Silent — transient network errors during transcription should not crash
+    }
+  }
+
+  private _stopMediaRecorder(): void {
+    this.mediaRecorderActive = false;
+    if (this.mediaRecorder) {
+      try {
+        if (this.mediaRecorder.state !== 'inactive') {
+          this.mediaRecorder.stop();
+        }
+      } catch (_) {}
+      this.mediaRecorder = null;
+    }
+  }
+
+  // Resilient Web Speech API starter and restart manager (Edge/Safari fallback)
   private _startWebSpeech(forceFresh: boolean = false): boolean {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) {
@@ -713,6 +826,9 @@ export class AgoraVoiceEngine {
     this.currentSessionFinalText = '';
     this.currentSessionInterimText = '';
     this.setLocalMicMuted(true);
+
+    // Stop MediaRecorder transcription if active
+    this._stopMediaRecorder();
 
     if (this.restartDebounceTimer) {
       clearTimeout(this.restartDebounceTimer);
