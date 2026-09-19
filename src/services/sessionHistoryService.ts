@@ -402,14 +402,15 @@ export const sessionHistoryService = {
       problemSolvingAndAgility: 50,
     };
 
-    if (assessment.competencyBreakdown) {
-      assessment.competencyBreakdown.forEach((cb) => {
-        const nameLower = cb.name.toLowerCase();
-        if (nameLower.includes('tech') || nameLower.includes('arch')) cScores.technicalArchitecture = cb.score;
-        if (nameLower.includes('business') || nameLower.includes('product') || nameLower.includes('customer')) cScores.businessAndCustomerImpact = cb.score;
-        if (nameLower.includes('comm') || nameLower.includes('concise') || nameLower.includes('clarity')) cScores.communicationAndClarity = cb.score;
-        if (nameLower.includes('leader') || nameLower.includes('owner')) cScores.leadershipAndOwnership = cb.score;
-        if (nameLower.includes('problem') || nameLower.includes('agil') || nameLower.includes('trouble')) cScores.problemSolvingAndAgility = cb.score;
+    if (assessment.competencyBreakdown && Array.isArray(assessment.competencyBreakdown)) {
+      assessment.competencyBreakdown.forEach((cb: any) => {
+        const nameLower = (cb?.name || cb?.competency || '').toLowerCase();
+        if (!nameLower) return;
+        if (nameLower.includes('tech') || nameLower.includes('arch')) cScores.technicalArchitecture = cb.score || 0;
+        if (nameLower.includes('business') || nameLower.includes('product') || nameLower.includes('customer')) cScores.businessAndCustomerImpact = cb.score || 0;
+        if (nameLower.includes('comm') || nameLower.includes('concise') || nameLower.includes('clarity')) cScores.communicationAndClarity = cb.score || 0;
+        if (nameLower.includes('leader') || nameLower.includes('owner')) cScores.leadershipAndOwnership = cb.score || 0;
+        if (nameLower.includes('problem') || nameLower.includes('agil') || nameLower.includes('trouble')) cScores.problemSolvingAndAgility = cb.score || 0;
       });
     }
 

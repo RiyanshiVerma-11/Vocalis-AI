@@ -2596,37 +2596,40 @@ app.post(['/api/interview/final-assessment', '/api/interview/assess'], authentic
     const zeroAssessment = {
       candidateName,
       targetRole: calibratedTargetRole,
+      interviewDate: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      durationMinutes: 1,
       overallScore: 0,
       hiringRecommendation: 'Strong No Hire',
-      adaptiveTrajectory: 'Not Assessed (0 Candidate Turns)',
       executiveSummary: `The interview session concluded before candidate responses were recorded (0 candidate turns). With no candidate answers provided, performance cannot be evaluated, resulting in an overall score of 0/100.`,
       calibrationRationale: `No candidate speech was recorded during this session. Following objective evaluation standards, an interview with zero candidate responses cannot be scored above 0/100 and yields a Strong No Hire (Incomplete Session).`,
       competencyBreakdown: [
-        { competency: 'Technical Architecture', score: 0, weight: 30, verdict: 'Not Assessed', keyStrengths: [], areasForCalibration: ['No candidate response was recorded during this interview session.'] },
-        { competency: 'Business And Customer Impact', score: 0, weight: 25, verdict: 'Not Assessed', keyStrengths: [], areasForCalibration: ['No candidate response was recorded during this interview session.'] },
-        { competency: 'Communication And Clarity', score: 0, weight: 15, verdict: 'Not Assessed', keyStrengths: [], areasForCalibration: ['No candidate response was recorded during this interview session.'] },
-        { competency: 'Leadership And Ownership', score: 0, weight: 15, verdict: 'Not Assessed', keyStrengths: [], areasForCalibration: ['No candidate response was recorded during this interview session.'] },
-        { competency: 'Problem Solving And Agility', score: 0, weight: 15, verdict: 'Not Assessed', keyStrengths: [], areasForCalibration: ['No candidate response was recorded during this interview session.'] },
+        { name: 'Technical Architecture', score: 0, weight: '30%', verdict: 'Not Assessed', evidenceQuotes: [], strengths: [], improvements: ['No candidate response recorded'] },
+        { name: 'Business And Customer Impact', score: 0, weight: '25%', verdict: 'Not Assessed', evidenceQuotes: [], strengths: [], improvements: ['No candidate response recorded'] },
+        { name: 'Communication And Clarity', score: 0, weight: '15%', verdict: 'Not Assessed', evidenceQuotes: [], strengths: [], improvements: ['No candidate response recorded'] },
+        { name: 'Leadership And Ownership', score: 0, weight: '15%', verdict: 'Not Assessed', evidenceQuotes: [], strengths: [], improvements: ['No candidate response recorded'] },
+        { name: 'Problem Solving And Agility', score: 0, weight: '15%', verdict: 'Not Assessed', evidenceQuotes: [], strengths: [], improvements: ['No candidate response recorded'] },
       ],
       roleByRoleFeedback: (activePanel && activePanel.length > 0 ? activePanel : [
         { id: 'interviewer-1', name: 'Rohan Sharma', title: 'Principal AI & Systems Architect', role: 'technical' },
         { id: 'interviewer-2', name: 'Priya Mehta', title: 'Principal AI Product Manager', role: 'product' },
         { id: 'interviewer-3', name: 'Neha Kapoor', title: 'Director of Enterprise Clinical Operations', role: 'operations' },
       ]).map((p: any) => ({
-        interviewerId: p.id,
+        interviewerRole: p.role || 'technical',
         interviewerName: p.name,
-        role: p.role || p.title,
         score: 0,
         verdict: 'Not Assessed',
-        feedback: `Session ended before candidate answered any questions. No audio or text response was received.`,
+        commentary: 'Session ended before candidate answered any questions. No audio or text response was received.',
+        keyObservationQuote: 'No answer recorded',
       })),
-      contradictionsOrGaps: [],
-      strengths: [],
-      developmentAreas: [
-        'Complete an interview session and respond to panel questions to receive an evaluative assessment.',
-      ],
-      nextRoundFocus: [
-        'Re-attempt the interview and provide verbal or typed answers to panel inquiries.',
+      identifiedContradictionsAndGaps: [],
+      adaptiveTrajectory: {
+        startLevel: 'Intermediate',
+        endLevel: 'Intermediate',
+        trajectoryDescription: 'Session concluded with zero candidate turns. Difficulty trajectory could not be calibrated.',
+      },
+      actionableDevelopmentPlan: [
+        'Complete an interview session and speak into the microphone to receive an evaluative assessment.',
+        'Ensure microphone is permitted and test voice input before concluding the session.',
       ],
     };
 
