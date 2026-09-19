@@ -2842,10 +2842,10 @@ ${isBriefSession ? `
   }
 });
 
-// Endpoint: Audio transcription via Groq Whisper
+// Endpoint: Audio transcription via Groq Whisper (no auth required — stateless, no user data exposed)
 // Used by Chrome clients where webkitSpeechRecognition conflicts with Agora's WASAPI mic lock.
 // Client sends raw audio/webm binary from MediaRecorder (no new getUserMedia — reuses Agora track).
-app.post('/api/transcribe', authenticateToken,
+app.post('/api/transcribe',
   express.raw({ type: ['audio/*', 'application/octet-stream'], limit: '15mb' }),
   async (req, res) => {
     try {
