@@ -396,8 +396,10 @@ export default function App() {
     const effectiveTimeout = currentTimeout + pauseAnalysis.recommendedGraceMs;
 
     const checkAndSubmit = () => {
-      // Guard 1: If candidate is actively talking/making sound (volume > 8), defer auto-submit
-      if (candidateVolumeRef.current > 8) {
+      // Guard 1: If candidate is actively talking (volume > 25%), defer auto-submit.
+      // Threshold is 25% (not 8%) because Agora's mic stream always has ambient noise at 15-20%.
+      // Real speech registers at 30%+. At 8% the guard never fires due to continuous background noise.
+      if (candidateVolumeRef.current > 25) {
         console.log(`[AutoSubmit Guard] Candidate active speech detected (vol: ${candidateVolumeRef.current}%). Deferring submit.`);
         speechSilenceTimerRef.current = setTimeout(checkAndSubmit, 1000);
         return;
