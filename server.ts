@@ -2872,7 +2872,7 @@ app.post('/api/transcribe',
       for (const key of groqKeys) {
         try {
           const formData = new FormData();
-          const blob = new Blob([audioBuffer], { type: mimeType });
+          const blob = new Blob([new Uint8Array(audioBuffer)], { type: mimeType });
           formData.append('file', blob, `audio.${ext}`);
           formData.append('model', 'whisper-large-v3-turbo');
           formData.append('language', 'en');
