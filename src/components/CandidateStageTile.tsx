@@ -156,7 +156,7 @@ export const CandidateStageTile: React.FC<CandidateStageTileProps> = ({
               className="w-full h-full object-cover -scale-x-100" // mirrored for selfie video
             />
             {/* Live Camera Badge */}
-            <div className="absolute top-1.5 left-1.5 flex items-center gap-1 bg-red-600/90 text-white text-[7px] font-extrabold px-1.5 py-0.2 rounded-full uppercase tracking-wider backdrop-blur-xs">
+            <div className="absolute top-1.5 left-1.5 flex items-center gap-1 bg-red-600/90 text-white text-[7px] font-extrabold px-1.5 py-0.5 rounded-full uppercase tracking-wider backdrop-blur-xs">
               <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
               LIVE
             </div>
@@ -198,8 +198,7 @@ export const CandidateStageTile: React.FC<CandidateStageTileProps> = ({
                   key={i}
                   style={{
                     height: `${dynamicH}%`,
-                    animation: isSpeaking ? 'pulse 0.35s ease-in-out infinite alternate' : undefined,
-                    animationDelay: `${i * 0.04}s`,
+                    animation: isSpeaking ? `pulse 0.35s ease-in-out ${i * 0.04}s infinite alternate` : 'none',
                   }}
                   className={`w-0.5 rounded-full transition-all duration-75 ${
                     isSpeaking ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]' : 'bg-slate-700/60'

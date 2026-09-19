@@ -120,6 +120,7 @@ export const ExperienceRatioVisualizer: React.FC<ExperienceRatioVisualizerProps>
         {/* Proportional Segmented Track */}
         <div className="w-full h-5 rounded-full bg-slate-200 flex overflow-hidden p-0.5 gap-1 shadow-inner">
           {experienceBreakdown.map((item) => {
+            if (item.count === 0) return null;
             const isHovered = hoveredTier === item.tier;
             const isSelected = selectedExperienceFilter === item.tier;
             const effectiveWeight = item.count > 0 ? Math.max(item.percentage, 3) : 0;

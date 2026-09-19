@@ -345,9 +345,9 @@ export class AgoraVoiceEngine {
       try {
         this.localMicTrack = await AgoraRTC.createMicrophoneAudioTrack({
           encoderConfig: 'speech_standard',
-          AEC: false,
-          ANS: false,
-          AGC: false,
+          AEC: true,
+          ANS: true,
+          AGC: true,
         });
         await this.client.publish([this.localMicTrack]);
         console.log(`[AgoraVoiceEngine] 🎙️ Candidate microphone PUBLISHED to Agora SD-RTN™ channel! Cloud agent can now hear live audio.`);
@@ -435,9 +435,9 @@ export class AgoraVoiceEngine {
     try {
       this.localMicTrack = await AgoraRTC.createMicrophoneAudioTrack({
         encoderConfig: 'speech_standard',
-        AEC: false,
-        ANS: false,
-        AGC: false,
+        AEC: true,
+        ANS: true,
+        AGC: true,
       });
       if (this.client && this.isJoined) {
         await this.client.publish([this.localMicTrack]);
@@ -447,6 +447,18 @@ export class AgoraVoiceEngine {
     } catch (err) {
       console.warn('[AgoraVoiceEngine] Microphone audio track acquisition notice:', err);
       return null;
+    }
+  }
+
+  // Mute or unmute candidate's local microphone track (RTC hardware level)
+  public setLocalMicMuted(muted: boolean): void {
+    if (this.localMicTrack) {
+      try {
+        this.localMicTrack.setMuted(muted);
+        console.log(`[AgoraVoiceEngine] 🎙️ Candidate local microphone ${muted ? 'MUTED' : 'UNMUTED'} (RTC level)`);
+      } catch (err) {
+        console.warn('[AgoraVoiceEngine] Failed to toggle mic track mute state:', err);
+      }
     }
   }
 
@@ -460,6 +472,7 @@ export class AgoraVoiceEngine {
     this.isListening = true;
     this.isSpeaking = false;
     this.isBrowserSpeaking = false;
+    this.setLocalMicMuted(false); // Unmute candidate mic by default when candidate's turn begins
     if (this.remoteAudioSilenceTimeout) {
       clearTimeout(this.remoteAudioSilenceTimeout);
       this.remoteAudioSilenceTimeout = null;
@@ -496,7 +509,7 @@ export class AgoraVoiceEngine {
 
     // If an instance exists:
     // If not forcing fresh and still valid, keep it.
-    // If starting a fresh turn, cleanly detach callbacks and abort old instance so Chrome's internal event.results buffer resets to 0!
+    // If starting a fresh turn, cleanly detach callbacks and stop old instance so Chrome's internal event.results buffer resets to 0!
     if (this.webSpeechRecognition) {
       if (!forceFresh) {
         return true;
@@ -505,8 +518,10 @@ export class AgoraVoiceEngine {
         this.webSpeechRecognition.onresult = null;
         this.webSpeechRecognition.onerror = null;
         this.webSpeechRecognition.onend = null;
-        this.webSpeechRecognition.abort();
-      } catch (_) {}
+        this.webSpeechRecognition.stop();
+      } catch (_) {
+        try { this.webSpeechRecognition.abort(); } catch (_) {}
+      }
       this.webSpeechRecognition = null;
     }
 
@@ -573,8 +588,10 @@ export class AgoraVoiceEngine {
         // Normal silence timeout on phrase boundary
         if (err === 'no-speech') return;
 
-        // Ignore aborted if we explicitly requested stop
-        if (err === 'aborted' && !this.isListening) return;
+        // Ignore aborted during turn switching or explicit stop
+        if (err === 'aborted') {
+          return;
+        }
 
         console.warn('[AgoraVoiceEngine] ⚠️ Speech recognition notice:', err);
 
@@ -588,7 +605,7 @@ export class AgoraVoiceEngine {
           this.callbacks.onSpeechError?.(
             `Microphone hardware conflict (${err}). Please check your microphone is connected and not locked by another app.`
           );
-        } else if (err !== 'aborted' && err !== 'network') {
+        } else if (err !== 'network') {
           this.callbacks.onSpeechError?.(`Speech recognition notice: ${err}`);
         }
       };
@@ -626,12 +643,12 @@ export class AgoraVoiceEngine {
           // Safety circuit-breaker: stop infinite restart storms if browser repeatedly crashes recognition
           if (this.rapidRestartCount >= 6) {
             console.warn('[AgoraVoiceEngine] 🛑 Pausing auto-reconnect: Web Speech API disconnected rapidly 6 times. Please click mic button to re-arm.');
-            this.callbacks.onSpeechError?.('Speech recognition interrupted. Click the microphone button to speak.');
+            this.callbacks.onSpeechError?.('Speech recognition paused. Click the microphone button or type to respond.');
             return;
           }
 
-          // Progressive backoff: 80ms normally, 600ms on first quick close, 1500ms on repeated quick closes
-          const restartDelay = this.rapidRestartCount > 3 ? 1500 : this.rapidRestartCount > 1 ? 600 : 80;
+          // Progressive backoff: minimum 350ms so browser speech pipeline has cooled off!
+          const restartDelay = this.rapidRestartCount > 3 ? 1500 : this.rapidRestartCount > 1 ? 750 : 350;
 
           this.restartDebounceTimer = setTimeout(() => {
             if (this.isListening && !this.isSpeaking && !this.isBrowserSpeaking && !this.webSpeechRecognition) {
@@ -658,6 +675,7 @@ export class AgoraVoiceEngine {
     this.turnAccumulatedFinalText = '';
     this.currentSessionFinalText = '';
     this.currentSessionInterimText = '';
+    this.setLocalMicMuted(true); // Ensure mic is muted while AI panel speaks
 
     if (this.restartDebounceTimer) {
       clearTimeout(this.restartDebounceTimer);
@@ -670,8 +688,10 @@ export class AgoraVoiceEngine {
         this.webSpeechRecognition.onresult = null;
         this.webSpeechRecognition.onerror = null;
         this.webSpeechRecognition.onend = null;
-        this.webSpeechRecognition.abort();
-      } catch (_) {}
+        this.webSpeechRecognition.stop();
+      } catch (_) {
+        try { this.webSpeechRecognition.abort(); } catch (_) {}
+      }
       this.webSpeechRecognition = null;
     }
   }
@@ -680,6 +700,7 @@ export class AgoraVoiceEngine {
   // Mutes the remote audio track immediately. The server agent
   // is notified separately via /api/interview/turn with interrupted:true
   public interrupt(silent: boolean = false): void {
+    this.setLocalMicMuted(false); // Instantly unmute candidate mic for barge-in
     if (this.remoteAudioTrack) {
       try {
         this.remoteAudioTrack.stop();
@@ -823,12 +844,14 @@ export class AgoraVoiceEngine {
   // ─── Mute / Unmute remote audio track to prevent double-audio / echo ──
   public muteRemoteAudioTrack(muted: boolean): void {
     if (this.remoteAudioTrack) {
-      if (muted) {
-        this.remoteAudioTrack.stop();
-      } else {
-        try {
-          this.remoteAudioTrack.play();
-        } catch {}
+      try {
+        this.remoteAudioTrack.setVolume(muted ? 0 : 100);
+      } catch (_) {
+        if (muted) {
+          try { this.remoteAudioTrack.stop(); } catch {}
+        } else {
+          try { this.remoteAudioTrack.play(); } catch {}
+        }
       }
     }
   }

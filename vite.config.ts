@@ -23,7 +23,7 @@ export default defineConfig(() => {
         output: {
           manualChunks: {
             // Split large vendor libs into separate cacheable chunks
-            'vendor-agora': ['agora-rtc-sdk-ng', 'agora-token'],
+            'vendor-agora': ['agora-rtc-sdk-ng'],
           },
         },
       },

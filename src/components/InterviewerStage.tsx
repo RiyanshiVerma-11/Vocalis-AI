@@ -98,7 +98,7 @@ export const InterviewerStage: React.FC<InterviewerStageProps> = ({
           <h2 className="text-[10px] font-extrabold text-slate-200 tracking-wider uppercase truncate">
             AI Committee Panel ({panel.length} Interviewers)
           </h2>
-          <span className="hidden sm:inline-flex text-[9px] font-bold text-cyan-300 bg-cyan-500/10 border border-cyan-500/30 px-2 py-0.2 rounded-full items-center gap-1">
+          <span className="hidden sm:inline-flex text-[9px] font-bold text-cyan-300 bg-cyan-500/10 border border-cyan-500/30 px-2 py-0.5 rounded-full items-center gap-1">
             <Sparkles className="w-2.5 h-2.5 text-cyan-400" /> Multi-Role Deliberation Sync
           </span>
           {/* Whiteboard Canvas Action */}
@@ -133,7 +133,7 @@ export const InterviewerStage: React.FC<InterviewerStageProps> = ({
               <span className="text-[9px] font-medium text-cyan-300">Targeted</span>
               <button
                 onClick={() => onSelectTargetInterviewer(null)}
-                className="text-[9px] font-bold text-slate-300 hover:text-white px-1.5 py-0.2 rounded bg-slate-800 border border-slate-700 transition cursor-pointer"
+                className="text-[9px] font-bold text-slate-300 hover:text-white px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 transition cursor-pointer"
               >
                 Clear
               </button>
@@ -209,7 +209,7 @@ export const InterviewerStage: React.FC<InterviewerStageProps> = ({
 
                 {/* Floating Ambient Reaction Badge on Inactive Tile */}
                 {!isSpeakingNow && reaction && (
-                  <div className="absolute top-1.5 right-1.5 z-20 flex items-center gap-1 px-1.5 py-0.2 rounded-md bg-slate-900/90 text-slate-100 text-[8px] font-bold border border-slate-700 shadow-md backdrop-blur-xs animate-in fade-in zoom-in duration-200">
+                  <div className="absolute top-1.5 right-1.5 z-20 flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-900/90 text-slate-100 text-[8px] font-bold border border-slate-700 shadow-md backdrop-blur-xs animate-in fade-in zoom-in duration-200">
                     <span>
                       {reaction.reactionType === 'taking_notes' && '📝'}
                       {reaction.reactionType === 'skeptical' && '🤔'}
@@ -222,7 +222,7 @@ export const InterviewerStage: React.FC<InterviewerStageProps> = ({
                 )}
 
                 {isTargeted && !isSpeakingNow && (
-                  <div className="absolute top-1.5 left-1.5 z-20 bg-indigo-600/90 text-white font-mono text-[8px] font-extrabold px-1.5 py-0.2 rounded uppercase tracking-wider backdrop-blur-sm shadow-md">
+                  <div className="absolute top-1.5 left-1.5 z-20 bg-indigo-600/90 text-white font-mono text-[8px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider backdrop-blur-sm shadow-md">
                     Target
                   </div>
                 )}
@@ -237,8 +237,7 @@ export const InterviewerStage: React.FC<InterviewerStageProps> = ({
                           key={i}
                           style={{
                             height: `${barHeight}%`,
-                            animation: isSpeakingNow ? 'pulse 0.32s ease-in-out infinite alternate' : undefined,
-                            animationDelay: `${i * 0.05}s`,
+                            animation: isSpeakingNow ? `pulse 0.32s ease-in-out ${i * 0.05}s infinite alternate` : 'none',
                           }}
                           className={`w-0.5 rounded-full transition-all duration-100 ${
                             isSpeakingNow

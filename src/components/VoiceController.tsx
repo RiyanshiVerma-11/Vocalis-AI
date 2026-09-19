@@ -33,7 +33,7 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
   candidateVolume,
   currentInterimTranscript,
   onSelectQuickPrompt,
-  silenceTimeoutMs = 4000,
+  silenceTimeoutMs = 2000,
   onChangeSilenceTimeout,
   isFloorHeld = false,
   onToggleHoldFloor,
@@ -368,7 +368,7 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
         {/* Silence Tolerance Selector */}
         {onChangeSilenceTimeout && (
           <div className="flex items-center gap-1 bg-slate-900/80 px-2 py-0.5 rounded-lg border border-slate-800 text-[10px]">
-            <Clock className="w-2.5 h-2.5 text-slate-400" />
+            <Clock className="w-2.5 h-2.5 text-cyan-400" />
             <select
               id="select-pause-tolerance"
               value={silenceTimeoutMs}
@@ -376,10 +376,11 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
               className="bg-transparent font-semibold text-slate-300 outline-none cursor-pointer text-[10px]"
               title="Auto-send timeout"
             >
-              <option value={-1} className="bg-slate-900">🛑 Manual Send</option>
-              <option value={4000} className="bg-slate-900">⏱️ 4s Pause</option>
+              <option value={2000} className="bg-slate-900 font-bold text-cyan-400">⚡ 2s Real Interview (Auto-Send)</option>
+              <option value={3000} className="bg-slate-900">⏱️ 3s Balanced</option>
+              <option value={4000} className="bg-slate-900">⏱️ 4s Thoughtful</option>
               <option value={6000} className="bg-slate-900">🧘 6s Generous</option>
-              <option value={8000} className="bg-slate-900">☕ 8s Relaxed</option>
+              <option value={-1} className="bg-slate-900">🛑 Manual Send Only</option>
             </select>
           </div>
         )}

@@ -157,7 +157,7 @@ export default function App() {
   const [ambientReactions, setAmbientReactions] = useState<Record<string, { reactionType: PanelistReactionType; label: string }>>({});
 
   // Silence Tolerance & Floor Control (Snappy Agora Conversational AI pace)
-  const [silenceTimeoutMs, setSilenceTimeoutMs] = useState<number>(4000); // 4s — candidate must pause 4 full seconds or press Send manually
+  const [silenceTimeoutMs, setSilenceTimeoutMs] = useState<number>(2000); // 2s Real Interview pace — auto-send after 2s natural pause
   const [isFloorHeld, setIsFloorHeld] = useState<boolean>(false);
   const [isFocusMode, setIsFocusMode] = useState<boolean>(false);
   const [thoughtGraceActive, setThoughtGraceActive] = useState<boolean>(false);
@@ -465,9 +465,10 @@ export default function App() {
     agoraVoiceEngine.clearSpeechBuffer();
     setCurrentInterimTranscript('');
 
-    // 4. Ensure mic is armed and listening
+    // 4. Ensure mic is armed, unmuted, and listening for candidate speech
     setIsListening(true);
     isListeningRef.current = true;
+    agoraVoiceEngine.setLocalMicMuted(false);
 
     agoraVoiceEngine.startSpeechRecognition((fullText) => {
       if (!isProcessingRef.current && !isAISpeakingRef.current) {
@@ -499,7 +500,10 @@ export default function App() {
       agoraVoiceEngine.setIsSpeaking(true);
       setActiveSpeakerId(interviewer.id);
 
-      // Stop speech recognition immediately while AI speaks to ensure zero speaker echo into candidate transcript
+      // Stop speech recognition and mute candidate microphone immediately while AI speaks
+      setIsListening(false);
+      isListeningRef.current = false;
+      agoraVoiceEngine.setLocalMicMuted(true);
       agoraVoiceEngine.stopSpeechRecognition();
       if (reverbDecayTimerRef.current) {
         clearTimeout(reverbDecayTimerRef.current);
@@ -601,6 +605,7 @@ export default function App() {
               agoraVoiceEngine.setIsSpeaking(false);
               setIsListening(true);
               isListeningRef.current = true;
+              agoraVoiceEngine.setLocalMicMuted(false);
               agoraVoiceEngine.startSpeechRecognition(
                 (fullText) => {
                   const cleanIncoming = fullText.trim();
@@ -747,13 +752,9 @@ export default function App() {
     setIsSidebarOpen(false); // Automatically hide sidebar for max focus during live interview
     setAssessment(null);
 
-    // Auto-arm microphone state and volume visualizer for candidate
-    setIsListening(true);
-    isListeningRef.current = true;
-    agoraVoiceEngine.initMicVisualizer((vol) => {
-      candidateVolumeRef.current = vol;
-      setCandidateVolume(vol);
-    });
+    // Initial state: AI begins by speaking opening question
+    setIsListening(false);
+    isListeningRef.current = false;
 
     // ── Join Agora RTC channel + start Conversational AI agent in background ──
     (async () => {
@@ -1284,6 +1285,8 @@ export default function App() {
       }
       agoraVoiceEngine.stopSpeechRecognition();
       setIsListening(false);
+      isListeningRef.current = false;
+      agoraVoiceEngine.setLocalMicMuted(true);
     } else {
       agoraVoiceEngine.clearSpeechBuffer();
       setCurrentInterimTranscript('');
@@ -1292,6 +1295,7 @@ export default function App() {
           if (!isProcessingRef.current && !isAISpeakingRef.current) {
             const cleanIncoming = fullText.trim();
             if (!cleanIncoming || isEchoOfLastQuestion(cleanIncoming)) return;
+            latestCandidateSpeechRef.current = cleanIncoming;
             setCurrentInterimTranscript(cleanIncoming);
             scheduleSilenceAutoSubmit(cleanIncoming);
           }
@@ -1300,6 +1304,8 @@ export default function App() {
 
       if (started) {
         setIsListening(true);
+        isListeningRef.current = true;
+        agoraVoiceEngine.setLocalMicMuted(false);
         await agoraVoiceEngine.initMicVisualizer((vol) => {
           candidateVolumeRef.current = vol;
           setCandidateVolume(vol);
@@ -1677,7 +1683,7 @@ export default function App() {
                 Vocalis <span className="text-cyan-400">AI</span>
               </button>
               {inInterview ? (
-                <span className="hidden md:inline-flex items-center text-[9px] px-2 py-0.2 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 font-bold uppercase tracking-wider">
+                <span className="hidden md:inline-flex items-center text-[9px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 font-bold uppercase tracking-wider">
                   AI Voice Interview Room
                 </span>
               ) : (

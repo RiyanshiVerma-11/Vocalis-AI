@@ -236,8 +236,7 @@ export const TalkingFaceAvatar: React.FC<TalkingFaceAvatarProps> = ({
                 className="w-1 h-3 rounded-full inline-block"
                 style={{
                   backgroundColor: palette.primary,
-                  animation: `ma-bar ${dur}s ease-in-out infinite`,
-                  animationDelay: `${i * 0.08}s`,
+                  animation: `ma-bar ${dur}s ease-in-out ${i * 0.08}s infinite`,
                 }}
               />
             ))}

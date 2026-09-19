@@ -118,15 +118,21 @@ export const CandidateSessionList: React.FC<CandidateSessionListProps> = ({
 
                 <div className="min-w-0 space-y-0.5">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-xs font-bold text-slate-900 group-hover:text-indigo-700 transition truncate">
-                      #{sessions.length - idx} · {session.scenarioTitle}
-                    </span>
+                    {(() => {
+                      const realIdx = sessions.findIndex((s) => s.id === session.id);
+                      const sessionNumber = realIdx !== -1 ? sessions.length - realIdx : sessions.length - idx;
+                      return (
+                        <span className="text-xs font-bold text-slate-900 group-hover:text-indigo-700 transition truncate">
+                          #{sessionNumber} · {session.scenarioTitle}
+                        </span>
+                      );
+                    })()}
                     <span
-                      className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full border ${sLabel.bg} ${sLabel.color} ${sLabel.border}`}
+                      className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${sLabel.bg} ${sLabel.color} ${sLabel.border}`}
                     >
                       {sLabel.label}
                     </span>
-                    <span className="text-[9px] text-slate-500 font-mono bg-slate-200/60 px-1.5 py-0.2 rounded">
+                    <span className="text-[9px] text-slate-500 font-mono bg-slate-200/60 px-1.5 py-0.5 rounded">
                       {session.difficultyLevel}
                     </span>
                   </div>

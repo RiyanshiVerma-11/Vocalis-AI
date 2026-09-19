@@ -33,7 +33,7 @@ export function generateDynamicPanel(
 
   // Determine domain specialization
   const isAIOrML = roleLower.includes('ai') || roleLower.includes('data science') || roleLower.includes('machine learning') || rawText.includes('llama') || rawText.includes('rag') || rawText.includes('agent');
-  const isHealthcare = roleLower.includes('health') || rawText.includes('hospisyn') || rawText.includes('patient') || rawText.includes('clinical');
+  const isHealthcare = roleLower.includes('health') || roleLower.includes('medical') || roleLower.includes('biotech') || rawText.includes('health') || rawText.includes('hospital') || rawText.includes('patient') || rawText.includes('clinical') || rawText.includes('medical');
   const isFrontend = roleLower.includes('frontend') || roleLower.includes('ui') || roleLower.includes('react');
   const isDevOps = roleLower.includes('devops') || roleLower.includes('cloud') || roleLower.includes('infrastructure') || roleLower.includes('sre');
   const isFinTech = roleLower.includes('fintech') || roleLower.includes('payment') || rawText.includes('ledger') || rawText.includes('stripe');

@@ -967,9 +967,24 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
                   <Users className="w-3.5 h-3.5 text-indigo-600" />
                   <span>AI Interviewer Panel Members</span>
                 </label>
-                <span className="text-[11px] text-indigo-600 font-mono font-bold">
-                  {selectedRoleKeys.length} Selected
-                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (selectedRoleKeys.length === ALL_INTERVIEWERS.length) {
+                        setSelectedRoleKeys(['technical', 'product', 'customer']);
+                      } else {
+                        setSelectedRoleKeys(ALL_INTERVIEWERS.map((i) => i.role));
+                      }
+                    }}
+                    className="text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold underline underline-offset-2 cursor-pointer transition"
+                  >
+                    {selectedRoleKeys.length === ALL_INTERVIEWERS.length ? 'Reset to 3' : 'Select All (5 Panelists)'}
+                  </button>
+                  <span className="text-[11px] text-indigo-600 font-mono font-bold bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
+                    {selectedRoleKeys.length} / {ALL_INTERVIEWERS.length}
+                  </span>
+                </div>
               </div>
 
               <div className="space-y-1.5">

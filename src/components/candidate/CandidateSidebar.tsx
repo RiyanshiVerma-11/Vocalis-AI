@@ -349,12 +349,13 @@ export const CandidateSidebar: React.FC<CandidateSidebarProps> = ({
             <select
               value={silenceTimeoutMs}
               onChange={(e) => onChangeSilenceTimeout(Number(e.target.value))}
-              className="bg-slate-900 border border-slate-700/80 rounded-md text-slate-200 px-1.5 py-0.5 outline-none text-[10px] cursor-pointer focus:border-indigo-500/50 transition"
+              className="bg-slate-900 border border-slate-700/80 rounded-md text-slate-200 px-1.5 py-0.5 outline-none text-[10px] cursor-pointer focus:border-indigo-500/50 transition font-medium"
             >
-              <option value={-1}>Manual Only</option>
-              <option value={10000}>10s (Generous)</option>
-              <option value={8000}>8s (Relaxed)</option>
-              <option value={5000}>5s (Quick)</option>
+              <option value={2000}>⚡ 2s Real Interview (Auto-Send)</option>
+              <option value={3000}>3s (Balanced)</option>
+              <option value={4000}>4s (Thoughtful)</option>
+              <option value={6000}>6s (Generous)</option>
+              <option value={-1}>Manual Send Only</option>
             </select>
           </div>
 

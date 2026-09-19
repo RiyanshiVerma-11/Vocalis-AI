@@ -418,7 +418,7 @@ export function generatePersonalizedOpening(
     scenario.id === 'custom-freeform' ||
     scenario.id === 'candidate-personalized-interview'
   ) {
-    return `${greeting} ${panelIntro} It's wonderful to meet you today. To kick things off: Could you please introduce yourself and walk us through your journey, your core strengths, and the key projects you've worked on?`;
+    return `${greeting} ${panelIntro} It's wonderful to meet you today. To kick things off: Could you please introduce yourself and tell us a bit about your journey, your background, and what you're passionate about?`;
   }
 
   // For simulation scenarios (like PS11 cache invalidation or outage post-mortems), frame clearly as a technical case study
