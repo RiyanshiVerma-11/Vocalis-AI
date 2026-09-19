@@ -54,6 +54,11 @@ export class AgoraVoiceEngine {
   // MediaRecorder-based transcription (Chrome-safe: reuses Agora's existing mic track)
   private mediaRecorder: MediaRecorder | null = null;
   private mediaRecorderActive: boolean = false;
+  private recordedAudioChunks: Blob[] = [];
+  private transcribeIntervalTimer: any = null;
+  private isTranscribingChunk: boolean = false;
+  private transcribeSequence: number = 0;
+  private latestCompletedSequence: number = 0;
   public micAnalyser: AnalyserNode | null = null;
   private freqDataArray: Uint8Array<ArrayBuffer> | null = null;
   // Turn speech accumulation buffer: guarantees candidate speech is preserved seamlessly
@@ -109,6 +114,7 @@ export class AgoraVoiceEngine {
     this.turnAccumulatedFinalText = '';
     this.currentSessionFinalText = '';
     this.currentSessionInterimText = '';
+    this.recordedAudioChunks = [];
   }
 
   public getIsSpeaking(): boolean {
@@ -525,8 +531,15 @@ export class AgoraVoiceEngine {
   // ─── MediaRecorder + Groq Whisper transcription (Chrome-safe) ──────────
   // Uses Agora's already-captured MediaStreamTrack — no new getUserMedia call.
   // This bypasses Chrome's WASAPI exclusive mode conflict entirely.
+  //
+  // CRITICAL ARCHITECTURE NOTE (WebM EBML container header preservation):
+  // When MediaRecorder records with timeslice (e.g. start(1000)), only chunk[0] contains
+  // the EBML container header and audio codec parameters. Slices 1, 2, 3... are raw cluster frames.
+  // Individual slices cannot be decoded by Whisper/ffmpeg without the header!
+  // Therefore, we ACCUMULATE all slices in this.recordedAudioChunks.
+  // A Blob created from all chunks [0...N] forms a 100% valid, decodable WebM audio file
+  // representing the candidate's speech from time 0 to the present instant.
   private _startMediaRecorderTranscription(track: MediaStreamTrack): boolean {
-    // Stop any existing recorder first
     this._stopMediaRecorder();
 
     try {
@@ -543,16 +556,15 @@ export class AgoraVoiceEngine {
       const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
       this.mediaRecorder = recorder;
       this.mediaRecorderActive = true;
+      this.recordedAudioChunks = [];
+      this.transcribeSequence = 0;
+      this.latestCompletedSequence = 0;
+      this.isTranscribingChunk = false;
 
       recorder.ondataavailable = (e) => {
-        // Only gate on mediaRecorderActive and isListening (candidate's actual turn).
-        // Do NOT gate on isBrowserSpeaking/isSpeaking — those flags can linger from the
-        // previous AI turn and would silently discard ALL chunks in the next candidate turn.
-        // Agora's AEC prevents AI voice bleed into mic, so no guard needed.
         if (!this.mediaRecorderActive || !this.isListening) return;
-        // Require at least 2KB — empty/silence chunks are ~200 bytes
-        if (e.data && e.data.size > 2000) {
-          this._transcribeChunk(e.data, recorder.mimeType || mimeType || 'audio/webm');
+        if (e.data && e.data.size > 0) {
+          this.recordedAudioChunks.push(e.data);
         }
       };
 
@@ -561,11 +573,21 @@ export class AgoraVoiceEngine {
       };
 
       recorder.onstart = () => {
-        console.log(`[AgoraVoiceEngine] 🎙️ MediaRecorder started (Groq Whisper transcription, mime: ${recorder.mimeType})`);
+        console.log(`[AgoraVoiceEngine] 🎙️ MediaRecorder started (Groq Whisper continuous streaming, mime: ${recorder.mimeType})`);
       };
 
-      // 4-second chunks — good balance of latency vs Whisper overhead
-      recorder.start(4000);
+      // Emit 1-second slices so chunks accumulate smoothly with minimal lag
+      recorder.start(1000);
+
+      // Periodically transcribe the accumulated audio (every 2.5s) while candidate speaks
+      if (this.transcribeIntervalTimer) clearInterval(this.transcribeIntervalTimer);
+      this.transcribeIntervalTimer = setInterval(() => {
+        if (!this.isListening || !this.mediaRecorderActive) return;
+        if (this.recordedAudioChunks.length >= 2 && !this.isTranscribingChunk) {
+          this._transcribeAccumulatedAudio();
+        }
+      }, 2500);
+
       return true;
     } catch (err) {
       console.warn('[AgoraVoiceEngine] MediaRecorder start failed, falling back to Web Speech API:', err);
@@ -575,10 +597,27 @@ export class AgoraVoiceEngine {
     }
   }
 
-  private async _transcribeChunk(blob: Blob, mimeType: string): Promise<void> {
-    // Only transcribe during candidate's actual turn
-    if (!this.isListening) return;
+  private async _transcribeAccumulatedAudio(): Promise<string> {
+    if (!this.isListening || this.recordedAudioChunks.length === 0) {
+      return this.turnAccumulatedFinalText;
+    }
+    if (this.isTranscribingChunk) {
+      return this.turnAccumulatedFinalText;
+    }
+
+    const currentSeq = ++this.transcribeSequence;
+    this.isTranscribingChunk = true;
+
     try {
+      const mimeType = this.mediaRecorder?.mimeType || 'audio/webm';
+      // Concatenating all slices: slice[0] has EBML header, rest are clusters!
+      // This forms a single 100% valid WebM file covering candidate's entire turn!
+      const fullBlob = new Blob([...this.recordedAudioChunks], { type: mimeType });
+
+      if (fullBlob.size < 2000) {
+        return this.turnAccumulatedFinalText;
+      }
+
       const apiBase = (import.meta as any).env?.VITE_API_URL ||
         'https://vocalis-ai-ty8j.onrender.com';
 
@@ -588,35 +627,60 @@ export class AgoraVoiceEngine {
           'Content-Type': mimeType,
           'Authorization': `Bearer ${localStorage.getItem('vocalis_jwt_token') || ''}`,
         },
-        body: blob,
+        body: fullBlob,
       });
 
-      if (!res.ok) return;
+      if (!res.ok) return this.turnAccumulatedFinalText;
 
       const { text } = await res.json();
-      if (!text || !text.trim()) return;
 
-      const trimmed = text.trim();
-      // Accumulate transcript across chunks (same as Web Speech API final text)
-      this.turnAccumulatedFinalText = [this.turnAccumulatedFinalText, trimmed]
-        .filter(Boolean)
-        .join(' ')
-        .trim();
-
-      if (this.onSpeechDetectedCallback) this.onSpeechDetectedCallback();
-      if (this.callbacks.onTranscript) {
-        const boosted = boostTechnicalJargon(this.turnAccumulatedFinalText);
-        this.callbacks.onTranscript(boosted, true);
+      // Guard against out-of-order network responses
+      if (currentSeq < this.latestCompletedSequence) {
+        return this.turnAccumulatedFinalText;
       }
+      this.latestCompletedSequence = currentSeq;
 
-      console.log(`[AgoraVoiceEngine] 📝 Whisper transcript chunk: "${trimmed}"`);
+      if (text && text.trim()) {
+        const trimmed = text.trim();
+        this.turnAccumulatedFinalText = trimmed;
+        if (this.onSpeechDetectedCallback) this.onSpeechDetectedCallback();
+        if (this.callbacks.onTranscript) {
+          const boosted = boostTechnicalJargon(trimmed);
+          this.callbacks.onTranscript(boosted, true);
+        }
+        console.log(`[AgoraVoiceEngine] 📝 Whisper accumulated transcript (${(fullBlob.size / 1024).toFixed(1)} KB): "${trimmed}"`);
+      }
+      return this.turnAccumulatedFinalText;
     } catch (err) {
-      // Silent — transient network errors during transcription should not crash
+      return this.turnAccumulatedFinalText;
+    } finally {
+      this.isTranscribingChunk = false;
+    }
+  }
+
+  // Force-flushes any remaining audio from MediaRecorder and immediately transcribes
+  // the full turn audio up to this exact millisecond.
+  public async flushAndGetFinalTranscript(): Promise<string> {
+    if (!this.mediaRecorder || this.mediaRecorder.state === 'inactive') {
+      return this.turnAccumulatedFinalText;
+    }
+    try {
+      this.mediaRecorder.requestData();
+      await new Promise((r) => setTimeout(r, 60));
+      this.isTranscribingChunk = false;
+      const finalResult = await this._transcribeAccumulatedAudio();
+      return finalResult || this.turnAccumulatedFinalText;
+    } catch (e) {
+      return this.turnAccumulatedFinalText;
     }
   }
 
   private _stopMediaRecorder(): void {
     this.mediaRecorderActive = false;
+    if (this.transcribeIntervalTimer) {
+      clearInterval(this.transcribeIntervalTimer);
+      this.transcribeIntervalTimer = null;
+    }
     if (this.mediaRecorder) {
       try {
         if (this.mediaRecorder.state !== 'inactive') {
@@ -625,6 +689,8 @@ export class AgoraVoiceEngine {
       } catch (_) {}
       this.mediaRecorder = null;
     }
+    this.recordedAudioChunks = [];
+    this.isTranscribingChunk = false;
   }
 
   // Resilient Web Speech API starter and restart manager (Edge/Safari fallback)

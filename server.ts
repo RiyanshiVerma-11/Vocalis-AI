@@ -1490,7 +1490,7 @@ ${candidateResume.rawText ? `Resume Excerpt: ${candidateResume.rawText.slice(0, 
       /\b(introduction first|introduce myself first|give (my )?introduction|start with (my )?intro|introduce first|should i introduce)\b/i.test(cleanCandSpeech) ||
       /\b(i am ready|i'm ready|ready to start|ready to begin|ready now|let's start|lets start|let's begin|lets begin)\b/i.test(cleanCandSpeech) ||
       /^(hello|hi|hey|good morning|good afternoon|good evening|greetings|can you hear me|am i audible|test|testing|yes hello|hello there|hi there)(\s+(there|everyone|panel|team|all|rohan|priya|neha|vikram|alex|sir|maam|how are you|can you hear me|am i audible|nice to meet you|pleasure to meet you|glad to be here|are you able to listen|are you able to hear))?$/i.test(cleanCandSpeech) ||
-      (isEarlyInterview && cleanCandSpeech.length <= 45 && /^(hello|hi|hey|yes|yeah|okay|ok|sure|good)\b/i.test(cleanCandSpeech) && !/experience|worked|built|developed|project|engineer|student|graduate|started|graduated/i.test(cleanCandSpeech));
+      (isEarlyInterview && cleanCandSpeech.length <= 45 && /^(hello|hi|hey|yes|yeah|okay|ok|sure|good)\b/i.test(cleanCandSpeech) && !/experience|worked|built|developed|project|engineer|student|graduate|started|graduated|name|pursu|college|university|btech|b\.tech|cgpa|intro/i.test(cleanCandSpeech));
 
     const isGreetingOrIntroPrompt = isAudioCheckOrGreeting;
 
@@ -2895,7 +2895,9 @@ app.post('/api/transcribe',
           const lower = text.toLowerCase();
           const isHallucination = !text ||
             /^(thank you|thanks|you|bye|okay|[\.\s]+)\.?$/i.test(text) ||
-            lower === 'you' || lower === 'thank you.' || lower === 'thank you';
+            /^(thank you(\.|\s*thank you)*|that was a lot of you|thanks for watching|subscribe)\b/i.test(text.trim()) ||
+            lower === 'you' || lower === 'thank you.' || lower === 'thank you' ||
+            lower.includes('thank you. thank you') || lower.includes('that was a lot of you');
           return res.json({ text: isHallucination ? '' : text });
         } catch (e) {
           lastErr = e;
@@ -3064,6 +3066,7 @@ app.post('/api/agora/start-agent', authenticateToken, async (req, res) => {
     const stt = new DeepgramSTT({
       model: 'nova-3',
       language: 'en-US',
+      ...({ endpointingMs: 1200 } as any),
     });
 
     // ── LLM: Groq (qwen/qwen3.8-27b, <100ms) or CustomLLM or OpenAI ────

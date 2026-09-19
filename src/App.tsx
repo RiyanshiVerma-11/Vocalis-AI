@@ -395,7 +395,7 @@ export default function App() {
 
     const effectiveTimeout = currentTimeout + pauseAnalysis.recommendedGraceMs;
 
-    const checkAndSubmit = () => {
+    const checkAndSubmit = async () => {
       // Guard 1: If candidate is actively talking (volume > 25%), defer auto-submit.
       // Threshold is 25% (not 8%) because Agora's mic stream always has ambient noise at 15-20%.
       // Real speech registers at 30%+. At 8% the guard never fires due to continuous background noise.
@@ -411,7 +411,10 @@ export default function App() {
       }
 
       setThoughtGraceActive(false);
-      const textToSubmit = (latestCandidateSpeechRef.current || fullText).trim();
+
+      // Flush final audio and get full transcript to capture last spoken words
+      const finalTranscribed = await agoraVoiceEngine.flushAndGetFinalTranscript();
+      const textToSubmit = (finalTranscribed || latestCandidateSpeechRef.current || fullText).trim();
       if (!textToSubmit) return;
       latestCandidateSpeechRef.current = '';
       agoraVoiceEngine.clearSpeechBuffer();
