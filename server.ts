@@ -2569,28 +2569,31 @@ function reconcileAssessmentScores(assessment: any, isBriefSession = false): any
 // Endpoint: Generate Full Evidence-Based Assessment Linked to Transcript Quotes
 // Supports both primary route and backward-compatible /assess alias
 app.post(['/api/interview/final-assessment', '/api/interview/assess'], authenticateToken, async (req, res) => {
+  const { transcript = [], sharedContext = {}, activePanel = [], scenario = {}, candidateName = 'Candidate' } = req.body;
+
+  const candidateResume = sharedContext.candidateResume || {};
+  const candidateFirstName = (candidateResume.fullName || candidateName || 'Candidate').split(' ')[0];
+  const candidateHeadline = candidateResume.headline || candidateResume.targetRole || scenario.targetRole || 'Software Engineer';
+  const candidateExp = candidateResume.yearsOfExperience !== undefined ? candidateResume.yearsOfExperience : 1;
+  const isStudentOrIntern = candidateExp <= 2 || /student|intern|pursuing|b\.tech|bachelor|fresh|college|graduate/i.test(candidateHeadline + ' ' + (candidateResume.education?.[0]?.degree || ''));
+  const calibratedTargetRole = candidateHeadline.replace(/Senior\s*\/?\s*Staff/i, 'AI & Software Engineer').trim() || 'Software Engineer';
+  const calibratedDifficulty = isStudentOrIntern ? 'Intermediate' : (sharedContext.currentDifficulty || 'Intermediate');
+
+  const candidateTurns = transcript.filter((t: any) => t.speakerRole === 'candidate' || t.speakerId === 'candidate');
+  const isBriefSession = candidateTurns.length <= 4;
+
+  const fullTranscriptText = transcript
+    .map((t: any, index: number) => {
+      const isTrailingUnanswered = index === transcript.length - 1 && (t.speakerRole !== 'candidate' && t.speakerId !== 'candidate');
+      const trailNote = isTrailingUnanswered ? ' [NOTE: SESSION CONCLUDED AFTER THIS QUESTION — CANDIDATE NEVER HAD THE CHANCE TO ANSWER. STRICTLY DO NOT PENALIZE!]' : '';
+      return `[#${index + 1} | ${new Date(t.timestamp).toISOString().substring(11, 19)} | ${t.speakerRole.toUpperCase()} - ${t.speakerName}]${trailNote}: ${t.content}`;
+    })
+    .join('\n\n');
+
+  let prompt = '';
+
   try {
-    const { transcript = [], sharedContext = {}, activePanel = [], scenario = {}, candidateName = 'Candidate' } = req.body;
-
-    const candidateResume = sharedContext.candidateResume || {};
-    const candidateHeadline = candidateResume.headline || candidateResume.targetRole || scenario.targetRole || 'Software Engineer';
-    const candidateExp = candidateResume.yearsOfExperience !== undefined ? candidateResume.yearsOfExperience : 1;
-    const isStudentOrIntern = candidateExp <= 2 || /student|intern|pursuing|b\.tech|bachelor|fresh|college|graduate/i.test(candidateHeadline + ' ' + (candidateResume.education?.[0]?.degree || ''));
-    const calibratedTargetRole = candidateHeadline.replace(/Senior\s*\/?\s*Staff/i, 'AI & Software Engineer').trim() || 'Software Engineer';
-    const calibratedDifficulty = isStudentOrIntern ? 'Intermediate' : (sharedContext.currentDifficulty || 'Intermediate');
-
-    const candidateTurns = transcript.filter((t: any) => t.speakerRole === 'candidate' || t.speakerId === 'candidate');
-    const isBriefSession = candidateTurns.length <= 4;
-
-    const fullTranscriptText = transcript
-      .map((t: any, index: number) => {
-        const isTrailingUnanswered = index === transcript.length - 1 && (t.speakerRole !== 'candidate' && t.speakerId !== 'candidate');
-        const trailNote = isTrailingUnanswered ? ' [NOTE: SESSION CONCLUDED AFTER THIS QUESTION — CANDIDATE NEVER HAD THE CHANCE TO ANSWER. STRICTLY DO NOT PENALIZE!]' : '';
-        return `[#${index + 1} | ${new Date(t.timestamp).toISOString().substring(11, 19)} | ${t.speakerRole.toUpperCase()} - ${t.speakerName}]${trailNote}: ${t.content}`;
-      })
-      .join('\n\n');
-
-    const prompt = `
+    prompt = `
 You are the Chief Calibration Committee & Principal Evaluation Engine for an Adaptive Voice Interview.
 Generate a comprehensive, rigorous, evidence-based assessment of the candidate based strictly on the full interview transcript.
 
