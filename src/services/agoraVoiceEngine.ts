@@ -62,6 +62,7 @@ export class AgoraVoiceEngine {
   private restartDebounceTimer: any = null;
   private recognitionStartTime: number = 0;
   private rapidRestartCount: number = 0;
+  private lastRecognitionError: string | null = null;
   private outputAudioCtx: AudioContext | null = null;
   private currentSourceNode: AudioBufferSourceNode | null = null;
 
@@ -391,9 +392,10 @@ export class AgoraVoiceEngine {
   public async leaveChannel(): Promise<void> {
     try {
       if (this.localMicTrack) {
-        this.localMicTrack.stop();
-        this.localMicTrack.close();
+        const track = this.localMicTrack;
         this.localMicTrack = null;
+        try { track.stop(); } catch (_) {}
+        try { track.close(); } catch (_) {}
       }
       if (this.remoteAudioTrack) {
         try { this.remoteAudioTrack.stop(); } catch (_) {}
@@ -454,10 +456,17 @@ export class AgoraVoiceEngine {
   public setLocalMicMuted(muted: boolean): void {
     if (this.localMicTrack) {
       try {
-        this.localMicTrack.setMuted(muted);
+        const track = this.localMicTrack;
+        if ((track as any)._isClosed || (track as any).closed) {
+          return;
+        }
+        const promise = track.setMuted(muted);
+        if (promise && typeof (promise as any).catch === 'function') {
+          (promise as any).catch(() => {});
+        }
         console.log(`[AgoraVoiceEngine] 🎙️ Candidate local microphone ${muted ? 'MUTED' : 'UNMUTED'} (RTC level)`);
       } catch (err) {
-        console.warn('[AgoraVoiceEngine] Failed to toggle mic track mute state:', err);
+        // Safe catch for track state transitions
       }
     }
   }
@@ -533,6 +542,7 @@ export class AgoraVoiceEngine {
 
       recognition.onstart = () => {
         this.recognitionStartTime = Date.now();
+        this.lastRecognitionError = null;
         console.log('[AgoraVoiceEngine] 🎙️ Web Speech API started listening for turn!');
       };
 
@@ -545,6 +555,10 @@ export class AgoraVoiceEngine {
       };
 
       recognition.onresult = (event: any) => {
+        // Candidate speech actively recognized: clear error and reset restart penalty
+        this.lastRecognitionError = null;
+        this.rapidRestartCount = 0;
+
         // Acoustic Echo Shield: Drop mic recognition immediately ONLY while local TTS is actively speaking
         if (this.isBrowserSpeaking) {
           return;
@@ -584,12 +598,10 @@ export class AgoraVoiceEngine {
 
       recognition.onerror = (e: any) => {
         const err: string = e.error || 'unknown';
+        this.lastRecognitionError = err;
 
-        // Normal silence timeout on phrase boundary
-        if (err === 'no-speech') return;
-
-        // Ignore aborted during turn switching or explicit stop
-        if (err === 'aborted') {
+        // Normal silence timeout or user thinking on phrase boundary — NOT an error
+        if (err === 'no-speech' || err === 'aborted') {
           return;
         }
 
@@ -626,33 +638,38 @@ export class AgoraVoiceEngine {
         this.currentSessionFinalText = '';
         this.currentSessionInterimText = '';
 
-        // Detect if the session terminated immediately (< 1200ms)
-        const sessionDuration = this.recognitionStartTime > 0 ? Date.now() - this.recognitionStartTime : 0;
-        if (sessionDuration > 0 && sessionDuration < 1200) {
-          this.rapidRestartCount++;
-        } else if (sessionDuration >= 1200) {
+        const lastErr = this.lastRecognitionError;
+        this.lastRecognitionError = null;
+
+        // Candidate thinking, natural pauses, and normal phrase boundaries are NOT crashes
+        const isSilenceOrNormalEnd = !lastErr || lastErr === 'no-speech' || lastErr === 'aborted';
+
+        if (isSilenceOrNormalEnd) {
+          // Silence is normal human behavior — reset restart count immediately!
           this.rapidRestartCount = 0;
+        } else {
+          // Only increment for genuine system or hardware errors
+          this.rapidRestartCount++;
         }
 
-        // Auto-reconnect with progressive backoff ONLY if still listening and AI is NOT speaking
+        // Auto-reconnect smoothly whenever still listening and AI is NOT speaking
         if (this.isListening && !this.isSpeaking && !this.isBrowserSpeaking) {
           if (this.restartDebounceTimer) {
             clearTimeout(this.restartDebounceTimer);
           }
 
-          // Safety circuit-breaker: stop infinite restart storms if browser repeatedly crashes recognition
-          if (this.rapidRestartCount >= 6) {
-            console.warn('[AgoraVoiceEngine] 🛑 Pausing auto-reconnect: Web Speech API disconnected rapidly 6 times. Please click mic button to re-arm.');
-            this.callbacks.onSpeechError?.('Speech recognition paused. Click the microphone button or type to respond.');
+          // Safety circuit-breaker: ONLY pause if there are 12 consecutive REAL system errors
+          if (!isSilenceOrNormalEnd && this.rapidRestartCount >= 12) {
+            console.warn('[AgoraVoiceEngine] 🛑 Pausing auto-reconnect due to repeated system recognition errors. Please click mic button to re-arm.');
+            this.callbacks.onSpeechError?.('Speech recognition paused due to connection issues. Click the microphone button to retry.');
             return;
           }
 
-          // Progressive backoff: minimum 350ms so browser speech pipeline has cooled off!
-          const restartDelay = this.rapidRestartCount > 3 ? 1500 : this.rapidRestartCount > 1 ? 750 : 350;
+          // Seamless listening: 100ms quick restart on silence so candidate speech is NEVER lost
+          const restartDelay = isSilenceOrNormalEnd ? 100 : (this.rapidRestartCount > 3 ? 1500 : 500);
 
           this.restartDebounceTimer = setTimeout(() => {
             if (this.isListening && !this.isSpeaking && !this.isBrowserSpeaking && !this.webSpeechRecognition) {
-              console.log(`[AgoraVoiceEngine] 🔄 Web Speech API reconnecting for turn (attempt ${this.rapidRestartCount + 1}, delay ${restartDelay}ms)...`);
               this._startWebSpeech(false);
             }
           }, restartDelay);

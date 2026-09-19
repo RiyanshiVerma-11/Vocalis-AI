@@ -2486,11 +2486,16 @@ function generateFallbackTurn(lastCandidateSpeech: string, activePanel: any[], s
 function reconcileAssessmentScores(assessment: any, isBriefSession = false): any {
   if (!assessment || typeof assessment !== 'object') return assessment;
 
-  // In brief sessions (<= 4 candidate turns), protect candidate from unfair penalties on unprobed areas
+  // Zero-score protection: If session was incomplete or candidate provided no responses, strictly keep 0!
+  if (assessment.overallScore === 0) {
+    return assessment;
+  }
+
+  // In brief sessions (1-4 substantive candidate turns), protect candidate from unfair penalties on unprobed areas
   if (isBriefSession) {
     if (assessment.competencyBreakdown && Array.isArray(assessment.competencyBreakdown)) {
       assessment.competencyBreakdown.forEach((comp: any) => {
-        if (typeof comp.score === 'number' && comp.score < 72) {
+        if (typeof comp.score === 'number' && comp.score < 72 && comp.score > 0) {
           comp.score = 76;
           if (comp.verdict === 'Underperformed' || comp.verdict === 'Needs Improvement') {
             comp.verdict = 'Solid Baseline / Promising';
@@ -2501,7 +2506,7 @@ function reconcileAssessmentScores(assessment: any, isBriefSession = false): any
 
     if (assessment.roleByRoleFeedback && Array.isArray(assessment.roleByRoleFeedback)) {
       assessment.roleByRoleFeedback.forEach((rf: any) => {
-        if (typeof rf.score === 'number' && rf.score < 72) {
+        if (typeof rf.score === 'number' && rf.score < 72 && rf.score > 0) {
           rf.score = 78;
           if (rf.verdict === 'Underperformed' || rf.verdict === 'Needs Improvement' || rf.verdict === 'No Hire') {
             rf.verdict = 'Promising Potential';
@@ -2510,8 +2515,8 @@ function reconcileAssessmentScores(assessment: any, isBriefSession = false): any
       });
     }
 
-    // Never allow "Strong No Hire" or "No Hire" for a brief early session where candidate delivered clear intro and project
-    if (assessment.hiringRecommendation === 'Strong No Hire' || assessment.hiringRecommendation === 'No Hire' || assessment.hiringRecommendation === 'Leaning No Hire') {
+    // For brief early sessions with genuine substantive answers, avoid premature "Strong No Hire"
+    if (assessment.overallScore > 40 && (assessment.hiringRecommendation === 'Strong No Hire' || assessment.hiringRecommendation === 'No Hire' || assessment.hiringRecommendation === 'Leaning No Hire')) {
       assessment.hiringRecommendation = 'Hire';
     }
   }
@@ -2529,12 +2534,12 @@ function reconcileAssessmentScores(assessment: any, isBriefSession = false): any
     const originalScore = typeof assessment.overallScore === 'number' ? assessment.overallScore : 0;
 
     // Condition 1: Model returned overallScore on a 1-10 or 1-5 scale (e.g., 5) while subscores are in 0-100 scale (>= 20)
-    if (originalScore <= 10 && avgSubScore >= 20) {
+    if (originalScore <= 10 && originalScore > 0 && avgSubScore >= 20) {
       console.warn(`[Assessment Calibration] Reconciled 1-10 scale overallScore (${originalScore}) to panel composite average: ${avgSubScore}`);
       assessment.overallScore = avgSubScore;
     }
     // Condition 2: overallScore diverges from composite average (> 15 points difference) or dragged down in brief session
-    else if (Math.abs(originalScore - avgSubScore) > 15 || (isBriefSession && originalScore < 75)) {
+    else if (originalScore > 0 && (Math.abs(originalScore - avgSubScore) > 15 || (isBriefSession && originalScore < 75))) {
       console.warn(`[Assessment Calibration] Aligned divergent overallScore (${originalScore}) to panel composite average: ${avgSubScore}`);
       assessment.overallScore = isBriefSession ? Math.max(78, avgSubScore) : avgSubScore;
     }
@@ -2543,24 +2548,23 @@ function reconcileAssessmentScores(assessment: any, isBriefSession = false): any
   // Ensure overallScore is strictly clamped between 0 and 100
   if (typeof assessment.overallScore === 'number') {
     assessment.overallScore = Math.max(0, Math.min(100, Math.round(assessment.overallScore)));
-    if (isBriefSession && assessment.overallScore < 75) {
+    if (isBriefSession && assessment.overallScore > 0 && assessment.overallScore < 75) {
       assessment.overallScore = 80;
     }
   }
 
   // Clean up any executive summary text or calibration rationale claiming candidate failed to answer trailing product questions
-  if (typeof assessment.executiveSummary === 'string') {
-    assessment.executiveSummary = assessment.executiveSummary
-      .replace(/Crucially, when prompted about user feedback and core business metrics[^.]*\./gi, 'In subsequent interview rounds, the committee recommends exploring product ROI metrics.')
-      .replace(/when prompted about user feedback[^.]*business value\.?/gi, 'Candidate provided clear foundational technical framing.')
-      .replace(/revealing significant gaps in technical depth and product-oriented thinking\.?/gi, 'demonstrating solid foundational background and clear communication.')
-      .replace(/Strong No Hire/gi, 'Hire (Early Career)');
-  }
-  if (typeof assessment.calibrationRationale === 'string') {
-    assessment.calibrationRationale = assessment.calibrationRationale
-      .replace(/The overall score of \d+ reflects the candidate's inability[^.]*\./gi, 'Candidate clearly introduced their background and demonstrated tangible multi-agent project architecture.')
-      .replace(/This warrants a Strong No Hire recommendation[^.]*\./gi, 'This warrants a positive Hire recommendation for an early-career / intern level.')
-      .replace(/Strong No Hire/gi, 'Hire (Early Career)');
+  if (isBriefSession && assessment.overallScore > 0) {
+    if (typeof assessment.executiveSummary === 'string') {
+      assessment.executiveSummary = assessment.executiveSummary
+        .replace(/Crucially, when prompted about user feedback and core business metrics[^.]*\./gi, 'In subsequent interview rounds, the committee recommends exploring product ROI metrics.')
+        .replace(/when prompted about user feedback[^.]*business value\.?/gi, 'Candidate provided clear foundational technical framing.')
+        .replace(/revealing significant gaps in technical depth and product-oriented thinking\.?/gi, 'demonstrating solid foundational background and clear communication.');
+    }
+    if (typeof assessment.calibrationRationale === 'string') {
+      assessment.calibrationRationale = assessment.calibrationRationale
+        .replace(/The overall score of \d+ reflects the candidate's inability[^.]*\./gi, 'Candidate clearly introduced their background and demonstrated tangible project architecture.');
+    }
   }
 
   return assessment;
@@ -2580,7 +2584,59 @@ app.post(['/api/interview/final-assessment', '/api/interview/assess'], authentic
   const calibratedDifficulty = isStudentOrIntern ? 'Intermediate' : (sharedContext.currentDifficulty || 'Intermediate');
 
   const candidateTurns = transcript.filter((t: any) => t.speakerRole === 'candidate' || t.speakerId === 'candidate');
-  const isBriefSession = candidateTurns.length <= 4;
+  const totalCandidateWords = candidateTurns.reduce(
+    (acc: number, t: any) => acc + (t.content || '').trim().split(/\s+/).filter(Boolean).length,
+    0
+  );
+
+  // If candidate said literally nothing (0 turns or < 5 words in total),
+  // return an Incomplete / Not Assessed report: Score MUST be 0 / 100!
+  if (candidateTurns.length === 0 || totalCandidateWords < 5) {
+    console.log(`[Assessment] Candidate turns: ${candidateTurns.length}, words: ${totalCandidateWords}. Concluding with 0/100 Incomplete.`);
+    const zeroAssessment = {
+      candidateName,
+      targetRole: calibratedTargetRole,
+      overallScore: 0,
+      hiringRecommendation: 'Strong No Hire',
+      adaptiveTrajectory: 'Not Assessed (0 Candidate Turns)',
+      executiveSummary: `The interview session concluded before candidate responses were recorded (0 candidate turns). With no candidate answers provided, performance cannot be evaluated, resulting in an overall score of 0/100.`,
+      calibrationRationale: `No candidate speech was recorded during this session. Following objective evaluation standards, an interview with zero candidate responses cannot be scored above 0/100 and yields a Strong No Hire (Incomplete Session).`,
+      competencyBreakdown: [
+        { competency: 'Technical Architecture', score: 0, weight: 30, verdict: 'Not Assessed', keyStrengths: [], areasForCalibration: ['No candidate response was recorded during this interview session.'] },
+        { competency: 'Business And Customer Impact', score: 0, weight: 25, verdict: 'Not Assessed', keyStrengths: [], areasForCalibration: ['No candidate response was recorded during this interview session.'] },
+        { competency: 'Communication And Clarity', score: 0, weight: 15, verdict: 'Not Assessed', keyStrengths: [], areasForCalibration: ['No candidate response was recorded during this interview session.'] },
+        { competency: 'Leadership And Ownership', score: 0, weight: 15, verdict: 'Not Assessed', keyStrengths: [], areasForCalibration: ['No candidate response was recorded during this interview session.'] },
+        { competency: 'Problem Solving And Agility', score: 0, weight: 15, verdict: 'Not Assessed', keyStrengths: [], areasForCalibration: ['No candidate response was recorded during this interview session.'] },
+      ],
+      roleByRoleFeedback: (activePanel && activePanel.length > 0 ? activePanel : [
+        { id: 'interviewer-1', name: 'Rohan Sharma', title: 'Principal AI & Systems Architect', role: 'technical' },
+        { id: 'interviewer-2', name: 'Priya Mehta', title: 'Principal AI Product Manager', role: 'product' },
+        { id: 'interviewer-3', name: 'Neha Kapoor', title: 'Director of Enterprise Clinical Operations', role: 'operations' },
+      ]).map((p: any) => ({
+        interviewerId: p.id,
+        interviewerName: p.name,
+        role: p.role || p.title,
+        score: 0,
+        verdict: 'Not Assessed',
+        feedback: `Session ended before candidate answered any questions. No audio or text response was received.`,
+      })),
+      contradictionsOrGaps: [],
+      strengths: [],
+      developmentAreas: [
+        'Complete an interview session and respond to panel questions to receive an evaluative assessment.',
+      ],
+      nextRoundFocus: [
+        'Re-attempt the interview and provide verbal or typed answers to panel inquiries.',
+      ],
+    };
+
+    return res.json({
+      success: true,
+      data: zeroAssessment,
+    });
+  }
+
+  const isBriefSession = candidateTurns.length >= 1 && candidateTurns.length <= 4 && totalCandidateWords >= 15;
 
   const fullTranscriptText = transcript
     .map((t: any, index: number) => {
@@ -2819,7 +2875,11 @@ app.post('/api/tts', authenticateToken, async (req, res) => {
     }
 
     if (!base64Audio) {
-      return res.status(404).json({ error: lastError?.message || 'No audio returned from Gemini TTS model' });
+      return res.json({
+        success: false,
+        fallback: true,
+        message: 'Gemini TTS unavailable or daily free quota reached. Client speech synthesis will handle audio.',
+      });
     }
 
     res.json({
@@ -3310,10 +3370,6 @@ VOICE INTERVIEW STYLE:
 
 
 
-// Fast TTS fallback handler (returns clean 200 so browser SpeechSynthesis handles client-side speech directly)
-app.post('/api/tts', authenticateToken, async (_req, res) => {
-  res.json({ success: false, fallback: true, message: 'Browser SpeechSynthesis handles client-side voice.' });
-});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LIVEAVATAR REAL-TIME VIDEO STREAMING LAYER (DISABLED)
