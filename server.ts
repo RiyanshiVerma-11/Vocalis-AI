@@ -719,9 +719,9 @@ function getGeminiClients(): GoogleGenAI[] {
 // Fallback helper for handling temporary 503 high demand errors across Gemini models and keys
 async function generateContentWithFallback(options: any) {
   const clients = getGeminiClients();
-  const primaryModel = options.model || 'gemini-2.5-flash';
+  const primaryModel = options.model || 'gemini-2.0-flash';
   const modelsToTry = Array.from(
-    new Set([primaryModel, 'gemini-2.5-flash', 'gemini-2.5-pro'])
+    new Set([primaryModel, 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.5-flash', 'gemini-2.5-pro'])
   );
   let lastError: any = null;
 
@@ -755,10 +755,10 @@ async function generateContentWithGroq(
   if (keys.length === 0) throw new Error('GROQ_API_KEY missing');
 
   const modelsToTry = [
-    'openai/gpt-oss-120b',
-    'openai/gpt-oss-20b',
     'qwen/qwen3.8-27b',
+    'groq/compound',
     'groq/compound-mini',
+    'openai/gpt-oss-120b',
   ];
 
   const defaultSystemPrompt =
@@ -790,7 +790,7 @@ async function generateContentWithGroq(
             ],
             response_format: { type: 'json_object' },
             temperature: 0.6,
-            max_tokens: 500, // Reduced from 2000 to prevent Groq 8000 TPM limit 429 errors
+            max_tokens: 2500,
           }),
         });
 
@@ -1006,38 +1006,16 @@ function normalizeTurnResponse(raw: any, activePanel: any[], scenario: any, shar
   const firstProbe = validFlags.find((f: any) => f.suggestedProbe && typeof f.suggestedProbe === 'string' && f.suggestedProbe.trim().length > 10)?.suggestedProbe ||
     (raw.suggestedProbe && typeof raw.suggestedProbe === 'string' && raw.suggestedProbe.trim().length > 10 ? raw.suggestedProbe.trim() : null);
 
+  // Never let backstage probe instructions overwrite speechText if valid conversational dialogue exists!
   if (isGreetingOrIntroPrompt) {
     speechText = `Hello ${candidateFirstName}! It's wonderful to meet you, and we can hear you loud and clear. To kick things off, could you please introduce yourself and walk us through your journey, your core strengths, and the key projects you've worked on?`;
-  } else if (firstProbe && !isAlreadyAsked(firstProbe) && (!speechText || speechText.length < 15 || speechText.includes("From a product and customer impact standpoint") || speechText.includes("user feedback and core business metrics"))) {
-    // If a concrete, unasked probe was formulated, use it!
-    speechText = firstProbe;
-    const techInterviewer = activePanel.find((p: any) => p.role === 'technical') || fallbackInterviewer;
-    if (techInterviewer) matchedInterviewer = techInterviewer;
   } else if (!speechText || speechText.length < 10 || isAlreadyAsked(speechText)) {
-    // Generate a fresh, unasked question based on interviewer role
-    const pRole = matchedInterviewer.role || 'technical';
-    if (firstProbe && !isAlreadyAsked(firstProbe)) {
-      speechText = firstProbe;
-    } else if (pRole === 'technical') {
-      const techOptions = [
-        "How do you approach database schema design and data consistency across concurrent write operations in this system?",
-        "What caching strategies and TTL invalidation rules do you use to maintain sub-second response times under load?",
-        "How do you design your asynchronous workers and error retry policies to prevent cascading failure?",
-        "Could you walk us through how you write automated integration tests and mock external API dependencies?"
-      ];
-      speechText = techOptions.find(opt => !isAlreadyAsked(opt)) || techOptions[0];
-    } else if (pRole === 'product') {
-      const prodOptions = [
-        "From a user experience standpoint, how do you balance latency optimization with interface responsiveness?",
-        "How did customer feedback and usage metrics influence your key engineering priorities?"
-      ];
-      speechText = prodOptions.find(opt => !isAlreadyAsked(opt)) || prodOptions[0];
+    // Generate a natural, conversational response that fits the interview context
+    const isEarly = (transcript || []).filter((t: any) => t.speakerId === 'candidate').length <= 2;
+    if (isEarly) {
+      speechText = `Thank you for sharing that, ${candidateFirstName}! To kick off our technical conversation, could you tell us what programming languages, tools, or projects you've worked on recently that you enjoy most?`;
     } else {
-      const opsOptions = [
-        "In mission-critical production environments, what metrics, health check probes, and alerts do you monitor?",
-        "What automated rollback procedures and disaster recovery mechanisms did you put in place?"
-      ];
-      speechText = opsOptions.find(opt => !isAlreadyAsked(opt)) || opsOptions[0];
+      speechText = `That's very helpful context. Could you elaborate a bit more on that, and walk us through a specific technical challenge or trade-off you encountered in your implementation?`;
     }
   }
 
@@ -1550,6 +1528,45 @@ ${candidateResume.rawText ? `Resume Excerpt: ${candidateResume.rawText.slice(0, 
       return res.json({ success: true, data: greetingTurn });
     }
 
+    // ── 1.5 FAST-PATH: Candidate Expresses Confusion or Asks Meta Questions ("Is this hardcoded?", "I didn't even start") ──
+    const isCandidateMetaOrConfused =
+      /\b(hard\s*coded|hardcoded|is this (a )?bot|is this (a )?script|scripted|is this real|real interview|didn't even|didnt even|haven't even|havent even|what is this|what are you asking|wait a minute|hold on|why are you asking|not given|haven't given|havent given|not started|just started)\b/i.test(lastCandidateSpeech || '');
+
+    if (isCandidateMetaOrConfused) {
+      const candidateFirstName = (candidateResume.fullName || sharedContext.candidateName || 'there').split(' ')[0];
+      const speakerToUse = previousSpeaker || activePanel[0] || { id: 'alex-vance', name: 'Rohan Sharma', role: 'technical' };
+      const speech = `Haha, not at all hardcoded, ${candidateFirstName}! We're an adaptive panel of AI interviewers having a live conversation with you. My apologies if that earlier question felt sudden or out of place! Since you just introduced yourself, let's start properly: what programming languages, frameworks, or software projects have you worked on recently that you'd like to tell us about?`;
+
+      const metaTurn = {
+        nextSpeakerId: speakerToUse.id,
+        nextSpeakerName: speakerToUse.name,
+        nextSpeakerRole: speakerToUse.role || 'technical',
+        speech,
+        internalThought: `Candidate asked a meta question / expressed surprise ("${lastCandidateSpeech}"). Clarifying with authentic warmth and good humor, setting candidate at ease, and inviting their technical background.`,
+        turnTakingReason: `${speakerToUse.name} reassured ${candidateFirstName} with natural human warmth and invited their technical background.`,
+        questionTopic: 'Technical Background & Project Overview',
+        targetCompetency: 'communicationAndClarity',
+        adaptiveStrategyApplied: 'Gentle Encouragement',
+        analysisOfCandidateAnswer: {
+          sentiment: 'Hesitant / Uncertain',
+          depthLevel: 'Intermediate (Practical)',
+          detectedKeywords: ['conversational_clarification', 'warmup'],
+          candidateResponseSummary: `Candidate asked if questions were hardcoded; panel clarified warmly and asked about candidate's preferred tech stack.`,
+        },
+        detectedFlags: [],
+        updatedDifficulty: sharedContext.currentDifficulty || 'Intermediate',
+        updatedCompetencyScores: sharedContext.competencyScores || {
+          technicalArchitecture: 75,
+          businessAndCustomerImpact: 75,
+          communicationAndClarity: 75,
+          leadershipAndOwnership: 75,
+          problemSolvingAndAgility: 75,
+        },
+        updatedRunningSummary: (sharedContext.runningSummary || '') + ` Clarified natural conversation warmly with candidate.`,
+      };
+      return res.json({ success: true, data: metaTurn });
+    }
+
     // ── 2. FAST-PATH: Candidate Explicitly Requests HR / Behavioral Questions ──
     if (wantsHR) {
       const hrSpeaker = (activePanel && activePanel.length > 0)
@@ -1819,24 +1836,23 @@ ${isOpeningForThisProj && isFirstProj ? `
 - Next Speaker: ${techMember.name} (${techMember.title}) or ${leadershipMember.name} (${leadershipMember.title}).
 
 INSTRUCTIONS:
-${skillsQuestionCount === 0 ? `
+${(projectsList.length === 0 && skillsQuestionCount === 0) ? `
+1. CANDIDATE JUST FINISHED THEIR SELF-INTRODUCTION:
+   - Warmly acknowledge what the candidate shared about themselves (their name, background, education).
+   - Ask an open-ended, welcoming technical exploration question:
+     "Thank you for that introduction, ${candidateFirstName}! To kick off our technical conversation, what programming languages, frameworks, or software projects have you enjoyed working on recently?"
+   - Do NOT interrogate on advanced concurrency or edge-case distributed architectures yet! Let the candidate tell you what they know first.
+` : skillsQuestionCount === 0 ? `
 1. Smoothly transition from projects to skills:
-   "Great job walking us through your projects! Now let's pivot to your core technical skills and computer science coursework."
+   "Great job walking us through your projects! Now let's pivot to your core technical skills and computer science fundamentals."
 ` : `
-1. Acknowledge candidate's previous technical answer.
+1. Acknowledge candidate's previous technical answer with genuine human perception.
 `}
-${isSupportive ? `
-2. [SUPPORTIVE QUESTION]: Ask an encouraging, foundational question testing core concepts:
-   - Python: Difference between mutable and immutable types, or how list comprehensions/generators work.
-   - DBMS: The purpose of primary vs foreign keys, or why we normalize database tables.
-   - APIs: Difference between GET, POST, PUT in REST APIs.
-` : `
-2. [INTERMEDIATE QUESTION - HARDER THAN SUPPORTIVE]: Ask a deeper, practical engineering question on concurrency, memory, databases, or systems design:
-   - Python: "In Python, when building an asynchronous service with FastAPI, how does asyncio's event loop handle I/O-bound tasks vs CPU-bound tasks, and how does the Global Interpreter Lock (GIL) impact multithreading?"
-   - DBMS: "In DBMS, how do transactions maintain ACID properties, and how do database isolation levels (like Read Committed vs Serializable) prevent dirty reads and race conditions under concurrent writes?"
-   - Indexing: "How do B-Tree indexes improve query lookup performance, and what trade-offs occur on insert/update heavy workloads?"
-`}
-3. Output questionTopic as e.g. "Core Skills: Python Concurrency & Event Loop" or "Coursework: DBMS ACID & Indexing".
+2. Formulate a FRESH, original question directly relevant to what the candidate discussed:
+   - If they mentioned languages or tools (e.g. Python, JavaScript, Java, C++, SQL), ask about real-world usage and practical trade-offs.
+   - ⛔ STRICT PROHIBITION: NEVER ask generic database concurrency trivia unless the candidate explicitly stated they built a high-throughput transactional database!
+   - Keep spoken questions concise (2-3 natural sentences) with warmth and professional curiosity.
+3. Output questionTopic concisely reflecting the specific topic asked.
 `;
     } else if (currentLifecycleStage === 'STAGE_4_HR_BEHAVIORAL') {
       stageDirective = `
@@ -2367,6 +2383,7 @@ function generateFallbackTurn(lastCandidateSpeech: string, activePanel: any[], s
   let strategy = 'Deep Probe';
 
   const isGreeting = /^(hello|hi|hey|good morning|good afternoon|good evening|can you hear me|am i audible|test|testing)/i.test(speechLower);
+  const isMetaOrConfused = /\b(hard\s*coded|hardcoded|is this (a )?bot|is this (a )?script|scripted|is this real|real interview|didn't even|didnt even|haven't even|havent even|what is this|what are you asking|why are you asking|not given|haven't given|havent given)\b/i.test(speechLower);
   const isSkipOrPass = /skip|pass|next question|don't know|dont know|not sure|don't remember|dont remember|can't recall|cant recall|long time|haven't|havent/i.test(speechLower);
   const isVeryShort = candWords.length <= 2 && speechLower.length <= 12;
   const wantsHR = /\b(hr|human resource|human resources|behavioral|behavioural|culture|teamwork|leadership|conflict|team collaboration|star question|soft skills)\b/i.test(speechLower) ||
@@ -2383,6 +2400,11 @@ function generateFallbackTurn(lastCandidateSpeech: string, activePanel: any[], s
     speech = `Hello ${candidateFirstName}! It's wonderful to meet you, and we can hear you loud and clear. To kick things off, could you please introduce yourself and walk us through your journey, your core strengths, and the key projects you've worked on?`;
     topic = 'Candidate Introduction & Professional Journey';
     strategy = 'Introductory Warm-Up';
+  } else if (isMetaOrConfused) {
+    nextInterviewer = primaryInterviewer;
+    speech = `Haha, not at all hardcoded, ${candidateFirstName}! We're an adaptive panel of AI interviewers having a live conversation with you. Apologies if that earlier question felt sudden or out of place — let's start properly: what programming languages, frameworks, or software projects have you worked on recently that you'd like to tell us about?`;
+    topic = 'Technical Background & Project Overview';
+    strategy = 'Gentle Encouragement';
   } else if (wantsHR) {
     nextInterviewer = activePanel.find((p: any) => p.role === 'behavioural' || p.role === 'hiring_manager' || p.role === 'product') || primaryInterviewer;
     const hrOptions = [
@@ -2406,12 +2428,7 @@ function generateFallbackTurn(lastCandidateSpeech: string, activePanel: any[], s
       speech = `No worries at all, that's completely fair! Let's pivot to another project on your resume: "${unaskedProj.name}". Could you walk us through what problem it solves and your core implementation approach?`;
       topic = `Project Architecture: ${unaskedProj.name}`;
     } else {
-      const skipOptions = [
-        "No worries at all, that's completely fair! Let's pivot to your broader technical skills. What core architectural principles do you prioritize when designing resilient, scalable backend services?",
-        "Totally understandable! Let's shift gears to your experience with relational databases. How do you design your database schemas to handle concurrent transactions without data corruption?",
-        "Fair enough! Let's explore your core technical skills. When building asynchronous services, how do you manage non-blocking I/O operations and connection limits under high request volumes?"
-      ];
-      speech = skipOptions.find(opt => !isAlreadyAsked(opt)) || skipOptions[0];
+      speech = `No worries at all, that's completely fair! Let's pivot to your broader technical skills: what areas of software engineering or systems development have you enjoyed building most recently?`;
       topic = 'Engineering Principles & System Design';
     }
     strategy = 'Pivot to Core Fundamentals';
@@ -2425,29 +2442,23 @@ function generateFallbackTurn(lastCandidateSpeech: string, activePanel: any[], s
 
     if (mentionedProj) {
       nextInterviewer = activePanel.find((p: any) => p.role === 'technical') || primaryInterviewer;
-      const projOptions = [
-        `Could you walk us through the high-level architecture and data flow in ${mentionedProj.name}?`,
-        `When designing ${mentionedProj.name}, what were the main engineering bottlenecks you anticipated, and how did you measure performance?`,
-        `How do you handle failure recovery, retry policies, and logging in ${mentionedProj.name} to ensure system resilience?`,
-        `What database schema design and data persistence strategies did you choose for ${mentionedProj.name}, and what trade-offs did you evaluate?`,
-        `How do you write automated tests and mock external dependencies for ${mentionedProj.name}?`
-      ];
-      speech = projOptions.find(opt => !isAlreadyAsked(opt)) || projOptions[0];
+      speech = `Could you walk us through the high-level architecture and data flow in ${mentionedProj.name}, and what core problem it solves?`;
       topic = `Architecture: ${mentionedProj.name}`;
       strategy = 'Deep Probe';
     } else {
       nextInterviewer = (activePanel && activePanel.length > 0)
-        ? activePanel[Math.floor(Math.random() * activePanel.length)]
+        ? activePanel[0]
         : primaryInterviewer;
-      const generalOptions = [
-        "Could you walk us through how you approach database schema design and ACID transaction isolation under concurrent writes?",
-        "What caching strategies, TTL invalidation rules, and cache stampede mitigations do you enforce to maintain low response times under load?",
-        "From an engineering resiliency standpoint, how do you design asynchronous background workers and circuit breakers to prevent cascading failures?",
-        "Could you walk us through how you write automated integration tests and mock external service dependencies?"
-      ];
-      speech = generalOptions.find(opt => !isAlreadyAsked(opt)) || generalOptions[0];
-      topic = 'System Reliability & Engineering Architecture';
-      strategy = 'Deep Probe';
+      const candTurns = (transcript || []).filter((t: any) => t.speakerId === 'candidate').length;
+      if (candTurns <= 2) {
+        speech = `Thank you for sharing that, ${candidateFirstName}! To start our technical conversation, what programming languages, tools, or projects have you worked on recently that you're most excited about?`;
+        topic = 'Technical Focus & Project Exploration';
+        strategy = 'Introductory Warm-Up';
+      } else {
+        speech = `That's very helpful context. Could you dive a bit deeper into your implementation, and walk us through a key technical challenge or trade-off you encountered?`;
+        topic = 'Engineering Principles & Trade-offs';
+        strategy = 'Deep Probe';
+      }
     }
   }
 
