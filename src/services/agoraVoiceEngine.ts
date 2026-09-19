@@ -633,6 +633,23 @@ export class AgoraVoiceEngine {
       recognition.onend = () => {
         this.isRecognitionRunning = false;
 
+        // Detach all handlers from this ended instance — Chrome's webkitSpeechRecognition
+        // silently breaks when you call .start() on an already-ended instance: it fires
+        // onstart locally but never actually streams audio to Google's STT servers.
+        // Solution: null out this instance so _startWebSpeech(false) always creates a fresh one.
+        try {
+          recognition.onresult = null;
+          recognition.onerror = null;
+          recognition.onstart = null;
+          recognition.onaudiostart = null;
+          recognition.onspeechstart = null;
+          recognition.onend = null;
+        } catch (_) {}
+        // Always force a fresh instance on next restart — never reuse an ended recognition
+        if (this.webSpeechRecognition === recognition) {
+          this.webSpeechRecognition = null;
+        }
+
         if (!this.isSpeaking && !this.isBrowserSpeaking && this.currentSessionFinalText) {
           this.turnAccumulatedFinalText = [this.turnAccumulatedFinalText, this.currentSessionFinalText]
             .filter(Boolean)
@@ -665,20 +682,14 @@ export class AgoraVoiceEngine {
             return;
           }
 
-          // In Chrome on Windows, the OS audio device release requires ~300ms.
-          // 400ms delay gives Chrome's audio manager sufficient time to cleanly open the new session!
+          // Chrome WASAPI audio device release requires ~300ms.
+          // Always call _startWebSpeech(false) which now creates a FRESH instance every time.
           const restartDelay = isSilenceOrNormalEnd ? 400 : (this.rapidRestartCount > 3 ? 1500 : 600);
 
           this.restartDebounceTimer = setTimeout(() => {
             if (this.isListening && !this.isSpeaking && !this.isBrowserSpeaking && !this.isRecognitionRunning) {
-              try {
-                this.webSpeechRecognition?.start();
-              } catch (startErr: any) {
-                if (startErr?.name === 'InvalidStateError') {
-                  return;
-                }
-                this._startWebSpeech(false);
-              }
+              // Always create a fresh instance — never .start() on an ended one
+              this._startWebSpeech(false);
             }
           }, restartDelay);
         }
