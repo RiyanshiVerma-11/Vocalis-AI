@@ -1985,15 +1985,9 @@ Strictly follow the active UI Difficulty Tier (${currentDifficulty}), 5-Phase In
         const rawGroq = await generateContentWithGroq(prompt, groqSystemPrompt);
         if (rawGroq && (rawGroq.nextSpeakerId || rawGroq.speech || rawGroq.utterance || rawGroq.spokenResponse || rawGroq.question || rawGroq.speaker)) {
           const groqNormalized = normalizeTurnResponse(rawGroq, activePanel, scenario, sharedContext, isClarificationRequest, previousSpeaker, isGreetingOrIntroPrompt, transcript, isSkipOrPassRequest, currentPhase, currentActiveTopic, topicTurnDepthCount);
-          // Prepend smooth handoff bridge if persona changed and wasn't mentioned (NEVER on clarification, skip/pass, section shift, or candidate greeting requests)
-          if (lastAISpeakerId && groqNormalized.nextSpeakerId !== lastAISpeakerId && !groqNormalized.isDebateExchange && !isClarificationRequest && !isSkipOrPassRequest && !wantsNonProjectSection && !isGreetingOrIntroPrompt) {
-            const firstName = lastAISpeakerName.split(' ')[0];
-            const speechLower = groqNormalized.speech.toLowerCase();
-            const startsWithEmpatheticAck = speechLower.startsWith('no worries') || speechLower.startsWith('no problem') || speechLower.startsWith('totally fine') || speechLower.startsWith('fair enough') || speechLower.startsWith('that makes sense') || speechLower.startsWith('fair point') || speechLower.startsWith('understood') || speechLower.startsWith('you got it');
-            if (!speechLower.includes(firstName.toLowerCase()) && !startsWithEmpatheticAck) {
-              groqNormalized.speech = `Thanks ${firstName}, building on that point. ${groqNormalized.speech}`;
-            }
-          }
+          // NOTE: Do NOT prepend any hardcoded handoff prefix here.
+          // The master prompt instructs the LLM to generate natural 3-part cadence:
+          // "[Acknowledgment] → [Bridge] → [Question]" — trust its output entirely.
           console.log(`[Groq AI] Successfully generated panel turn in <100ms for Phase ${currentPhase} on topic: ${currentActiveTopic}`);
           return res.json({ success: true, data: groqNormalized });
         }
@@ -2070,16 +2064,9 @@ Strictly follow the active UI Difficulty Tier (${currentDifficulty}), 5-Phase In
     const parsedRaw = JSON.parse(response.text || '{}');
     const parsed = normalizeTurnResponse(parsedRaw, activePanel, scenario, sharedContext, isClarificationRequest, previousSpeaker, isGreetingOrIntroPrompt, transcript, isSkipOrPassRequest, currentPhase, currentActiveTopic, topicTurnDepthCount);
 
-    // Prepend smooth handoff bridge if persona changed and wasn't mentioned (NEVER on clarification, skip/pass, section shift, or candidate greeting requests)
-    if (parsed.nextSpeakerId && lastAISpeakerId && parsed.nextSpeakerId !== lastAISpeakerId && !parsed.isDebateExchange && !isClarificationRequest && !isSkipOrPassRequest && !wantsNonProjectSection && !isGreetingOrIntroPrompt) {
-      const speechText = parsed.speech || '';
-      const firstName = lastAISpeakerName.split(' ')[0];
-      const speechLower = speechText.toLowerCase();
-      const startsWithEmpatheticAck = speechLower.startsWith('no worries') || speechLower.startsWith('no problem') || speechLower.startsWith('totally fine') || speechLower.startsWith('fair enough') || speechLower.startsWith('that makes sense') || speechLower.startsWith('fair point') || speechLower.startsWith('understood') || speechLower.startsWith('you got it');
-      if (!speechLower.includes(firstName.toLowerCase()) && !startsWithEmpatheticAck) {
-        parsed.speech = `Thanks ${firstName}, building on that point. ${speechText}`;
-      }
-    }
+    // NOTE: Do NOT prepend any hardcoded handoff prefix here.
+    // The master prompt instructs the LLM to generate natural 3-part cadence:
+    // "[Acknowledgment] → [Bridge] → [Question]" — trust its output entirely.
 
     res.json({ success: true, data: parsed });
   } catch (error: any) {
@@ -2211,8 +2198,11 @@ function generateFallbackTurn(
     topic = 'Introduction & Role Fit';
     strategy = 'Introductory Warm-Up';
   } else {
-    // Topic continuity: check if active topic has an unasked question
-    const activeProj = resumeProjects.find(p => p.name.toLowerCase() === activeTopic.toLowerCase());
+    // Topic continuity: fuzzy bidirectional match so partial names (e.g. "CommAI backend" vs "CommAI") still resolve
+    const activeProj = resumeProjects.find(p =>
+      p.name.toLowerCase().includes(activeTopic.toLowerCase()) ||
+      activeTopic.toLowerCase().includes(p.name.toLowerCase())
+    );
     if (activeProj && topicTurnCount <= 2) {
       nextInterviewer = activePanel.find((p: any) => p.role === 'technical') || primaryInterviewer;
       speech = `Understood. In ${activeProj.name}, what was the most demanding engineering bottleneck you ran into, and how did you diagnose and resolve it?`;
@@ -3169,26 +3159,63 @@ app.post('/api/agora/llm-webhook', async (req, res) => {
       return res.json({ choices: [{ message: { role: 'assistant', content: 'Could you elaborate on that?' } }] });
     }
 
-    // Adaptive interviewer system prompt — drives all PS11 behaviors:
-    // - Multi-turn adaptive questioning based on candidate's previous answers
-    // - Difficulty adjustment (probe deeper on strong answers, scaffold on weak ones)
-    // - Contradiction & vagueness detection
-    // - Role-appropriate technical/behavioral focus
-    const adaptiveSystemPrompt = `You are an expert AI technical interviewer conducting a real-time voice interview.
-Your role: Ask ONE concise, adaptive follow-up question (2-3 sentences max) based on the candidate's most recent answer.
+    // Pull live session context so the Agora webhook stays in sync with the 5-phase orchestration engine.
+    // Without this, the cloud agent ignores candidate resume, active topic, difficulty, and JD entirely.
+    const webhookSession = req.body?.sessionState || {};
+    const webhookResume = webhookSession.candidateResume || {};
+    const webhookPhase: number = webhookSession.interviewPhase || 1;
+    const webhookTopic: string = webhookSession.currentActiveTopic || webhookSession.activeTopic || 'their recent engineering work';
+    const webhookDifficulty: string = webhookSession.currentDifficulty || 'Intermediate';
+    const webhookRole: string = webhookSession.targetRole || 'Software Engineer';
+    const webhookJD: string = (webhookSession.customRubric?.rawDocText || `Target Role: ${webhookRole}. Systems design, APIs, clean architecture.`).slice(0, 300);
+    const webhookProjects: string = (webhookResume.notableProjects || []).map((p: any) => `"${p.name}": ${p.description || 'Engineering project'}`).slice(0, 3).join('; ') || 'General software projects';
+    const webhookSkills: string = [
+      ...(webhookResume.skills?.languagesAndFrameworks || []),
+      ...(webhookResume.skills?.coreArchitecture || [])
+    ].slice(0, 8).join(', ') || 'Python, TypeScript, REST APIs';
+    const webhookCandidateName: string = (webhookResume.fullName || webhookSession.candidateName || 'the candidate').split(' ')[0];
+
+    const phaseGuidance = webhookPhase === 1
+      ? 'This is the Introduction phase. Ask one warm, open-ended background or motivation question. Never ask about distributed systems or advanced architecture yet.'
+      : webhookPhase === 2
+      ? `This is the Flagship Project Deep-Dive phase. Stay anchored on the active topic: "${webhookTopic}". Ask about design decisions, challenges, or trade-offs in that project.`
+      : webhookPhase === 3
+      ? `This is the Technical Architecture phase. Probe on systems, architecture, and the candidate's specific skills (${webhookSkills}) relevant to the JD.`
+      : webhookPhase === 4
+      ? 'This is the Collaboration & Trade-offs phase. Ask about cross-team delivery, velocity vs tech debt, or a difficult engineering decision.'
+      : 'This is the Wrap-Up phase. Invite the candidate to ask questions, or close warmly.';
+
+    const difficultyGuidance = webhookDifficulty === 'Foundational' || webhookDifficulty === 'Supportive'
+      ? 'Be encouraging and supportive. Scaffold the candidate with follow-up hints if their answer is weak. No advanced distributed systems trivia.'
+      : webhookDifficulty === 'Challenging' || webhookDifficulty === 'Staff'
+      ? 'Be rigorous. Probe edge cases, failure modes, concurrency issues, and system scale limits. Expect high technical depth.'
+      : 'Maintain a balanced professional tone. Ask practical implementation and trade-off questions appropriate for a mid-level engineer.';
+
+    const adaptiveSystemPrompt = `You are part of the Vocalis AI Interview Committee conducting a real-time voice interview for ${webhookCandidateName}.
+Target Role: ${webhookRole}.
+Job Description Context: ${webhookJD}
+
+CANDIDATE BACKGROUND:
+- Projects: ${webhookProjects}
+- Technical Skills: ${webhookSkills}
+
+CURRENT INTERVIEW PHASE (${webhookPhase}/5):
+${phaseGuidance}
+
+DIFFICULTY TIER (${webhookDifficulty}):
+${difficultyGuidance}
 
 ADAPTIVE BEHAVIOR RULES:
-- If the answer is technically STRONG and detailed: escalate difficulty, probe edge cases, failure modes, or trade-offs
-- If the answer is VAGUE or buzzword-heavy: ask for specific technical details or a concrete example
-- If the answer is WEAK or incorrect: gently probe to see if they can self-correct; suggest they "walk through it step by step"
-- If the answer CONTRADICTS an earlier statement: politely point it out ("Earlier you mentioned X, but now you're saying Y - can you clarify?")
-- Focus on: distributed systems, scalability, real-world impact, and concrete technical depth
+- If the answer is STRONG and detailed: escalate difficulty, probe edge cases or trade-offs
+- If the answer is VAGUE or buzzword-heavy: ask for a concrete technical example or specific implementation detail
+- If the answer CONTRADICTS an earlier statement: politely point it out and ask for clarification
+- Reference the candidate's actual words and resume projects when probing
 
 VOICE INTERVIEW STYLE:
-- Speak naturally, conversationally - this is a spoken interview, not written
-- Start directly with your question (no "Great answer!" filler)
-- Keep responses under 40 words for natural conversation flow
-- Reference the candidate's specific words when probing ("You mentioned Kafka - what happens when...")`;
+- Speak naturally and conversationally — this is spoken audio, not text
+- Your reply must be 2-3 sentences maximum (under 40 words)
+- No markdown, no bullet points, no "Great answer!" filler
+- Begin directly with your acknowledgment or question`;    
 
     // Route through Groq for sub-100ms response
     const keys = [process.env.GROQ_API_KEY, process.env.GROQ_API_KEY_SECONDARY].filter(Boolean) as string[];
