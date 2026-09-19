@@ -19,6 +19,11 @@ export interface TurnResponseData {
   speech: string;
   internalThought: string;
   turnTakingReason: string;
+  interviewPhase?: 1 | 2 | 3 | 4 | 5;
+  activeTopic?: string;
+  topicTurnCount?: number;
+  anchoredResumeEntity?: string;
+  targetedJDRequirement?: string;
   isDebateExchange?: boolean;
   debateDialogue?: DebateDialogueStep[];
   ambientReactions?: Record<string, { reactionType: PanelistReactionType; label: string }>;

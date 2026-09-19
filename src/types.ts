@@ -217,6 +217,9 @@ export interface SharedCandidateContext {
   identifiedWeaknesses: string[];
   unresolvedProbes: string[];
   activeTopic: string;
+  currentActiveTopic?: string;
+  topicTurnDepthCount?: number;
+  interviewPhase?: 1 | 2 | 3 | 4 | 5;
   questionHistory: QuestionHistoryItem[];
   latestAdaptiveAnalysis?: {
     sentiment: CandidateSentiment;
