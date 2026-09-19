@@ -719,9 +719,9 @@ function getGeminiClients(): GoogleGenAI[] {
 // Fallback helper for handling temporary 503 high demand errors across Gemini models and keys
 async function generateContentWithFallback(options: any) {
   const clients = getGeminiClients();
-  const primaryModel = options.model || 'gemini-2.0-flash';
+  const primaryModel = options.model || 'gemini-3.6-flash';
   const modelsToTry = Array.from(
-    new Set([primaryModel, 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.5-flash', 'gemini-2.5-pro'])
+    new Set([primaryModel, 'gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-3.1-pro-preview'])
   );
   let lastError: any = null;
 
@@ -834,7 +834,7 @@ function extractJsonFromContent(str: string): any {
 }
 
 // Normalizer to ensure turn response data adheres strictly to expected frontend schema
-function normalizeTurnResponse(raw: any, activePanel: any[], scenario: any, sharedContext: any, isClarificationRequest = false, preferredInterviewer?: any, isGreetingOrIntroPrompt = false, transcript: any[] = []) {
+function normalizeTurnResponse(raw: any, activePanel: any[], scenario: any, sharedContext: any, isClarificationRequest = false, preferredInterviewer?: any, isGreetingOrIntroPrompt = false, transcript: any[] = [], isSkipOrPassRequest = false) {
   const fallbackInterviewer =
     activePanel && activePanel.length > 0
       ? activePanel[0]
@@ -847,13 +847,15 @@ function normalizeTurnResponse(raw: any, activePanel: any[], scenario: any, shar
     matchedInterviewer = activePanel.find((p: any) => p.id === preferredInterviewer.id || p.name === preferredInterviewer.name) || preferredInterviewer;
   }
 
-  const rawSpeakerId = String(raw.nextSpeakerId || '').trim().toLowerCase();
-  const rawSpeakerName = String(raw.nextSpeakerName || '').trim().toLowerCase();
-  const rawSpeakerRole = String(raw.nextSpeakerRole || '').trim().toLowerCase();
+  const rawSpeakerId = String(raw.nextSpeakerId || raw.speakerId || raw.speaker || '').trim().toLowerCase();
+  const rawSpeakerName = String(raw.nextSpeakerName || raw.speakerName || raw.speaker || '').trim().toLowerCase();
+  const rawSpeakerRole = String(raw.nextSpeakerRole || raw.speakerRole || raw.role || '').trim().toLowerCase();
 
   // Multi-field speech extractor: handles any schema key the LLM might return
   let speechText = String(
     raw.speech ||
+    raw.utterance ||
+    raw.spoken ||
     raw.dialogue ||
     raw.content ||
     raw.spokenResponse ||
@@ -1003,19 +1005,60 @@ function normalizeTurnResponse(raw: any, activePanel: any[], scenario: any, shar
   };
 
   // Extract any concrete probe formulated during analysis
-  const firstProbe = validFlags.find((f: any) => f.suggestedProbe && typeof f.suggestedProbe === 'string' && f.suggestedProbe.trim().length > 10)?.suggestedProbe ||
+  const rawProbe = validFlags.find((f: any) => f.suggestedProbe && typeof f.suggestedProbe === 'string' && f.suggestedProbe.trim().length > 10)?.suggestedProbe ||
     (raw.suggestedProbe && typeof raw.suggestedProbe === 'string' && raw.suggestedProbe.trim().length > 10 ? raw.suggestedProbe.trim() : null);
+
+  const cleanProbe = rawProbe ? rawProbe.replace(/^[→\-\*•\s]+/, '').replace(/^(probe|ask|inquire|question):\s*/i, '').trim() : null;
 
   // Never let backstage probe instructions overwrite speechText if valid conversational dialogue exists!
   if (isGreetingOrIntroPrompt) {
     speechText = `Hello ${candidateFirstName}! It's wonderful to meet you, and we can hear you loud and clear. To kick things off, could you please introduce yourself and walk us through your journey, your core strengths, and the key projects you've worked on?`;
+  } else if (isSkipOrPassRequest) {
+    // If candidate explicitly asked to skip, respect it warmly and pivot immediately without grilling them on previous probe
+    if (!speechText || speechText.length < 10 || isAlreadyAsked(speechText)) {
+      const resumeProjects: Array<{ name: string }> = sharedContext?.candidateResume?.notableProjects || [];
+      const resumeSkills: string[] = [
+        ...(sharedContext?.candidateResume?.skills?.languagesAndFrameworks || []),
+        ...(sharedContext?.candidateResume?.skills?.coreArchitecture || [])
+      ];
+
+      const skipOptions = [
+        ...resumeProjects.map(p => `No worries at all, that's completely fair! Let's pivot to ${p.name}: could you walk us through the high-level architecture and the problem it solves?`),
+        ...resumeSkills.map(s => `Totally fine, let's leave that there! Zooming out to your experience with ${s}, what's a notable technical challenge you worked through using it?`),
+        `Fair enough, perfectly okay! Let's switch gears: can you tell us about a time you had a technical disagreement with a teammate over an engineering design decision, and how you worked through it?`,
+        `No problem at all! In your recent engineering projects, how do you typically approach automated testing and ensuring code reliability before shipping?`
+      ];
+
+      const freshSkip = skipOptions.find(opt => !isAlreadyAsked(opt)) || skipOptions[0];
+      speechText = freshSkip;
+    }
   } else if (!speechText || speechText.length < 10 || isAlreadyAsked(speechText)) {
-    // Generate a natural, conversational response that fits the interview context
-    const isEarly = (transcript || []).filter((t: any) => t.speakerId === 'candidate').length <= 2;
-    if (isEarly) {
-      speechText = `Thank you for sharing that, ${candidateFirstName}! To kick off our technical conversation, could you tell us what programming languages, tools, or projects you've worked on recently that you enjoy most?`;
+    // 1. If AI generated a concrete, contextual suggested probe in backstage analysis, prioritize it!
+    if (cleanProbe && cleanProbe.length >= 15 && !isAlreadyAsked(cleanProbe)) {
+      speechText = cleanProbe;
     } else {
-      speechText = `That's very helpful context. Could you elaborate a bit more on that, and walk us through a specific technical challenge or trade-off you encountered in your implementation?`;
+      // 2. Select a fresh, unasked question dynamically from projects, skills, or engineering concepts
+      const resumeProjects: Array<{ name: string }> = sharedContext?.candidateResume?.notableProjects || [];
+      const resumeSkills: string[] = [
+        ...(sharedContext?.candidateResume?.skills?.languagesAndFrameworks || []),
+        ...(sharedContext?.candidateResume?.skills?.coreArchitecture || [])
+      ];
+
+      const candidates = [
+        ...resumeProjects.map(p => `Looking at ${p.name}, could you walk us through the core architectural decisions you made and the main trade-offs involved?`),
+        ...resumeSkills.map(s => `Building on your background with ${s}, what's a technical challenge or design trade-off you encountered while working with it?`),
+        `Could you walk us through a specific technical challenge or performance bottleneck you encountered in one of your recent projects and how you resolved it?`,
+        `How do you typically structure your APIs and data models to balance query performance with simplicity and maintainability?`,
+        `In your development workflow, how do you approach automated testing, error boundaries, and debugging difficult bugs?`,
+        `Can you tell us about a time when you had to make a difficult architectural trade-off between speed of delivery and long-term maintainability?`
+      ];
+
+      const freshOption = candidates.find(c => !isAlreadyAsked(c));
+      if (freshOption) {
+        speechText = freshOption;
+      } else {
+        speechText = `That provides good insight, ${candidateFirstName}. Could you tell us about another key technical milestone or system challenge from your recent engineering journey?`;
+      }
     }
   }
 
@@ -1179,7 +1222,7 @@ Do NOT hallucinate fake company names or fake project names if not in raw text. 
       try {
         const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
         const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
+          model: 'gemini-3.6-flash',
           contents: `${systemPrompt}\n\n${userPrompt}`,
           config: {
             responseMimeType: 'application/json',
@@ -1292,7 +1335,7 @@ Respond ONLY with valid JSON matching this schema:
       try {
         const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
         const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
+          model: 'gemini-3.6-flash',
           contents: `${systemPrompt}\n\n${userPrompt}`,
           config: {
             responseMimeType: 'application/json',
@@ -1454,7 +1497,7 @@ ${candidateResume.rawText ? `Resume Excerpt: ${candidateResume.rawText.slice(0, 
 
     const cleanCandSpeech = (lastCandidateSpeech || '').trim().toLowerCase().replace(/[^\w\s]/g, '');
     const isClarificationRequest = /rephrase|repeat|clarify|what do you mean|didn't understand|could you explain|can you explain|what is meant|reword|pardon|say that again|could you say that/i.test(lastCandidateSpeech || '');
-    const isSkipOrPassRequest = /skip|pass|next question|don't know|dont know|not sure|don't remember|dont remember|can't recall|cant recall|long time ago|long time since|move on|another question|different question|haven't worked with|havent worked with|no experience with|never used|haven't used|havent used/i.test(lastCandidateSpeech || '');
+    const isSkipOrPassRequest = /skip|pass|next question|skip this question|skip this|skip question|pass this question|skip it|pass it|don't know|dont know|not sure|don't remember|dont remember|can't recall|cant recall|long time ago|long time since|move on|another question|different question|haven't worked with|havent worked with|no experience with|never used|haven't used|havent used|move forward|move ahead|go ahead|continue|next topic|can we move|please move|can you move|let's move|lets move/i.test(lastCandidateSpeech || '');
     const wantsHR = /\b(hr|human resource|human resources|behavioral|behavioural|culture|teamwork|leadership|conflict|team collaboration|star question|soft skills)\b/i.test(lastCandidateSpeech || '') ||
       /\b(ask (some |any )?hr|switch to hr|move to hr|go to hr|hr questions|hr round)\b/i.test(lastCandidateSpeech || '');
     const wantsNonProjectSection = wantsHR || /other section|not project|instead of project|stop project|other parts|skills|education|experience|internship|work experience|achievements|hackathon|different section|non-project/i.test(lastCandidateSpeech || '');
@@ -1804,15 +1847,14 @@ ${candidateResume.rawText ? `Resume Excerpt: ${candidateResume.rawText.slice(0, 
 
 ${isOpeningForThisProj && isFirstProj ? `
 - CANDIDATE JUST FINISHED THEIR INTRODUCTION!
-  1. Warmly acknowledge what the candidate shared in their introduction with genuine human interest.
-  2. Transition smoothly to their first flagship project ("${currentProj.name}"):
-     "Thank you for that introduction, ${candidateFirstName}! It's great to hear about your journey. To start our project discussion, let's explore ${currentProj.name}. Could you walk us through the high-level architecture and how data flows through the system?"
+  1. Warmly acknowledge what ${candidateFirstName} shared in their introduction with genuine human interest.
+  2. Transition smoothly to their flagship project ("${currentProj.name}"):
+     Formulate a natural, engaging opening question inviting them to walk through the architecture, problem solved, or technical implementation of "${currentProj.name}". Formulate your own words tailored to what they shared; do NOT use generic canned lines.
   3. Keep the opening architectural, clear, and welcoming. Do not grill on obscure edge cases yet.
 ` : isOpeningForThisProj ? `
 - TRANSITIONING TO NEXT PROJECT ("${currentProj.name}"):
-  1. Acknowledge their explanation on ${projectsList[activeProjIdx - 1]?.name || 'the previous project'}:
-     "That gives us great clarity on ${projectsList[activeProjIdx - 1]?.name || 'that system'}. Now, looking at another project on your resume: ${currentProj.name}..."
-  2. Ask ONE clear opening question about what problem "${currentProj.name}" solves and the candidate's implementation approach.
+  1. Acknowledge their explanation on ${projectsList[activeProjIdx - 1]?.name || 'the previous project'}, and transition to ${currentProj.name}.
+  2. Ask ONE clear, authentic opening question about what problem "${currentProj.name}" solves and the candidate's implementation approach.
 ` : `
 - PRACTICAL FOLLOW-UP ON "${currentProj.name}":
   1. SPEAKER RESTRICTION (CRITICAL): nextSpeakerId MUST be "${techMember.id}" (${techMember.name}). ${techMember.name} opened this project discussion and MUST conduct this technical follow-up. Do NOT switch to Product Manager (${productMember.name}) or Operations (${customerMember.name}) during this technical follow-up!
@@ -1838,13 +1880,12 @@ ${isOpeningForThisProj && isFirstProj ? `
 INSTRUCTIONS:
 ${(projectsList.length === 0 && skillsQuestionCount === 0) ? `
 1. CANDIDATE JUST FINISHED THEIR SELF-INTRODUCTION:
-   - Warmly acknowledge what the candidate shared about themselves (their name, background, education).
-   - Ask an open-ended, welcoming technical exploration question:
-     "Thank you for that introduction, ${candidateFirstName}! To kick off our technical conversation, what programming languages, frameworks, or software projects have you enjoyed working on recently?"
+   - Warmly acknowledge what ${candidateFirstName} shared about themselves (their journey, education, or internships).
+   - Formulate an open-ended, authentic question inviting them to dive into the technical stack, frameworks, or software projects they've enjoyed working on most recently.
    - Do NOT interrogate on advanced concurrency or edge-case distributed architectures yet! Let the candidate tell you what they know first.
 ` : skillsQuestionCount === 0 ? `
 1. Smoothly transition from projects to skills:
-   "Great job walking us through your projects! Now let's pivot to your core technical skills and computer science fundamentals."
+   Acknowledge their work on projects, and pivot naturally to exploring their core technical skills and CS fundamentals.
 ` : `
 1. Acknowledge candidate's previous technical answer with genuine human perception.
 `}
@@ -1860,13 +1901,12 @@ ${(projectsList.length === 0 && skillsQuestionCount === 0) ? `
 - CURRENT SITUATION: Technical projects and skills are complete. Time for behavioral, teamwork, and culture fit evaluation.
 - Next Speaker: ${behavioralMember.name} (${behavioralMember.title}) or ${leadershipMember.name} (${leadershipMember.title}).
 - Instructions:
-  1. Start with a warm handoff:
-     "Thanks for that thorough technical breakdown! I'm ${behavioralMember.name}. To round out our conversation today, I'd love to ask a couple of behavioral questions about how you collaborate and work with teams."
-  2. Ask ONE STAR behavioral question:
+  1. Start with a warm handoff: Acknowledge candidate's technical breakdown, introduce yourself (${behavioralMember.name}), and transition to team collaboration.
+  2. Formulate ONE authentic STAR behavioral question:
   ${isSupportive ? `
-     - "Could you tell us about a time when you faced a difficult bug or a tight project deadline, and how you managed your time to overcome it?"
+     - Ask about a time they navigated a difficult bug, tight deadline, or technical hurdle, and how they managed communication with their team.
   ` : `
-     - "Can you share an experience where you had a technical disagreement with a teammate or peer over a design decision, and how you worked through it to reach alignment?"
+     - Ask about a time they had a technical disagreement or differing perspective with a teammate over a design decision, and how they worked together toward a solution.
   `}
   3. Output questionTopic as "Behavioral: Team Collaboration & Conflict Resolution".
 `;
@@ -1876,8 +1916,7 @@ ${(projectsList.length === 0 && skillsQuestionCount === 0) ? `
 - CURRENT SITUATION: All evaluation phases are complete!
 - Next Speaker: ${leadershipMember.name} (${leadershipMember.title}) or ${techMember.name} (${techMember.title}).
 - Instructions:
-  1. Thank the candidate warmly for their time and thoughtful answers:
-     "Thank you so much, ${candidateFirstName}! That brings us to the end of our structured questions. We really enjoyed hearing about your journey and projects today. To wrap up, do you have any questions for our panel before we conclude?"
+  1. Thank the candidate warmly by name (${candidateFirstName}) for their time and thoughtful technical breakdown, and invite them to ask any questions they have for the panel before concluding.
   2. Output questionTopic as "Interview Conclusion & Candidate Q&A".
 `;
     }
@@ -2174,10 +2213,43 @@ You conduct natural, perceptive, human interviews. Follow the ACTIVE STAGE DIREC
 - If Stage 3 (Skills & Coursework): Ask questions on stated skills (Python, APIs) and CS coursework (${isSupportive ? 'foundational' : 'deeper practical questions on concurrency, DBMS transactions, and indexing'}).
 - If Stage 4 (HR & Behavioral): Ask STAR questions on teamwork or handling disagreements.
 - Keep spoken dialogue concise (2-3 natural sentences) with warmth, respect, and active listening.
-Return raw JSON strictly matching schema.`;
+You MUST return raw valid JSON strictly matching these exact field keys:
+{
+  "nextSpeakerId": "${activePanel[0]?.id || 'alex-vance'}",
+  "nextSpeakerName": "${activePanel[0]?.name || 'Rohan Sharma'}",
+  "nextSpeakerRole": "${activePanel[0]?.role || 'technical'}",
+  "speech": "Your spoken question or response directly addressing the candidate",
+  "internalThought": "Backstage thought analyzing candidate depth",
+  "turnTakingReason": "Why this speaker took the turn",
+  "questionTopic": "Short topic title",
+  "targetCompetency": "technicalArchitecture",
+  "adaptiveStrategyApplied": "Deep Probe",
+  "analysisOfCandidateAnswer": {
+    "sentiment": "Analytical & Deep",
+    "depthLevel": "Intermediate (Practical)",
+    "detectedKeywords": ["keyword1", "keyword2"],
+    "candidateResponseSummary": "One sentence summary"
+  },
+  "detectedFlags": [
+    {
+      "type": "vague",
+      "quote": "exact candidate quote",
+      "explanation": "why flagged",
+      "severity": "medium",
+      "suggestedProbe": "Concrete probing question"
+    }
+  ],
+  "updatedCompetencyScores": {
+    "technicalArchitecture": 78,
+    "businessAndCustomerImpact": 75,
+    "communicationAndClarity": 80,
+    "leadershipAndOwnership": 75,
+    "problemSolvingAndAgility": 76
+  }
+}`;
         const rawGroq = await generateContentWithGroq(prompt, groqSystemPrompt);
-        if (rawGroq && (rawGroq.nextSpeakerId || rawGroq.speech)) {
-          const groqNormalized = normalizeTurnResponse(rawGroq, activePanel, scenario, sharedContext, isClarificationRequest, previousSpeaker, isGreetingOrIntroPrompt, transcript);
+        if (rawGroq && (rawGroq.nextSpeakerId || rawGroq.speech || rawGroq.utterance || rawGroq.spokenResponse || rawGroq.question || rawGroq.speaker)) {
+          const groqNormalized = normalizeTurnResponse(rawGroq, activePanel, scenario, sharedContext, isClarificationRequest, previousSpeaker, isGreetingOrIntroPrompt, transcript, isSkipOrPassRequest);
           // Prepend smooth handoff bridge if persona changed and wasn't mentioned (NEVER on clarification, skip/pass, section shift, or candidate greeting requests)
           if (lastAISpeakerId && groqNormalized.nextSpeakerId !== lastAISpeakerId && !groqNormalized.isDebateExchange && !isClarificationRequest && !isSkipOrPassRequest && !wantsNonProjectSection && !isGreetingOrIntroPrompt) {
             const firstName = lastAISpeakerName.split(' ')[0];
@@ -2196,7 +2268,7 @@ Return raw JSON strictly matching schema.`;
     }
 
     const response = await generateContentWithFallback({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.6-flash',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
@@ -2306,7 +2378,7 @@ Return raw JSON strictly matching schema.`;
     });
 
     const parsedRaw = JSON.parse(response.text || '{}');
-    const parsed = normalizeTurnResponse(parsedRaw, activePanel, scenario, sharedContext, isClarificationRequest, previousSpeaker, isGreetingOrIntroPrompt, transcript);
+    const parsed = normalizeTurnResponse(parsedRaw, activePanel, scenario, sharedContext, isClarificationRequest, previousSpeaker, isGreetingOrIntroPrompt, transcript, isSkipOrPassRequest);
 
     // Prepend smooth handoff bridge if persona changed and wasn't mentioned (NEVER on clarification, skip/pass, section shift, or candidate greeting requests)
     if (parsed.nextSpeakerId && lastAISpeakerId && parsed.nextSpeakerId !== lastAISpeakerId && !parsed.isDebateExchange && !isClarificationRequest && !isSkipOrPassRequest && !wantsNonProjectSection && !isGreetingOrIntroPrompt) {
@@ -2384,7 +2456,7 @@ function generateFallbackTurn(lastCandidateSpeech: string, activePanel: any[], s
 
   const isGreeting = /^(hello|hi|hey|good morning|good afternoon|good evening|can you hear me|am i audible|test|testing)/i.test(speechLower);
   const isMetaOrConfused = /\b(hard\s*coded|hardcoded|is this (a )?bot|is this (a )?script|scripted|is this real|real interview|didn't even|didnt even|haven't even|havent even|what is this|what are you asking|why are you asking|not given|haven't given|havent given)\b/i.test(speechLower);
-  const isSkipOrPass = /skip|pass|next question|don't know|dont know|not sure|don't remember|dont remember|can't recall|cant recall|long time|haven't|havent/i.test(speechLower);
+  const isSkipOrPass = /skip|pass|next question|skip this question|skip this|skip question|pass this question|skip it|pass it|don't know|dont know|not sure|don't remember|dont remember|can't recall|cant recall|long time|haven't|havent|move forward|move ahead|go ahead|continue|move on|next topic|can we move|please move|can you move|let's move|lets move/i.test(speechLower);
   const isVeryShort = candWords.length <= 2 && speechLower.length <= 12;
   const wantsHR = /\b(hr|human resource|human resources|behavioral|behavioural|culture|teamwork|leadership|conflict|team collaboration|star question|soft skills)\b/i.test(speechLower) ||
     /\b(ask (some |any )?hr|switch to hr|move to hr|go to hr|hr questions|hr round)\b/i.test(speechLower);
@@ -2449,16 +2521,34 @@ function generateFallbackTurn(lastCandidateSpeech: string, activePanel: any[], s
       nextInterviewer = (activePanel && activePanel.length > 0)
         ? activePanel[0]
         : primaryInterviewer;
-      const candTurns = (transcript || []).filter((t: any) => t.speakerId === 'candidate').length;
-      if (candTurns <= 2) {
-        speech = `Thank you for sharing that, ${candidateFirstName}! To start our technical conversation, what programming languages, tools, or projects have you worked on recently that you're most excited about?`;
-        topic = 'Technical Focus & Project Exploration';
-        strategy = 'Introductory Warm-Up';
-      } else {
-        speech = `That's very helpful context. Could you dive a bit deeper into your implementation, and walk us through a key technical challenge or trade-off you encountered?`;
-        topic = 'Engineering Principles & Trade-offs';
-        strategy = 'Deep Probe';
-      }
+      
+      const dynamicOptions = [
+        ...resumeProjects.map(p => ({
+          speech: `Looking at ${p.name}, could you walk us through the high-level architecture, data flow, and key implementation decisions you made?`,
+          topic: `Architecture: ${p.name}`,
+          strategy: 'Deep Probe'
+        })),
+        ...resumeSkills.slice(0, 5).map(s => ({
+          speech: `Building on your experience with ${s}, could you share a challenging bug or performance bottleneck you resolved while using it?`,
+          topic: `Technical Mastery: ${s}`,
+          strategy: 'Practical Validation'
+        })),
+        {
+          speech: `Could you walk us through how you handle system resilience, error handling, and edge cases in your production services?`,
+          topic: 'System Resilience & Error Handling',
+          strategy: 'Deep Probe'
+        },
+        {
+          speech: `In your recent projects, what was a key technical trade-off you had to make between development speed and long-term architectural stability?`,
+          topic: 'Engineering Trade-offs',
+          strategy: 'Deep Probe'
+        }
+      ];
+
+      const freshOption = dynamicOptions.find(opt => !isAlreadyAsked(opt.speech)) || dynamicOptions[0];
+      speech = freshOption.speech;
+      topic = freshOption.topic;
+      strategy = freshOption.strategy;
     }
   }
 
@@ -2728,7 +2818,7 @@ ${isBriefSession ? `
 `;
 
     const response = await generateContentWithFallback({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.6-flash',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
@@ -3435,7 +3525,7 @@ VOICE INTERVIEW STYLE:
         const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
         const model = genAI.models;
         const geminiRes = await model.generateContent({
-          model: 'gemini-2.0-flash',
+          model: 'gemini-3.6-flash',
           contents: [{ role: 'user', parts: [{ text: `${adaptiveSystemPrompt}\n\nCandidate said: "${candidateSpeech}"\n\nYour adaptive follow-up question:` }] }],
         });
         const geminiReply = geminiRes.text?.trim();
