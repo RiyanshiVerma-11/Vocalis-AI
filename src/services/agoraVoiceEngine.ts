@@ -581,7 +581,7 @@ export class AgoraVoiceEngine {
         headers: {
           'Content-Type': mimeType,
           // Forward auth token stored in localStorage
-          'Authorization': `Bearer ${localStorage.getItem('vocalis_token') || ''}`,
+          'Authorization': `Bearer ${localStorage.getItem('vocalis_jwt_token') || ''}`,
         },
         body: blob,
       });
