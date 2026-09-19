@@ -545,7 +545,11 @@ export class AgoraVoiceEngine {
       this.mediaRecorderActive = true;
 
       recorder.ondataavailable = (e) => {
-        if (!this.mediaRecorderActive || this.isBrowserSpeaking || this.isSpeaking) return;
+        // Only gate on mediaRecorderActive and isListening (candidate's actual turn).
+        // Do NOT gate on isBrowserSpeaking/isSpeaking — those flags can linger from the
+        // previous AI turn and would silently discard ALL chunks in the next candidate turn.
+        // Agora's AEC prevents AI voice bleed into mic, so no guard needed.
+        if (!this.mediaRecorderActive || !this.isListening) return;
         // Require at least 2KB — empty/silence chunks are ~200 bytes
         if (e.data && e.data.size > 2000) {
           this._transcribeChunk(e.data, recorder.mimeType || mimeType || 'audio/webm');
@@ -572,6 +576,8 @@ export class AgoraVoiceEngine {
   }
 
   private async _transcribeChunk(blob: Blob, mimeType: string): Promise<void> {
+    // Only transcribe during candidate's actual turn
+    if (!this.isListening) return;
     try {
       const apiBase = (import.meta as any).env?.VITE_API_URL ||
         'https://vocalis-ai-ty8j.onrender.com';
@@ -580,7 +586,6 @@ export class AgoraVoiceEngine {
         method: 'POST',
         headers: {
           'Content-Type': mimeType,
-          // Forward auth token stored in localStorage
           'Authorization': `Bearer ${localStorage.getItem('vocalis_jwt_token') || ''}`,
         },
         body: blob,
