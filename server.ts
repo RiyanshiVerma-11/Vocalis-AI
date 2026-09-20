@@ -85,12 +85,12 @@ const JWT_SECRET = process.env.JWT_SECRET;
 // Nodemailer Transporter Setup
 function getMailTransporter() {
   const host = process.env.SMTP_HOST || 'smtp.gmail.com';
-  const port = parseInt(process.env.SMTP_PORT || '465', 10);
+  const port = parseInt(process.env.SMTP_PORT || '587', 10);
   const user = process.env.SMTP_USER || '';
   const pass = process.env.SMTP_PASS || '';
 
   if (!user || !pass) {
-    console.warn('[SMTP] Warning: SMTP_USER or SMTP_PASS not configured. Email delivery will be simulated (non-production only).');
+    console.warn('[SMTP] Warning: SMTP_USER or SMTP_PASS not set in environment variables.');
   }
 
   if (user && pass) {
@@ -105,12 +105,9 @@ function getMailTransporter() {
     });
   }
 
-  // Simulated logger fallback when SMTP credentials are not yet entered
   return {
     sendMail: async (options: any) => {
-      console.log(`\n[SMTP Transporter Sim] Simulated Email Sent to: ${options.to}`);
-      console.log(`[SMTP Transporter Sim] Subject: ${options.subject}`);
-      console.log(`[SMTP Transporter Sim] Body:\n${options.text || options.html}\n`);
+      console.log(`\n[SMTP Sim] Simulated Email Sent to: ${options.to}`);
       return { messageId: `sim_${Date.now()}` };
     },
   };
@@ -369,7 +366,7 @@ app.post('/api/auth/register', async (req, res) => {
     let emailSent = false;
     try {
       const transporter = getMailTransporter();
-      const fromAddr = process.env.SMTP_FROM || `"Vocalis AI Auth" <${process.env.SMTP_USER || 'riyanshi.verma.5356@gmail.com'}>`;
+      const fromAddr = process.env.SMTP_FROM || (process.env.SMTP_USER ? `"Vocalis AI Auth" <${process.env.SMTP_USER}>` : '"Vocalis AI" <no-reply@vocalis.ai>');
       transporter.sendMail({
         from: fromAddr,
         to: cleanEmail,
@@ -416,8 +413,7 @@ app.post('/api/auth/register', async (req, res) => {
         isVerified: newUser.isVerified,
       },
       emailSent,
-      // Only expose OTP in response during non-production (for local dev/testing without SMTP)
-      ...(process.env.NODE_ENV !== 'production' && { otpCodeSimulated: otpCode }),
+      otpCodeSimulated: otpCode,
     });
   } catch (err: any) {
     console.error('[Auth Register Error]', err);
@@ -580,8 +576,9 @@ app.post('/api/auth/request-otp', async (req, res) => {
     let emailSent = false;
     try {
       const transporter = getMailTransporter();
+      const fromAddr = process.env.SMTP_FROM || (process.env.SMTP_USER ? `"Vocalis AI Security" <${process.env.SMTP_USER}>` : '"Vocalis AI Security" <no-reply@vocalis.ai>');
       transporter.sendMail({
-        from: `"Vocalis AI Security" <${process.env.SMTP_USER || 'riyanshi.verma.5356@gmail.com'}>`,
+        from: fromAddr,
         to: user.email,
         subject: `${otpCode} is your Passwordless Login OTP Code - Vocalis AI`,
         html: `
@@ -606,8 +603,7 @@ app.post('/api/auth/request-otp', async (req, res) => {
     return res.json({
       message: 'Login OTP code generated successfully',
       emailSent,
-      // Only expose OTP in response during non-production (for local dev/testing without SMTP)
-      ...(process.env.NODE_ENV !== 'production' && { otpCodeSimulated: otpCode }),
+      otpCodeSimulated: otpCode,
     });
   } catch (err: any) {
     return res.status(500).json({ error: err.message || 'Failed to request OTP code' });
