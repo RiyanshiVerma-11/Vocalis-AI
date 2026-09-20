@@ -4,7 +4,7 @@ import {
   ArchivedSession,
   AggregatedGrowthMetrics,
 } from '../../services/sessionHistoryService';
-import { StructuredAssessment } from '../../types';
+import { StructuredAssessment, UserSession } from '../../types';
 import { CandidateHeroBanner } from './CandidateHeroBanner';
 import { CandidateReadinessCard } from './CandidateReadinessCard';
 import { CandidateScoreTrajectoryChart } from './CandidateScoreTrajectoryChart';
@@ -21,6 +21,7 @@ export interface CandidateDashboardProps {
   targetRole?: string;
   candidateLocation?: string;
   onNotifyRecruiter?: (session: ArchivedSession) => void;
+  currentUser?: UserSession | null;
 }
 
 // Score → Friendly label
@@ -58,11 +59,22 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
   targetRole = 'Software Engineer',
   candidateLocation,
   onNotifyRecruiter,
+  currentUser,
 }) => {
-  const [sessions] = useState<ArchivedSession[]>(() => sessionHistoryService.getStoredSessions());
-  const [metrics] = useState<AggregatedGrowthMetrics>(() =>
-    sessionHistoryService.getAggregatedGrowthMetrics()
+  const userId = currentUser?.id;
+  const [sessions, setSessions] = useState<ArchivedSession[]>(() => sessionHistoryService.getStoredSessions(userId));
+  const [metrics, setMetrics] = useState<AggregatedGrowthMetrics>(() =>
+    sessionHistoryService.getAggregatedGrowthMetrics(userId)
   );
+
+  React.useEffect(() => {
+    const handleUpdate = () => {
+      setSessions(sessionHistoryService.getStoredSessions(userId));
+      setMetrics(sessionHistoryService.getAggregatedGrowthMetrics(userId));
+    };
+    window.addEventListener('vocalis_sessions_updated', handleUpdate);
+    return () => window.removeEventListener('vocalis_sessions_updated', handleUpdate);
+  }, [userId]);
   const [filter, setFilter] = useState<'all' | 'high' | 'review'>('all');
   const [notifiedSessions, setNotifiedSessions] = useState<Set<string>>(new Set());
   const [notifyingId, setNotifyingId] = useState<string | null>(null);

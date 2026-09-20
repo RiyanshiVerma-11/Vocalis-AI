@@ -1,10 +1,11 @@
 import React from 'react';
-import { SharedCandidateContext, DifficultyLevel, AnalysisFlag } from '../types';
+import { SharedCandidateContext, DifficultyLevel, AnalysisFlag, TranscriptMessage } from '../types';
 import { Gauge, ShieldAlert, CheckCircle2, AlertTriangle, MessageSquareCode, TrendingUp, HelpCircle, Activity, Zap, Radio, AlertCircle, CheckCircle } from 'lucide-react';
 import { DifficultyChart } from './DifficultyChart';
 
 interface LivePanelContextProps {
   context: SharedCandidateContext;
+  transcript?: TranscriptMessage[];
   onEndInterview: () => void;
   isProcessing: boolean;
   agoraMode?: 'conversational-ai' | 'rtc-transport' | 'offline';
@@ -14,6 +15,7 @@ interface LivePanelContextProps {
 
 export const LivePanelContext: React.FC<LivePanelContextProps> = ({
   context,
+  transcript,
   onEndInterview,
   isProcessing,
   agoraMode = 'offline',
@@ -154,13 +156,94 @@ export const LivePanelContext: React.FC<LivePanelContextProps> = ({
             type="button"
             onClick={onEndInterview}
             disabled={isProcessing}
-            className="text-[10px] font-extrabold px-2 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white shadow-xs transition cursor-pointer flex items-center gap-1"
+            className="text-[10px] font-extrabold px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs transition cursor-pointer flex items-center gap-1 border border-emerald-400/30"
+            title="Finish interview immediately and compile committee scorecard"
           >
             <CheckCircle2 className="w-3 h-3" />
-            <span>Finish</span>
+            <span>Finish & Evaluate</span>
           </button>
         </div>
       </div>
+
+      {/* 5-STAGE REAL INTERVIEW PROGRESS RIBBON */}
+      {(() => {
+        // Robust dynamic stage computation:
+        // 1. If explicit context.currentStage or interviewPhase is set (> 1), honor it
+        // 2. Count candidate turns:
+        //    - 0 turns: Stage 1 (Intro)
+        //    - Once candidate has spoken (>= 1 turn), intro is OVER! Move to Stage 2 (Deep Dive & Achievements)
+        //    - Advance dynamically across the 5 stages based on tier calibration
+        const candidateTurnCount = transcript
+          ? transcript.filter((t) => t.speakerId === 'candidate' || t.speakerRole === 'candidate').length
+          : (context.questionHistory?.length || 0);
+
+        let computedStage: 1 | 2 | 3 | 4 | 5 = 1;
+        const diff = context.currentDifficulty || 'Intermediate';
+
+        if (candidateTurnCount <= 0) {
+          computedStage = 1;
+        } else if (diff === 'Foundational') {
+          computedStage = candidateTurnCount <= 2 ? 2 : candidateTurnCount <= 3 ? 3 : candidateTurnCount <= 4 ? 4 : 5;
+        } else if (diff === 'Intermediate') {
+          computedStage = candidateTurnCount <= 3 ? 2 : candidateTurnCount <= 5 ? 3 : candidateTurnCount <= 7 ? 4 : 5;
+        } else if (diff === 'Senior') {
+          computedStage = candidateTurnCount <= 4 ? 2 : candidateTurnCount <= 7 ? 3 : candidateTurnCount <= 9 ? 4 : 5;
+        } else {
+          computedStage = candidateTurnCount <= 4 ? 2 : candidateTurnCount <= 8 ? 3 : candidateTurnCount <= 11 ? 4 : 5;
+        }
+
+        const explicitStage = (context.currentStage || context.interviewPhase) as (1 | 2 | 3 | 4 | 5) | undefined;
+        // If candidate has completed their intro (candidateTurnCount >= 1), stage MUST be at least Stage 2
+        const currentStage: 1 | 2 | 3 | 4 | 5 = candidateTurnCount >= 1
+          ? ((explicitStage && explicitStage > 1) ? Math.max(explicitStage, computedStage) as 1 | 2 | 3 | 4 | 5 : computedStage)
+          : (explicitStage || 1);
+
+        const stages = [
+          { num: 1, label: 'Intro' },
+          { num: 2, label: 'Deep Dive' },
+          { num: 3, label: 'Edge Cases' },
+          { num: 4, label: 'HR / STAR' },
+          { num: 5, label: 'Wrap-Up' },
+        ];
+        return (
+          <div className="bg-slate-900/90 border border-slate-800/90 rounded-xl p-1.5 shrink-0 space-y-1 shadow-inner">
+            <div className="flex items-center justify-between text-[9px] font-bold text-slate-400">
+              <span className="uppercase tracking-widest text-cyan-400 font-extrabold flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                Interview Lifecycle
+              </span>
+              <span className="font-mono text-slate-300">
+                Stage {currentStage} of 5 · <strong className="text-white">{stages[currentStage - 1]?.label || 'Active'}</strong>
+              </span>
+            </div>
+            <div className="grid grid-cols-5 gap-1">
+              {stages.map((st) => {
+                const isCompleted = st.num < currentStage;
+                const isCurrent = st.num === currentStage;
+                return (
+                  <div
+                    key={st.num}
+                    className={`py-1 px-0.5 rounded-lg border text-center transition-all ${
+                      isCurrent
+                        ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200 shadow-sm ring-1 ring-cyan-400/40'
+                        : isCompleted
+                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                        : 'bg-slate-950/40 border-slate-800 text-slate-500'
+                    }`}
+                  >
+                    <div className="text-[8px] font-black uppercase leading-tight">
+                      {isCompleted ? '✓' : st.num}
+                    </div>
+                    <div className="text-[8px] sm:text-[9px] font-bold truncate leading-tight">
+                      {st.label}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Internal Scrollable Body */}
       <div className="flex-1 min-h-0 overflow-y-auto space-y-2.5 pr-1 scrollbar-thin scrollbar-thumb-slate-800">

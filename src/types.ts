@@ -70,6 +70,8 @@ export interface CandidateResume {
     description: string;
     metrics: string;
   }>;
+  achievements?: string[];
+  certifications?: string[];
   rawText?: string;
 }
 
@@ -220,6 +222,8 @@ export interface SharedCandidateContext {
   currentActiveTopic?: string;
   topicTurnDepthCount?: number;
   interviewPhase?: 1 | 2 | 3 | 4 | 5;
+  currentStage?: 1 | 2 | 3 | 4 | 5;
+  isInterviewComplete?: boolean;
   questionHistory: QuestionHistoryItem[];
   latestAdaptiveAnalysis?: {
     sentiment: CandidateSentiment;
@@ -262,12 +266,44 @@ export interface InterviewScenario {
   customRubric?: CustomCompanyRubric;
 }
 
+export interface IntroAuditParameter {
+  name: string;
+  weight: number;
+  score: number;
+  status: 'fulfilled' | 'partial' | 'missing';
+  condition: string;
+  evidenceOrGap: string;
+}
+
+export interface IntroAuditResult {
+  totalScore: number;
+  raw100Score?: number;
+  parameters: IntroAuditParameter[];
+  summary?: string;
+}
+
+export interface StageEvaluation {
+  stageNumber: 1 | 2 | 3 | 4 | 5;
+  stageName: string;
+  targetFocus: string;
+  weightPercentage: number; // 10, 35, 30, 15, 10
+  rawScore: number; // 0 to 100
+  weightedScore: number;
+  status: 'completed' | 'in_progress' | 'not_reached';
+  summary: string;
+}
+
 export interface StructuredAssessment {
   candidateName: string;
   targetRole: string;
   interviewDate: string;
   durationMinutes: number;
   overallScore: number; // 0-100
+  completedStagesCount?: number;
+  currentStageName?: string;
+  accumulatedWeightedScore?: number;
+  stageBreakdown?: StageEvaluation[];
+  introAudit?: IntroAuditResult;
   panelStrictness?: PanelStrictness;
   rubricWeightsUsed?: RubricWeights;
   customRubricUsed?: CustomCompanyRubric;
@@ -308,6 +344,7 @@ export interface StructuredAssessment {
     trajectoryDescription: string;
   };
   actionableDevelopmentPlan: string[];
+  transcript?: TranscriptMessage[];
 }
 
 export type AppView = 'landing' | 'login' | 'studio';

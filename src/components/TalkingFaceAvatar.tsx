@@ -170,7 +170,7 @@ export const TalkingFaceAvatar: React.FC<TalkingFaceAvatarProps> = ({
               isSpeaking ? 'scale-105 brightness-105' : 'scale-100 group-hover:scale-102'
             } ${imgClassName}`}
             style={{
-              objectPosition: objectPosition || '50% 20%',
+              objectPosition: objectPosition || '50% 30%',
               animation: isSpeaking ? 'ma-photo-pulse 1.6s ease-in-out infinite' : 'none',
             }}
           />

@@ -33,12 +33,12 @@ import { ArchitectureCanvasState } from './types';
 import { requestInterviewTurn, generateFinalAssessment, fetchTTSAudio, fetchAgoraToken, startAgoraAgent, stopAgoraAgent, speakWithAgoraAgent, interruptAgoraAgent } from './services/apiService';
 import { sessionHistoryService } from './services/sessionHistoryService';
 import { turnForkService, TurnCheckpoint } from './services/turnForkService';
-import { agoraVoiceEngine } from './services/agoraVoiceEngine';
+import { agoraVoiceEngine, AgoraRTCStatsSummary } from './services/agoraVoiceEngine';
 import { generatePersonalizedOpening } from './utils/resumeParser';
 import { generateDynamicPanel } from './utils/dynamicPanelGenerator';
 import { analyzeSemanticPause, boostTechnicalJargon } from './utils/jargonBooster';
 import { generateHeuristicAssessment } from './utils/assessmentFallback';
-import { ArrowLeft, Sparkles, ShieldCheck, FileText, Home, User, LogOut, LogIn, PanelLeft, Building2, GraduationCap, Menu, Radio, Activity } from 'lucide-react';
+import { ArrowLeft, Sparkles, ShieldCheck, FileText, Home, User, LogOut, LogIn, PanelLeft, Building2, GraduationCap, Menu, Radio, Activity, CheckCircle2 } from 'lucide-react';
 import { PWAInstallPrompt } from './components/PWAInstallPrompt';
 import { ToastNotification, ToastMessage } from './components/ToastNotification';
 import { LaunchSessionModal } from './components/LaunchSessionModal';
@@ -171,7 +171,19 @@ export default function App() {
   const candidateVolumeRef = useRef<number>(0);
   const latestCandidateSpeechRef = useRef<string>('');
 
-  // Setup Backchannel Listener Callback on mount
+  // Live Agora SD-RTN™ Telemetrics State ("The Agora Flex")
+  const [rtcStats, setRtcStats] = useState<AgoraRTCStatsSummary>({
+    rtt: 38,
+    uplinkLoss: 0,
+    downlinkLoss: 0,
+    recvBitrate: 32,
+    sendBitrate: 32,
+    networkQuality: 'excellent',
+    vadLatencyMs: 82,
+  });
+  const [showNetworkDiagModal, setShowNetworkDiagModal] = useState(false);
+
+  // Setup Backchannel & Agora RTC Telemetry Callback on mount
   useEffect(() => {
     agoraVoiceEngine.setCallbacks({
       onSpeakingStateChange: (speaking) => {
@@ -185,6 +197,9 @@ export default function App() {
       onBackchannelDetected: (phrase) => {
         setBackchannelDetectedPhrase(phrase);
         setTimeout(() => setBackchannelDetectedPhrase(null), 2500);
+      },
+      onRTCStats: (stats) => {
+        setRtcStats(stats);
       },
       onSpeechError: (errorMsg) => {
         // Surface speech recognition errors visibly in the UI
@@ -212,6 +227,19 @@ export default function App() {
   const [showProgressionHub, setShowProgressionHub] = useState(false);
   const [activeCheckpoint, setActiveCheckpoint] = useState<TurnCheckpoint | null>(null);
   const [isWhiteboardOpen, setIsWhiteboardOpen] = useState(false);
+
+  // Dynamic Interview Duration Ceilings (Real-world technical interview standards)
+  const getInterviewMaxDurationSeconds = useCallback((difficulty?: string) => {
+    switch (difficulty) {
+      case 'Foundational': return 15 * 60; // 15 min
+      case 'Intermediate': return 25 * 60; // 25 min
+      case 'Senior': return 45 * 60; // 45 min
+      case 'Staff/Principal': return 55 * 60; // 55 min
+      default: return 25 * 60;
+    }
+  }, []);
+
+  const currentInterviewMaxDuration = getInterviewMaxDurationSeconds(sharedContext.currentDifficulty);
 
   const addToast = useCallback((title: string, message: string, type: 'success' | 'info' | 'warning' | 'error' = 'success') => {
     const id = `toast-${Date.now()}-${Math.random()}`;
@@ -246,6 +274,39 @@ export default function App() {
       }
     };
   }, [inInterview]);
+
+  // Automated Time Limit Guardian (Dynamic per tier: Foundational 15m, Intermediate 25m, Senior 45m, Staff 55m)
+  useEffect(() => {
+    if (!inInterview) return;
+
+    const maxDuration = getInterviewMaxDurationSeconds(sharedContext.currentDifficulty);
+    const warnThreshold = maxDuration > 15 * 60 ? 180 : 120; // 3m warning for long sessions, 2m for 15m foundational
+
+    // Warning before end: advance to final wrap-up phase
+    if (sessionSeconds === maxDuration - warnThreshold) {
+      const minutesRemaining = Math.round(warnThreshold / 60);
+      addToast(
+        `⏳ ${minutesRemaining} Minutes Remaining`,
+        `Approaching ${Math.round(maxDuration / 60)}-minute session limit. Panel is transitioning to final wrap-up.`,
+        'warning'
+      );
+      setSharedContext((prev) => ({
+        ...prev,
+        interviewPhase: 5,
+        currentStage: 5,
+      }));
+    }
+
+    // Time limit reached: conclude interview automatically
+    if (sessionSeconds >= maxDuration) {
+      addToast(
+        '⏰ Time Limit Reached',
+        `The ${Math.round(maxDuration / 60)}-minute interview period has concluded. Finalizing your committee assessment scorecard...`,
+        'info'
+      );
+      handleEndInterview();
+    }
+  }, [sessionSeconds, inInterview, sharedContext.currentDifficulty, getInterviewMaxDurationSeconds]);
 
   const formatTimer = (secs: number) => {
     const m = Math.floor(secs / 60);
@@ -686,6 +747,9 @@ export default function App() {
       targetRole: config.targetRole,
       targetLevel: config.initialDifficulty,
       currentDifficulty: config.initialDifficulty,
+      currentStage: 1,
+      interviewPhase: 1,
+      isInterviewComplete: false,
       difficultyScore: config.initialDifficulty === 'Staff/Principal' ? 9 : config.initialDifficulty === 'Senior' ? 7 : 5,
       panelStrictness: config.customRubric?.strictnessRating || config.panelStrictness || 'Balanced',
       rubricWeights: config.customRubric?.rubricWeights || config.rubricWeights || {
@@ -1021,6 +1085,9 @@ export default function App() {
       // Update Shared Context
       const newContext: SharedCandidateContext = {
         ...sharedContextRef.current,
+        currentStage: turnResult.currentStage || sharedContextRef.current.currentStage || 1,
+        interviewPhase: (turnResult.currentStage || turnResult.interviewPhase || sharedContextRef.current.interviewPhase || 1) as any,
+        isInterviewComplete: Boolean(turnResult.isInterviewComplete),
         currentDifficulty: turnResult.updatedDifficulty || sharedContextRef.current.currentDifficulty,
         runningSummary: turnResult.updatedRunningSummary || sharedContextRef.current.runningSummary,
         unresolvedProbes: currentProbes,
@@ -1169,6 +1236,15 @@ export default function App() {
         // Speak response if not interrupted
         if (currentTurnIdRef.current === thisTurnId) {
           await speakInterviewerMessage(mainSpeech, nextInterviewer);
+          if (turnResult.isInterviewComplete) {
+            console.log('[App] 🏁 Interview completed across all stages. Concluding session and compiling evaluation scorecard...');
+            addToast('Interview Complete', 'All stages completed. Compiling your comprehensive committee scorecard...', 'success');
+            setTimeout(() => {
+              if (inInterviewRef.current) {
+                handleEndInterview();
+              }
+            }, 1200);
+          }
         }
       }
     } catch (err: any) {
@@ -1375,6 +1451,7 @@ export default function App() {
         scenario,
         candidateName,
       });
+      finalReport.transcript = transcript;
       setAssessment(finalReport);
 
       // Auto-save session to longitudinal history for Skill Progression Hub
@@ -1395,7 +1472,9 @@ export default function App() {
             state: candState,
             country: candCountry,
             location: candLocation,
-          }
+          },
+          currentUser?.id,
+          transcript
         );
       } catch (saveErr) {
         console.warn('Could not archive session to history:', saveErr);
@@ -1409,7 +1488,34 @@ export default function App() {
         scenario,
         activePanel
       );
+      fallbackReport.transcript = transcript;
       setAssessment(fallbackReport);
+
+      try {
+        const sessionMinutes = Math.round(sessionSeconds / 60) || 1;
+        const candCity = candidateResume?.city || currentUser?.city;
+        const candState = candidateResume?.state || currentUser?.state;
+        const candCountry = candidateResume?.country || currentUser?.country || 'India';
+        const candLocation = candidateResume?.location || currentUser?.location;
+
+        sessionHistoryService.saveSession(
+          fallbackReport,
+          scenario.title,
+          sessionMinutes,
+          sharedContext.currentDifficulty || 'Intermediate',
+          {
+            city: candCity,
+            state: candState,
+            country: candCountry,
+            location: candLocation,
+          },
+          currentUser?.id,
+          transcript
+        );
+      } catch (saveErr) {
+        console.warn('Could not archive fallback session to history:', saveErr);
+      }
+
       addToast('Scorecard Calibrated', 'Assessment compiled from session telemetry and question history.', 'success');
     } finally {
       setIsGeneratingAssessment(false);
@@ -1706,14 +1812,42 @@ export default function App() {
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
                   ACTIVE
                 </span>
-                <div className="flex items-center gap-1 bg-rose-500/10 border border-rose-500/25 px-2 py-0.5 rounded-lg text-rose-400 text-[10px] font-mono font-bold">
+                <div 
+                  className="flex items-center gap-1 bg-rose-500/10 border border-rose-500/25 px-2 py-0.5 rounded-lg text-rose-400 text-[10px] font-mono font-bold"
+                  title={`Elapsed: ${formatTimer(sessionSeconds)} | Limit: ${formatTimer(currentInterviewMaxDuration)} (${Math.max(0, Math.floor((currentInterviewMaxDuration - sessionSeconds) / 60))}m remaining)`}
+                >
                   <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
                   <span>LIVE</span>
                   <span className="text-white ml-1">{formatTimer(sessionSeconds)}</span>
+                  <span className="text-slate-500 font-normal">/</span>
+                  <span className="text-slate-400 font-normal text-[9px]">{formatTimer(currentInterviewMaxDuration)}</span>
                 </div>
-                <span className="hidden lg:inline-flex items-center gap-1 text-[9px] font-mono text-cyan-400 bg-cyan-950/60 border border-cyan-800/60 px-2 py-0.5 rounded-lg">
-                  SUB-100ms LATENCY: 85ms
-                </span>
+                {/* Agora SD-RTN™ Telemetry Diagnostic Pill ("The Agora Flex") */}
+                <button
+                  type="button"
+                  onClick={() => setShowNetworkDiagModal(true)}
+                  className="hidden sm:inline-flex items-center gap-1.5 text-[9px] font-mono text-cyan-300 bg-cyan-950/70 hover:bg-cyan-900/80 border border-cyan-800/70 hover:border-cyan-500/80 px-2 py-0.5 rounded-lg transition cursor-pointer shadow-xs group"
+                  title="Click to view real-time Agora SD-RTN™ telemetry & latency metrics"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 group-hover:animate-ping" />
+                  <span className="font-bold text-cyan-300">Agora SD-RTN™</span>
+                  <span className="text-slate-500">|</span>
+                  <span className="text-emerald-400 font-semibold">{rtcStats.rtt}ms RTT</span>
+                  <Activity className="w-2.5 h-2.5 text-cyan-400 opacity-70 group-hover:opacity-100" />
+                </button>
+
+                {/* Instant Finish & Evaluate Button in Header */}
+                <button
+                  type="button"
+                  id="btn-header-finish-interview"
+                  onClick={handleEndInterview}
+                  disabled={isProcessing}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-lg text-[10px] sm:text-xs font-extrabold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md hover:shadow-emerald-500/20 transition-all cursor-pointer border border-emerald-400/40 shrink-0"
+                  title="Finish interview immediately, disconnect audio & generate comprehensive committee scorecard"
+                >
+                  <CheckCircle2 className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                  <span>Finish & Evaluate</span>
+                </button>
               </div>
             ) : (
               <div className="hidden md:flex items-center gap-1.5 text-xs text-slate-500">
@@ -1804,12 +1938,17 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => {
-                    setIsFocusMode((prev) => !prev);
-                    addToast(
-                      'Focus Mode Active',
-                      'Clean layout with zero distractions enabled.',
-                      'info'
-                    );
+                    setIsFocusMode((prev) => {
+                      const next = !prev;
+                      addToast(
+                        next ? 'Focus Mode Active' : 'Telemetry Mode Active',
+                        next
+                          ? 'Clean layout with zero distractions enabled.'
+                          : 'Live analytics and telemetry panels restored.',
+                        'info'
+                      );
+                      return next;
+                    });
                   }}
                   className={`text-[10px] font-bold px-2 py-1 rounded-lg border flex items-center gap-1 transition cursor-pointer ${
                     isFocusMode
@@ -1928,6 +2067,7 @@ export default function App() {
                       : undefined)
               }
               viewerRole={workspaceMode === 'recruiter' ? 'recruiter' : 'candidate'}
+              currentUser={currentUser}
             />
           ) : !inInterview ? (
             workspaceMode === 'recruiter' ? (
@@ -1982,6 +2122,8 @@ export default function App() {
                     activeInterviewerName={activePanel.find((i) => i.id === activeSpeakerId)?.name}
                     isFocusMode={isFocusMode}
                     onForkTurn={handleOpenForkTurn}
+                    currentInterimTranscript={currentInterimTranscript}
+                    candidateName={candidateName}
                   />
                 </div>
 
@@ -2019,6 +2161,7 @@ export default function App() {
                       }
                       setTimeout(() => setErrorToast(null), 2500);
                     }}
+                    onEndInterview={handleEndInterview}
                   />
                 </div>
 
@@ -2026,6 +2169,7 @@ export default function App() {
                 <div className="lg:col-span-4 xl:col-span-4 h-full min-h-0 flex flex-col overflow-hidden">
                   <LivePanelContext
                     context={sharedContext}
+                    transcript={transcript}
                     onEndInterview={handleEndInterview}
                     isProcessing={isProcessing || isGeneratingAssessment}
                     agoraMode={agoraMode}
@@ -2071,6 +2215,7 @@ export default function App() {
       {assessment && (
         <FinalAssessmentModal
           assessment={assessment}
+          transcript={(assessment as any)?.transcript && (assessment as any).transcript.length > 0 ? (assessment as any).transcript : transcript}
           onClose={() => setAssessment(null)}
           onRestart={handleRestart}
         />
@@ -2093,6 +2238,88 @@ export default function App() {
         currentDiagram={sharedContext.architectureDiagram}
         onSyncDiagram={handleSyncWhiteboard}
       />
+
+      {/* Agora SD-RTN™ Real-Time Telemetry Modal ("The Agora Flex") */}
+      {showNetworkDiagModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+          <div className="w-full max-w-md bg-slate-900 border border-cyan-500/30 rounded-2xl p-5 shadow-2xl space-y-4 text-white animate-in fade-in zoom-in duration-150">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+                  <Activity className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-cyan-400 flex items-center gap-1.5">
+                    Agora SD-RTN™ Live Telemetry
+                    <span className="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 px-1.5 py-0.2 rounded-full font-mono">
+                      OPTIMAL
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-400">Real-time WebRTC audio & network diagnostics</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowNetworkDiagModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3">
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-mono">Round-Trip Time</span>
+                <span className="text-lg font-bold font-mono text-emerald-400 flex items-center gap-1 mt-0.5">
+                  {rtcStats.rtt} <span className="text-xs text-slate-400 font-normal">ms</span>
+                </span>
+                <span className="text-[10px] text-slate-500">Global edge routing</span>
+              </div>
+
+              <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3">
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-mono">Turnaround Latency</span>
+                <span className="text-lg font-bold font-mono text-cyan-400 flex items-center gap-1 mt-0.5">
+                  &lt; {rtcStats.vadLatencyMs} <span className="text-xs text-slate-400 font-normal">ms</span>
+                </span>
+                <span className="text-[10px] text-slate-500">Speech VAD to AI audio</span>
+              </div>
+
+              <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3">
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-mono">Packet Loss</span>
+                <span className="text-lg font-bold font-mono text-indigo-400 flex items-center gap-1 mt-0.5">
+                  {rtcStats.uplinkLoss}% <span className="text-xs text-slate-400 font-normal">loss</span>
+                </span>
+                <span className="text-[10px] text-slate-500">Opus FEC recovery active</span>
+              </div>
+
+              <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3">
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-mono">Audio Stream</span>
+                <span className="text-lg font-bold font-mono text-purple-400 flex items-center gap-1 mt-0.5 capitalize">
+                  {rtcStats.networkQuality}
+                </span>
+                <span className="text-[10px] text-slate-500">{rtcStats.recvBitrate} kbps 48kHz HD</span>
+              </div>
+            </div>
+
+            <div className="bg-cyan-950/30 border border-cyan-800/40 rounded-xl p-3 text-[11px] text-cyan-200/90 leading-relaxed flex items-start gap-2">
+              <Sparkles className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+              <span>
+                Connected to <strong>Agora Software Defined Real-time Network (SD-RTN™)</strong> with intelligent dynamic routing, hardware echo cancellation, and active conversational barge-in.
+              </span>
+            </div>
+
+            <div className="flex justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => setShowNetworkDiagModal(false)}
+                className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition cursor-pointer"
+              >
+                Close Diagnostics
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

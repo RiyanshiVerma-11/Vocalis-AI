@@ -85,12 +85,32 @@ export const CandidateSessionList: React.FC<CandidateSessionListProps> = ({
       </div>
 
       <div className="space-y-1.5">
-        {filteredSessions.length === 0 && (
+        {sessions.length === 0 ? (
+          <div className="text-center py-10 px-4 bg-slate-50/70 rounded-xl border border-dashed border-slate-200 space-y-3">
+            <div className="w-12 h-12 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center mx-auto shadow-xs">
+              <Zap className="w-6 h-6 text-indigo-600" />
+            </div>
+            <div className="space-y-1 max-w-sm mx-auto">
+              <h3 className="text-sm font-bold text-slate-800">No practice interviews yet</h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                As you complete AI mock interviews, your scorecards, transcripts, and skill progress will appear right here.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onBackToStudio}
+              className="inline-flex items-center gap-1.5 text-xs font-bold px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm transition cursor-pointer"
+            >
+              <Zap className="w-3.5 h-3.5" />
+              <span>Launch Your First Interview</span>
+            </button>
+          </div>
+        ) : filteredSessions.length === 0 ? (
           <div className="text-center py-6 text-slate-400 text-xs">
             <BookOpen className="w-8 h-8 mx-auto mb-2 opacity-40" />
             No sessions match this filter.
           </div>
-        )}
+        ) : null}
         {filteredSessions.map((session, idx) => {
           const sLabel = scoreToLabel(session.overallScore);
           const isNotified = notifiedSessions.has(session.id);

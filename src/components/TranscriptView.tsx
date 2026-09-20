@@ -23,6 +23,8 @@ interface TranscriptViewProps {
   activeInterviewerName?: string;
   isFocusMode?: boolean;
   onForkTurn?: (turnIndex: number) => void;
+  currentInterimTranscript?: string;
+  candidateName?: string;
 }
 
 export const TranscriptView: React.FC<TranscriptViewProps> = ({
@@ -30,6 +32,8 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({
   isProcessing,
   isFocusMode = false,
   onForkTurn,
+  currentInterimTranscript = '',
+  candidateName = 'Candidate',
 }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [expandedThoughts, setExpandedThoughts] = useState<Record<string, boolean>>({});
@@ -37,9 +41,9 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({
   useEffect(() => {
     const timer = setTimeout(() => {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-    }, 100);
+    }, 50);
     return () => clearTimeout(timer);
-  }, [transcript, isProcessing]);
+  }, [transcript, isProcessing, currentInterimTranscript]);
 
   const toggleThought = (id: string) => {
     setExpandedThoughts((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -124,6 +128,9 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({
     }
   };
 
+  const candidateTurnsCount = transcript.filter((m) => m.speakerRole === 'candidate' || m.speakerId === 'candidate').length;
+  const aiTurnsCount = transcript.length - candidateTurnsCount;
+
   return (
     <div id="transcript-view-panel" className="bg-[#0b101b] rounded-xl border border-slate-800/90 p-2 sm:p-2.5 shadow-xl flex flex-col h-full min-h-0">
       {/* Header */}
@@ -133,12 +140,14 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({
           <h2 className="text-[10px] font-extrabold text-slate-200 uppercase tracking-widest">
             Real-Time Transcript
           </h2>
-          <span className="text-[9px] font-bold text-cyan-300 bg-cyan-500/10 px-1.5 py-0.2 rounded-full border border-cyan-500/30">
-            {transcript.length} turns
+          <span className="text-[9px] font-bold text-cyan-300 bg-cyan-500/10 px-2 py-0.5 rounded-full border border-cyan-500/30 font-mono">
+            {candidateTurnsCount === 0 && transcript.length <= 1
+              ? 'Opening Question'
+              : `Question ${aiTurnsCount} · ${candidateTurnsCount} Answer${candidateTurnsCount === 1 ? '' : 's'}`}
           </span>
         </div>
-        <div className="text-[9px] font-medium text-slate-400 hidden sm:block">
-          Timestamped & Quote-Indexed
+        <div className="text-[9px] font-medium text-slate-400 hidden sm:block font-mono">
+          {transcript.length} dialogue turns · Live
         </div>
       </div>
 

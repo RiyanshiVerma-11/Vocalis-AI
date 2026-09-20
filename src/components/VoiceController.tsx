@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, Send, Hand, Sparkles, Volume2, AudioLines, Pause, Play, Clock, X, BrainCircuit, ShieldCheck, MessageSquareQuote } from 'lucide-react';
+import { Mic, MicOff, Send, Hand, Sparkles, Volume2, AudioLines, Pause, Play, Clock, X, BrainCircuit, ShieldCheck, MessageSquareQuote, CheckCircle2 } from 'lucide-react';
 import { agoraVoiceEngine } from '../services/agoraVoiceEngine';
 
 interface VoiceControllerProps {
@@ -21,6 +21,7 @@ interface VoiceControllerProps {
   backchannelDetectedPhrase?: string | null;
   onClearTranscript?: () => void;
   candidateName?: string;
+  onEndInterview?: () => void;
 }
 
 export const VoiceController: React.FC<VoiceControllerProps> = ({
@@ -42,10 +43,12 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
   backchannelDetectedPhrase = null,
   onClearTranscript,
   candidateName = 'Candidate',
+  onEndInterview,
 }) => {
   const [textInput, setTextInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const typingTimerRef = useRef<any>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   // Sync current speech recognition text into input box if candidate is speaking
   useEffect(() => {
@@ -57,6 +60,13 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
     }
   }, [currentInterimTranscript, isTyping]);
 
+  // Keep textarea scrolled to the latest spoken words in real time
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.scrollTop = textareaRef.current.scrollHeight;
+    }
+  }, [textInput, currentInterimTranscript]);
+
   const handleClear = () => {
     setTextInput('');
     setIsTyping(false);
@@ -66,7 +76,7 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
     }
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
     const val = e.target.value;
     setTextInput(val);
     setIsTyping(true);
@@ -94,6 +104,11 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
   };
 
   const quickPrompts = [
+    {
+      label: '⏭️ Skip Question',
+      text: "Let's skip this question and move forward to the next topic.",
+      desc: 'Skip current question and move forward to the next topic',
+    },
     {
       label: '⚡ Classic Technical vs Product Scenario',
       text: "I'll implement a Redis distributed cache with a 10-minute TTL in front of PostgreSQL to absorb the 50,000 req/sec peak read traffic and ensure sub-50ms latency.",
@@ -365,71 +380,114 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
           )}
         </div>
 
-        {/* Silence Tolerance Selector */}
-        {onChangeSilenceTimeout && (
-          <div className="flex items-center gap-1 bg-slate-900/80 px-2 py-0.5 rounded-lg border border-slate-800 text-[10px]">
-            <Clock className="w-2.5 h-2.5 text-cyan-400" />
-            <select
-              id="select-pause-tolerance"
-              value={silenceTimeoutMs}
-              onChange={(e) => onChangeSilenceTimeout(Number(e.target.value))}
-              className="bg-transparent font-semibold text-slate-300 outline-none cursor-pointer text-[10px]"
-              title="Auto-send timeout"
-            >
-              <option value={2000} className="bg-slate-900 font-bold text-cyan-400">⚡ 2s Real Interview (Auto-Send)</option>
-              <option value={3000} className="bg-slate-900">⏱️ 3s Balanced</option>
-              <option value={4000} className="bg-slate-900">⏱️ 4s Thoughtful</option>
-              <option value={6000} className="bg-slate-900">🧘 6s Generous</option>
-              <option value={-1} className="bg-slate-900">🛑 Manual Send Only</option>
-            </select>
-          </div>
-        )}
-      </div>
-
-      {/* Text Input Form (Dual Voice + Text Entry) */}
-      <form onSubmit={handleSubmit} className="relative shrink-0">
-        <div className="flex items-center gap-1.5 bg-slate-900/90 rounded-xl border border-slate-700/80 p-1 focus-within:border-cyan-500 focus-within:ring-2 focus-within:ring-cyan-500/30 transition-all">
-          <input
-            id="candidate-response-input"
-            type="text"
-            value={textInput}
-            onChange={handleInputChange}
-            placeholder={
-              isFloorHeld
-                ? 'Floor held — speak or type your answer...'
-                : isListening
-                ? 'Listening to speech (or type answer here)...'
-                : 'Type response or click "Enable Mic"...'
-            }
-            disabled={isProcessing}
-            className="flex-1 bg-transparent text-slate-100 placeholder-slate-500 text-xs px-2 py-1 outline-none"
-          />
-
-          {textInput.trim() && (
-            <button
-              type="button"
-              onClick={handleClear}
-              className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
-              title="Clear text"
-            >
-              <X className="w-3 h-3" />
-            </button>
+        <div className="flex items-center gap-1.5 ml-auto">
+          {/* Silence Tolerance Selector */}
+          {onChangeSilenceTimeout && (
+            <div className="flex items-center gap-1 bg-slate-900/80 px-2 py-0.5 rounded-lg border border-slate-800 text-[10px]">
+              <Clock className="w-2.5 h-2.5 text-cyan-400" />
+              <select
+                id="select-pause-tolerance"
+                value={silenceTimeoutMs}
+                onChange={(e) => onChangeSilenceTimeout(Number(e.target.value))}
+                className="bg-transparent font-semibold text-slate-300 outline-none cursor-pointer text-[10px]"
+                title="Auto-send timeout"
+              >
+                <option value={2000} className="bg-slate-900 font-bold text-cyan-400">⚡ 2s Real Interview (Auto-Send)</option>
+                <option value={3000} className="bg-slate-900">⏱️ 3s Balanced</option>
+                <option value={4000} className="bg-slate-900">⏱️ 4s Thoughtful</option>
+                <option value={6000} className="bg-slate-900">🧘 6s Generous</option>
+                <option value={-1} className="bg-slate-900">🛑 Manual Send Only</option>
+              </select>
+            </div>
           )}
 
-          <button
-            id="btn-submit-response"
-            type="submit"
-            disabled={!textInput.trim() || isProcessing}
-            className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
-              textInput.trim() && !isProcessing
-                ? 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-extrabold shadow-sm'
-                : 'bg-slate-800 text-slate-500 cursor-not-allowed'
-            }`}
-          >
-            <span>{isProcessing ? 'Deliberating...' : 'Send'}</span>
-            <Send className="w-3 h-3" />
-          </button>
+          {/* Finish & Evaluate Button */}
+          {onEndInterview && (
+            <button
+              id="btn-voice-finish-interview"
+              type="button"
+              onClick={onEndInterview}
+              disabled={isProcessing}
+              className="flex items-center justify-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-extrabold bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-400/40 transition cursor-pointer shadow-xs"
+              title="Finish interview immediately, disconnect audio & compile scorecard"
+            >
+              <CheckCircle2 className="w-3 h-3" />
+              <span>Finish & Evaluate</span>
+            </button>
+          )}
         </div>
+      </div>
+
+      {/* Real-time Multi-line Candidate Speech & Text Box */}
+      <form onSubmit={handleSubmit} className="relative shrink-0">
+        <div className={`flex flex-col gap-1 bg-slate-900/95 rounded-xl border p-2 transition-all shadow-inner ${
+          currentInterimTranscript
+            ? 'border-cyan-400 ring-2 ring-cyan-500/30 shadow-cyan-500/10'
+            : 'border-slate-700/80 focus-within:border-cyan-500 focus-within:ring-2 focus-within:ring-cyan-500/30'
+        }`}>
+          {/* Real-time Speech Streaming Status Badge */}
+          {currentInterimTranscript && (
+            <div className="flex items-center justify-between pb-1 mb-1 border-b border-cyan-500/20 text-[10px]">
+              <span className="flex items-center gap-1.5 font-extrabold text-cyan-300">
+                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping inline-block" />
+                <span>Live Candidate Speech Streaming</span>
+              </span>
+              <span className="text-slate-400 text-[9px]">Transcribing to response box...</span>
+            </div>
+          )}
+
+          <div className="flex items-start gap-2">
+            <textarea
+              ref={textareaRef}
+              id="candidate-response-input"
+              rows={2}
+              value={textInput}
+              onChange={handleInputChange}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSubmit(e);
+                }
+              }}
+              placeholder={
+                isFloorHeld
+                  ? 'Floor held — speak or type your full response...'
+                  : isListening
+                  ? 'Listening... your words will stream right here in real-time.'
+                  : 'Speak into mic or type your response (Enter to send, Shift+Enter for newline)...'
+              }
+              disabled={isProcessing}
+              className="flex-1 bg-transparent text-slate-100 placeholder-slate-500 text-xs sm:text-[13px] leading-relaxed outline-none resize-none min-h-[48px] max-h-[100px] overflow-y-auto break-words whitespace-pre-wrap"
+            />
+
+          <div className="flex flex-col items-center gap-1 shrink-0 self-center">
+            {textInput.trim() && (
+              <button
+                type="button"
+                onClick={handleClear}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+                title="Clear transcript"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+
+            <button
+              id="btn-submit-response"
+              type="submit"
+              disabled={!textInput.trim() || isProcessing}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-bold transition cursor-pointer shadow-sm ${
+                textInput.trim() && !isProcessing
+                  ? 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-extrabold shadow-cyan-500/20'
+                  : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+              }`}
+            >
+              <span>{isProcessing ? 'Deliberating...' : 'Send'}</span>
+              <Send className="w-3 h-3" />
+            </button>
+          </div>
+        </div>
+      </div>
       </form>
 
       {/* Quick Test Prompt Shortcuts */}

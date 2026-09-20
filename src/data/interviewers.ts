@@ -10,7 +10,7 @@ export const ALL_INTERVIEWERS: Interviewer[] = [
     avatarColor: 'from-blue-600 to-cyan-700',
     avatarIcon: 'Cpu',
     avatarPhoto: '/avatars/rohan-sharma.jpg',
-    avatarObjectPosition: '50% 22%',
+    avatarObjectPosition: '50% 30%',
     heygenAvatarId: 'Bryan_public_20240108', // Male Technical Architect
     voiceName: 'Fenrir',
     pitch: 1.0,
@@ -57,7 +57,7 @@ QUESTIONING STRATEGY:
     avatarColor: 'from-purple-600 to-pink-700',
     avatarIcon: 'Layers',
     avatarPhoto: '/avatars/priya-mehta.jpg',
-    avatarObjectPosition: '50% 16%',
+    avatarObjectPosition: '50% 32%',
     heygenAvatarId: 'Daisy-casual-20240409', // Female Product Manager
     voiceName: 'Kore',
     pitch: 1.05,
@@ -104,7 +104,7 @@ QUESTIONING STRATEGY:
     avatarColor: 'from-amber-600 to-orange-700',
     avatarIcon: 'Briefcase',
     avatarPhoto: '/avatars/vikram-malhotra.jpg',
-    avatarObjectPosition: '50% 18%',
+    avatarObjectPosition: '50% 28%',
     heygenAvatarId: 'Joshua_public_20240108', // Male Hiring Manager Executive
     voiceName: 'Zephyr',
     pitch: 0.95,
@@ -152,7 +152,7 @@ QUESTIONING STRATEGY:
     avatarColor: 'from-emerald-600 to-teal-700',
     avatarIcon: 'Users',
     avatarPhoto: '/avatars/neha-kapoor.jpg',
-    avatarObjectPosition: '50% 58%',
+    avatarObjectPosition: '50% 30%',
     heygenAvatarId: 'Monica_public', // Female Operations Director
     voiceName: 'Puck',
     pitch: 1.0,
@@ -199,7 +199,7 @@ QUESTIONING STRATEGY:
     avatarColor: 'from-rose-600 to-red-700',
     avatarIcon: 'HeartPulse',
     avatarPhoto: '/avatars/dr-meera-rao.jpg',
-    avatarObjectPosition: '50% 28%',
+    avatarObjectPosition: '50% 30%',
     heygenAvatarId: 'Grace_public', // Female Behavioral Intelligence Specialist
     voiceName: 'Aoede',
     pitch: 1.02,

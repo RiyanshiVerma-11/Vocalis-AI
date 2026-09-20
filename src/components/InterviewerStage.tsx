@@ -90,9 +90,9 @@ export const InterviewerStage: React.FC<InterviewerStageProps> = ({
   };
 
   return (
-    <div id="interviewer-stage-container" className="bg-[#0b101b] border border-slate-800/90 rounded-xl p-2 sm:p-2.5 shadow-xl relative overflow-hidden">
+    <div id="interviewer-stage-container" className="bg-[#0b101b] border border-slate-800/90 rounded-xl p-1.5 sm:p-2 shadow-xl relative overflow-hidden">
       {/* Sleek Stage Bar Header */}
-      <div className="flex flex-wrap items-center justify-between gap-1.5 mb-2 pb-1.5 border-b border-slate-800/80">
+      <div className="flex flex-wrap items-center justify-between gap-1.5 mb-1 pb-1 border-b border-slate-800/80">
         <div className="flex items-center gap-2 flex-wrap min-w-0">
           <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse shrink-0" />
           <h2 className="text-[10px] font-extrabold text-slate-200 tracking-wider uppercase truncate">
@@ -142,8 +142,8 @@ export const InterviewerStage: React.FC<InterviewerStageProps> = ({
         </div>
       </div>
 
-      {/* Modern Cyber Panel Cards Grid (Fits Candidate + Panel Members in 1 Clean Row) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 items-stretch">
+      {/* Modern Cyber Panel Cards Row: Fixed 16:9 ratio per tile, remaining space stays empty at end */}
+      <div className="flex flex-row items-stretch gap-2 w-full overflow-x-auto py-0.5">
         {/* Candidate Live Stage Tile */}
         <CandidateStageTile
           candidateName={candidateName}
@@ -162,7 +162,7 @@ export const InterviewerStage: React.FC<InterviewerStageProps> = ({
             <div
               key={interviewer.id}
               id={`panel-card-${interviewer.id}`}
-              className={`relative rounded-xl border transition-all duration-300 overflow-hidden flex flex-col justify-between cursor-pointer group bg-[#0b101b] ${getRoleGlowStyle(
+              className={`relative w-[185px] sm:w-[205px] md:w-[215px] shrink-0 rounded-xl border transition-all duration-300 overflow-hidden flex flex-col justify-between cursor-pointer group bg-[#0b101b] ${getRoleGlowStyle(
                 interviewer.role,
                 isSpeakingNow,
                 isTargeted
@@ -170,22 +170,22 @@ export const InterviewerStage: React.FC<InterviewerStageProps> = ({
               onClick={() => onSelectTargetInterviewer(isTargeted ? null : interviewer.id)}
             >
               {/* Header Bar inside card */}
-              <div className="px-2 py-1 flex items-center justify-between border-b border-slate-800/80 bg-slate-900/60 z-10">
-                <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-extrabold border uppercase tracking-wider ${getRoleBadgeStyle(interviewer.role)}`}>
+              <div className="px-1.5 py-0.5 flex items-center justify-between border-b border-slate-800/80 bg-slate-900/60 z-10">
+                <span className={`inline-flex items-center gap-1 px-1 py-0.2 rounded text-[7.5px] font-extrabold border uppercase tracking-wider ${getRoleBadgeStyle(interviewer.role)}`}>
                   {getRoleIcon(interviewer.role)}
-                  <span className="truncate max-w-[70px] sm:max-w-none">{interviewer.role.replace('_', ' ')}</span>
+                  <span className="truncate max-w-[65px] sm:max-w-none">{interviewer.role.replace('_', ' ')}</span>
                 </span>
 
                 <div className="flex items-center gap-1">
                   {isSpeakingNow ? (
-                    <span className="flex items-center gap-1 text-[8px] font-extrabold text-cyan-300 bg-cyan-500/20 px-1.5 py-0.5 rounded border border-cyan-400/40 uppercase tracking-wider animate-pulse">
-                      <Volume2 className="w-2 h-2" /> Speaking
+                    <span className="flex items-center gap-0.5 text-[7px] font-extrabold text-cyan-300 bg-cyan-500/20 px-1 py-0.2 rounded border border-cyan-400/40 uppercase tracking-wider animate-pulse">
+                      <Volume2 className="w-2 h-2" /> Live
                     </span>
                   ) : (
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); setSelectedPersona(interviewer); }}
-                      className="p-0.5 px-1 rounded text-[8px] font-bold text-slate-400 hover:text-white bg-slate-800/80 hover:bg-slate-700 border border-slate-700/60 transition flex items-center gap-0.5"
+                      className="p-0.5 px-1 rounded text-[7px] font-bold text-slate-400 hover:text-white bg-slate-800/80 hover:bg-slate-700 border border-slate-700/60 transition flex items-center gap-0.5"
                     >
                       <Info className="w-2 h-2" /> Info
                     </button>
@@ -193,8 +193,8 @@ export const InterviewerStage: React.FC<InterviewerStageProps> = ({
                 </div>
               </div>
 
-              {/* Video Stream Stage Tile */}
-              <div className="relative w-full h-24 sm:h-28 md:h-30 bg-slate-950 overflow-hidden">
+              {/* Video Stream Stage Tile (Proper Face-Visible Aspect Ratio) */}
+              <div className="relative w-full h-24 sm:h-28 bg-slate-950 overflow-hidden">
                 <TalkingFaceAvatar
                   avatarPhoto={interviewer.avatarPhoto}
                   avatarUrl={interviewer.avatarUrl}
@@ -209,7 +209,7 @@ export const InterviewerStage: React.FC<InterviewerStageProps> = ({
 
                 {/* Floating Ambient Reaction Badge on Inactive Tile */}
                 {!isSpeakingNow && reaction && (
-                  <div className="absolute top-1.5 right-1.5 z-20 flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-900/90 text-slate-100 text-[8px] font-bold border border-slate-700 shadow-md backdrop-blur-xs animate-in fade-in zoom-in duration-200">
+                  <div className="absolute top-1 right-1 z-20 flex items-center gap-0.5 px-1 py-0.2 rounded-md bg-slate-900/90 text-slate-100 text-[7px] font-bold border border-slate-700 shadow-md backdrop-blur-xs animate-in fade-in zoom-in duration-200">
                     <span>
                       {reaction.reactionType === 'taking_notes' && '📝'}
                       {reaction.reactionType === 'skeptical' && '🤔'}
@@ -217,19 +217,19 @@ export const InterviewerStage: React.FC<InterviewerStageProps> = ({
                       {reaction.reactionType === 'concerned' && '⚠️'}
                       {reaction.reactionType === 'intrigued' && '✨'}
                     </span>
-                    <span className="truncate max-w-[70px]">{reaction.label}</span>
+                    <span className="truncate max-w-[55px]">{reaction.label}</span>
                   </div>
                 )}
 
                 {isTargeted && !isSpeakingNow && (
-                  <div className="absolute top-1.5 left-1.5 z-20 bg-indigo-600/90 text-white font-mono text-[8px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider backdrop-blur-sm shadow-md">
+                  <div className="absolute top-1 left-1 z-20 bg-indigo-600/90 text-white font-mono text-[7px] font-extrabold px-1 py-0.2 rounded uppercase tracking-wider backdrop-blur-sm shadow-md">
                     Target
                   </div>
                 )}
 
-                {/* Audio Equalizer Waveform Overlay at bottom of video card (matching README design!) */}
-                <div className="absolute bottom-1 left-2 right-2 flex items-center justify-between pointer-events-none">
-                  <div className="flex items-center gap-0.5 h-3">
+                {/* Audio Equalizer Waveform Overlay at bottom of video card */}
+                <div className="absolute bottom-0.5 left-1.5 right-1.5 flex items-center justify-between pointer-events-none">
+                  <div className="flex items-center gap-0.5 h-2.5">
                     {[35, 80, 50, 95, 60, 100, 55, 85, 45, 75, 90, 40].map((h, i) => {
                       const barHeight = isSpeakingNow ? Math.max(25, h) : 12;
                       return (
@@ -248,7 +248,7 @@ export const InterviewerStage: React.FC<InterviewerStageProps> = ({
                       );
                     })}
                   </div>
-                  <span className={`text-[7px] font-mono font-bold px-1 rounded uppercase ${
+                  <span className={`text-[6.5px] font-mono font-bold px-1 rounded uppercase ${
                     isSpeakingNow
                       ? 'text-cyan-300 bg-slate-950/80 border border-cyan-500/40'
                       : 'text-slate-400 bg-slate-900/60 border border-slate-800'
@@ -259,12 +259,12 @@ export const InterviewerStage: React.FC<InterviewerStageProps> = ({
               </div>
 
               {/* Footer Bar inside card: Name & Title */}
-              <div className={`px-2 py-1 border-t border-slate-800/80 ${isSpeakingNow ? 'bg-cyan-950/40' : 'bg-slate-900/70'}`}>
-                <p className="text-[10px] font-extrabold text-white truncate leading-tight flex items-center justify-between">
+              <div className={`px-1.5 py-0.5 border-t border-slate-800/80 ${isSpeakingNow ? 'bg-cyan-950/40' : 'bg-slate-900/70'}`}>
+                <p className="text-[9px] font-extrabold text-white truncate leading-tight flex items-center justify-between">
                   <span className="truncate">{interviewer.name}</span>
                   {isTargeted && <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping inline-block shrink-0" />}
                 </p>
-                <p className="text-[8px] text-cyan-400/90 font-medium truncate leading-tight mt-0.5">{interviewer.title}</p>
+                <p className="text-[7.5px] text-cyan-400/90 font-medium truncate leading-tight mt-0.5">{interviewer.title}</p>
               </div>
             </div>
           );

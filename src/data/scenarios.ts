@@ -14,7 +14,7 @@ export const INTERVIEW_SCENARIOS: InterviewScenario[] = [
     context:
       'Deep-dive technical evaluation tailored specifically to the candidate\'s resume, past projects, system architecture decisions, and target role competencies.',
     starterPrompt:
-      'Welcome! I am Rohan Sharma from Systems Architecture, joined by Priya Mehta from Product and Neha Kapoor representing our enterprise clients. We reviewed your background and notable projects. To start off: Could you walk us through the system architecture of your most impactful project, explaining key trade-offs and technical decisions?',
+      'Welcome! Great to have you with us today. To start off: Could you please introduce yourself and walk us through the system architecture of your most impactful project, explaining key trade-offs and technical decisions?',
     exampleDynamics:
       'The panel asks probing questions grounded directly in your uploaded resume, past engineering positions, and project metric claims.'
   },
@@ -33,7 +33,7 @@ export const INTERVIEW_SCENARIOS: InterviewScenario[] = [
     context:
       'Our e-commerce checkout pipeline handles 80,000 req/sec during flash sales. Cache invalidation failures cause stale pricing and lost revenue. You must propose a solution, defend the technical implementation, AND explain its business value and customer experience impact.',
     starterPrompt:
-      'Welcome! I am Rohan Sharma from Systems Architecture, joined by Priya Mehta from Product and Neha Kapoor representing our enterprise clients. Let\'s dive straight in: Our cache invalidation system fails under flash-sale load, causing users to see stale prices. Please walk us through your proposed solution — technically and architecturally.',
+      'Welcome! Great to have you with us today. Let\'s dive straight in: Our cache invalidation system fails under flash-sale load, causing users to see stale prices. Please introduce yourself briefly and walk us through your proposed technical solution.',
     exampleDynamics:
       'After the candidate explains a Redis write-through cache with TTL: Rohan will nod and accept the implementation. Priya will immediately ask: "That solves the technical problem — but how does this impact checkout conversion and our Black Friday revenue? What\'s the business case?" Neha will follow: "What happens to the customer experience if the cache warms up incorrectly during a sale? Do they see wrong prices?"',
   },
@@ -47,7 +47,7 @@ export const INTERVIEW_SCENARIOS: InterviewScenario[] = [
     difficulty: 'Senior',
     description: 'The multi-role test scenario: The technical interviewer probes system internals and cache invalidation, while the product manager and customer challenge you on user-facing latency, downtime impact, and business value.',
     context: 'Our real-time notification & order processing pipeline handles 50,000 req/sec with sporadic latency spikes of 1.8s during flash sales, frustrating enterprise buyers. You must propose an architectural solution, address cache consistency, and defend the business ROI and customer experience.',
-    starterPrompt: 'Welcome! I am Rohan Sharma from the architecture team, joined by Priya Mehta from Product and Neha Kapoor representing our enterprise clients. To start off: Our order processing pipeline suffers from latency spikes under peak load. How would you redesign this system to achieve sub-100ms p99 latency, and what trade-offs in consistency are you willing to accept?',
+    starterPrompt: 'Welcome! Great to have you with us today. To start off: Our order processing pipeline suffers from latency spikes under peak load. Please introduce yourself briefly and explain how you would redesign this system to achieve sub-100ms p99 latency.',
     exampleDynamics: 'If you only talk about Redis/Kafka and partition keys, Rohan will nod, but Priya will immediately interrupt to ask how this affects checkout conversion and Neha will ask about data loss during bank webhooks.'
   },
   {
@@ -60,7 +60,7 @@ export const INTERVIEW_SCENARIOS: InterviewScenario[] = [
     difficulty: 'Senior',
     description: 'Navigate a high-stakes post-mortem where an untested database index caused a 45-minute cascading outage during enterprise customer renewals.',
     context: 'A release yesterday caused database connection pool exhaustion, dropping 12% of payments. Engineering wants 3 weeks to refactor, while sales and enterprise customers demand immediate rollback guarantees.',
-    starterPrompt: 'Hello, I am Vikram Malhotra (VP of Engineering), here with Rohan Sharma from Systems and Neha Kapoor from Enterprise Accounts. We had a severe 45-minute outage yesterday during quarterly billing. How do you structure the post-mortem, determine root cause, and balance immediate customer trust repair against long-term architectural fixes?',
+    starterPrompt: 'Welcome! Great to have you with us today. We had a severe 45-minute outage yesterday during quarterly billing. Please introduce yourself briefly and tell us how you would structure the post-mortem and determine root cause.',
     exampleDynamics: 'Neha will challenge on SLA credit commitments, Rohan will ask for deep connection pool telemetry and circuit breakers, and Vikram will evaluate your blameless culture.'
   },
   {
@@ -73,7 +73,7 @@ export const INTERVIEW_SCENARIOS: InterviewScenario[] = [
     difficulty: 'Staff/Principal',
     description: 'Evaluate influence without authority, resolving deadlocks between engineering refactoring desires and rapid product feature delivery.',
     context: 'The engineering team wants to pause new feature work for 2 quarters to rewrite a monolith into microservices. Product leadership argues this will cause market share loss to a fast-moving competitor.',
-    starterPrompt: 'Welcome! I am Dr. Meera Rao, joined by Priya Mehta from Product and Vikram Malhotra. Tell us about a time when you faced a fundamental disagreement with product stakeholders over technical debt versus shipping customer features. How did you navigate the impasse and what was the outcome?',
+    starterPrompt: 'Welcome! Great to have you with us today. To kick things off, please introduce yourself and tell us about a time when you faced a fundamental disagreement with stakeholders over technical debt versus shipping features.',
     exampleDynamics: 'Dr. Meera looks for STAR self-awareness and emotional intelligence, Priya pushes on whether you measured business upside, and Vikram asks how you prevented team attrition.'
   },
   {

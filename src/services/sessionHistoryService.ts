@@ -1,4 +1,4 @@
-import { StructuredAssessment, DifficultyLevel, InterviewerRole } from '../types';
+import { StructuredAssessment, DifficultyLevel, InterviewerRole, TranscriptMessage } from '../types';
 
 export interface ArchivedSession {
   id: string;
@@ -21,6 +21,7 @@ export interface ArchivedSession {
   keyStrengths: string[];
   keyGaps: string[];
   fullAssessment: StructuredAssessment;
+  transcript?: TranscriptMessage[];
   city?: string;
   state?: string;
   country?: string;
@@ -28,6 +29,7 @@ export interface ArchivedSession {
   yearsOfExperience?: number;
   previousCompany?: string;
   workMode?: 'Remote' | 'Onsite' | 'Hybrid';
+  userId?: string;
 }
 
 export interface CompetencyEvolution {
@@ -318,53 +320,68 @@ const INITIAL_SEED_SESSIONS: ArchivedSession[] = [
   }
 ];
 
+function getCurrentUser(): any | null {
+  if (typeof localStorage === 'undefined') return null;
+  try {
+    const currentUserStr = localStorage.getItem('vocalis_user_session') || localStorage.getItem('vocalis_current_user');
+    return currentUserStr ? JSON.parse(currentUserStr) : null;
+  } catch {
+    return null;
+  }
+}
+
 function getStorageKey(userId?: string): string {
   if (userId) return `vocalis_session_history_${userId}`;
-  if (typeof localStorage !== 'undefined') {
-    const currentUserStr = localStorage.getItem('vocalis_user_session') || localStorage.getItem('vocalis_current_user');
-    if (currentUserStr) {
-      try {
-        const user = JSON.parse(currentUserStr);
-        const effectiveId = user?.id || user?.userId;
-        if (effectiveId) return `vocalis_session_history_${effectiveId}`;
-      } catch {}
-    }
-  }
+  const user = getCurrentUser();
+  const effectiveId = user?.id || user?.userId;
+  if (effectiveId) return `vocalis_session_history_${effectiveId}`;
   return 'vocalis_session_history_v2';
 }
 
 export const sessionHistoryService = {
   getStoredSessions(userId?: string): ArchivedSession[] {
-    const key = getStorageKey(userId);
+    const user = getCurrentUser();
+    const effectiveUserId = userId || user?.id || user?.userId;
+    const isDemo = user?.isDemo === true || effectiveUserId === 'usr_cand_101';
+    const currentCandidateName = (user?.name || '').trim().toLowerCase();
+
+    const key = effectiveUserId ? `vocalis_session_history_${effectiveUserId}` : 'vocalis_session_history_v2';
+
     try {
       const data = localStorage.getItem(key);
       if (data) {
         const parsed = JSON.parse(data);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          // Filter out accidental 0-score or aborted quick-exit test runs (< 20%)
-          const valid = parsed.filter((s: ArchivedSession) => (s.overallScore ?? 0) >= 20);
-          if (valid.length > 0) {
-            return valid;
+        if (Array.isArray(parsed)) {
+          // If real user (not demo candidate), strictly isolate their sessions:
+          // Filter out dummy/seed sessions like "Jordan Reed" if this is a different user!
+          if (!isDemo && currentCandidateName && currentCandidateName !== 'jordan reed') {
+            const userOnly = parsed.filter((s: ArchivedSession) => {
+              const nameMatches = Boolean(s.candidateName && s.candidateName.toLowerCase() === currentCandidateName);
+              const idMatches = Boolean(s.userId && s.userId === effectiveUserId);
+              const isNotSeed = s.candidateName !== 'Jordan Reed';
+              return (nameMatches || idMatches) && isNotSeed;
+            });
+            // Filter out accidental 0-score or aborted quick-exit test runs (< 20%)
+            return userOnly.filter((s: ArchivedSession) => (s.overallScore ?? 0) >= 20);
           }
-        }
-      }
-      // Check legacy shared key fallback
-      const legacyData = localStorage.getItem('vocalis_session_history_v2');
-      if (legacyData) {
-        const parsed = JSON.parse(legacyData);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+
           const valid = parsed.filter((s: ArchivedSession) => (s.overallScore ?? 0) >= 20);
-          if (valid.length > 0) {
-            return valid;
-          }
+          return valid;
         }
       }
     } catch (e) {
       console.warn('[SessionHistoryService] Failed to read storage:', e);
     }
-    // Pre-seed default realistic historical data if first time
-    this.saveAllSessions(INITIAL_SEED_SESSIONS, userId);
-    return INITIAL_SEED_SESSIONS;
+
+    // Only provide pre-seeded demo sessions for explicit Demo Mode (e.g. Jordan Reed)
+    if (isDemo || effectiveUserId === 'usr_cand_101' || currentCandidateName === 'jordan reed') {
+      this.saveAllSessions(INITIAL_SEED_SESSIONS, effectiveUserId);
+      return INITIAL_SEED_SESSIONS;
+    }
+
+    // For any real registered candidate, their history starts completely clean and EMPTY!
+    // They strictly only see the interviews they actually took.
+    return [];
   },
 
   saveAllSessions(sessions: ArchivedSession[], userId?: string): void {
@@ -384,9 +401,13 @@ export const sessionHistoryService = {
     scenarioTitle: string = 'System Design & Product Impact',
     durationMinutes: number = 25,
     difficultyLevel: DifficultyLevel = 'Senior',
-    locationMeta?: { city?: string; state?: string; country?: string; location?: string }
+    locationMeta?: { city?: string; state?: string; country?: string; location?: string },
+    userId?: string,
+    transcript?: TranscriptMessage[]
   ): ArchivedSession {
-    const sessions = this.getStoredSessions();
+    const user = getCurrentUser();
+    const effectiveUserId = userId || user?.id || user?.userId;
+    const sessions = this.getStoredSessions(effectiveUserId);
     const newId = `arch-session-${Date.now()}`;
     const dateFormatted = new Date().toLocaleDateString('en-US', {
       month: 'short',
@@ -426,15 +447,22 @@ export const sessionHistoryService = {
       keyGaps.push(`${g.topic}: ${g.actualContradictionOrGap}`);
     });
 
-    const candCity = locationMeta?.city || (assessment as any).city;
-    const candState = locationMeta?.state || (assessment as any).state;
-    const candCountry = locationMeta?.country || (assessment as any).country || 'India';
-    const candLocation = locationMeta?.location || (candCity && candState ? `${candCity}, ${candState}` : (assessment as any).location);
+    const candCity = locationMeta?.city || (assessment as any).city || user?.city;
+    const candState = locationMeta?.state || (assessment as any).state || user?.state;
+    const candCountry = locationMeta?.country || (assessment as any).country || user?.country || 'India';
+    const candLocation = locationMeta?.location || (candCity && candState ? `${candCity}, ${candState}` : (assessment as any).location || user?.location);
+
+    const effectiveTranscript = (transcript && transcript.length > 0) ? transcript : (assessment.transcript || []);
+    const fullAssessmentWithTranscript: StructuredAssessment = {
+      ...assessment,
+      transcript: effectiveTranscript.length > 0 ? effectiveTranscript : assessment.transcript,
+    };
 
     const newSession: ArchivedSession = {
       id: newId,
-      candidateName: assessment.candidateName || 'Candidate',
-      targetRole: assessment.targetRole || 'Senior Engineer',
+      userId: effectiveUserId,
+      candidateName: assessment.candidateName || user?.name || 'Candidate',
+      targetRole: assessment.targetRole || user?.targetTitle || 'Senior Engineer',
       scenarioTitle,
       timestamp: Date.now(),
       dateFormatted,
@@ -445,31 +473,34 @@ export const sessionHistoryService = {
       competencyScores: cScores,
       keyStrengths: keyStrengths.slice(0, 4),
       keyGaps: keyGaps.slice(0, 4),
-      fullAssessment: assessment,
+      fullAssessment: fullAssessmentWithTranscript,
+      transcript: effectiveTranscript.length > 0 ? effectiveTranscript : undefined,
       city: candCity,
       state: candState,
       country: candCountry,
       location: candLocation,
     };
 
-    const updated = [...sessions, newSession];
-    this.saveAllSessions(updated);
+    const updated = [newSession, ...sessions.filter((s) => s.id !== newId)];
+    this.saveAllSessions(updated, effectiveUserId);
     return newSession;
   },
 
-  deleteSession(id: string): ArchivedSession[] {
-    const sessions = this.getStoredSessions().filter((s) => s.id !== id);
-    this.saveAllSessions(sessions);
+  deleteSession(id: string, userId?: string): ArchivedSession[] {
+    const user = getCurrentUser();
+    const effectiveUserId = userId || user?.id || user?.userId;
+    const sessions = this.getStoredSessions(effectiveUserId).filter((s) => s.id !== id);
+    this.saveAllSessions(sessions, effectiveUserId);
     return sessions;
   },
 
-  resetToDefaultSeed(): ArchivedSession[] {
-    this.saveAllSessions(INITIAL_SEED_SESSIONS);
+  resetToDefaultSeed(userId?: string): ArchivedSession[] {
+    this.saveAllSessions(INITIAL_SEED_SESSIONS, userId);
     return INITIAL_SEED_SESSIONS;
   },
 
-  getAggregatedGrowthMetrics(): AggregatedGrowthMetrics {
-    const rawSessions = this.getStoredSessions().sort((a, b) => a.timestamp - b.timestamp);
+  getAggregatedGrowthMetrics(userId?: string): AggregatedGrowthMetrics {
+    const rawSessions = this.getStoredSessions(userId).sort((a, b) => a.timestamp - b.timestamp);
     // Ignore aborted test runs or zero-score attempts so candidate trajectory reflects real evaluations
     const validSessions = rawSessions.filter((s) => (s.overallScore ?? 0) >= 20);
     const sessions = validSessions.length > 0 ? validSessions : rawSessions;

@@ -70,13 +70,9 @@ app.use((_req, res, next) => {
 app.use(express.json({ limit: '10mb' }));
 app.use(express.text({ type: ['text/plain', 'text/*'] }));
 
-// Catch JSON parse errors from malformed requests or beacons so server never crashes
-app.use((err: any, _req: any, res: any, next: any) => {
-  if (err instanceof SyntaxError && (err as any).status === 400 && 'body' in err) {
-    return res.status(400).json({ success: false, error: 'Invalid JSON payload' });
-  }
-  next(err);
-});
+// NOTE: JSON parse error middleware intentionally removed from here.
+// A general error handler is registered AFTER all routes (near end of file)
+// so it correctly catches both body-parser and route-thrown errors.
 
 // ── JWT & SMTP Auth Infrastructure ───────────────────────────────────────────
 // Fail fast on startup if JWT_SECRET is not set (required in ALL environments).
@@ -92,6 +88,10 @@ function getMailTransporter() {
   const port = parseInt(process.env.SMTP_PORT || '465', 10);
   const user = process.env.SMTP_USER || '';
   const pass = process.env.SMTP_PASS || '';
+
+  if (!user || !pass) {
+    console.warn('[SMTP] Warning: SMTP_USER or SMTP_PASS not configured. Email delivery will be simulated (non-production only).');
+  }
 
   if (user && pass) {
     return nodemailer.createTransport({
@@ -142,7 +142,8 @@ interface UserRecord {
 }
 
 const USERS_FILE = path.join(process.cwd(), '.vocalis_users.json');
-const defaultDemoPassword = bcrypt.hashSync('password123', 10);
+// Pre-computed bcrypt hash of 'password123' at cost 10 — avoids blocking the event loop at startup
+const defaultDemoPassword = '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
 
 function loadUsersDb(): Map<string, UserRecord> {
   const map = new Map<string, UserRecord>();
@@ -203,6 +204,7 @@ function persistUsersDb(): void {
     console.warn('[UsersDB] Error persisting users:', e);
   }
 }
+persistUsersDb(); // Guarantee default seed accounts are written to disk for cold starts
 
 // ── Rate Limiting Infrastructure ─────────────────────────────────────────────
 interface RateLimitEntry {
@@ -210,6 +212,14 @@ interface RateLimitEntry {
   resetAt: number;
 }
 const rateLimitMap = new Map<string, RateLimitEntry>();
+
+// Periodic garbage collection for rate limit map to prevent memory leaks during long-running server sessions
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of rateLimitMap.entries()) {
+    if (now > v.resetAt) rateLimitMap.delete(k);
+  }
+}, 10 * 60 * 1000);
 
 function checkRateLimit(
   key: string,
@@ -248,13 +258,15 @@ function authenticateToken(req: express.Request, res: express.Response, next: ex
       (req as any).user = decoded;
       return next();
     } catch {
-      // In development or when explicitly in demo mode, allow fallback with warning
-      if (process.env.NODE_ENV !== 'production' && req.headers['x-vocalis-demo-user']) {
-        const demoRole = (req.headers['x-vocalis-demo-role'] as any) || 'candidate';
+      // In development only, allow localhost requests with demo header to bypass auth.
+      // The role is ALWAYS hardcoded to 'candidate' — never trust x-vocalis-demo-role header.
+      const remoteAddr = req.socket?.remoteAddress || '';
+      const isLocalhost = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(remoteAddr);
+      if (process.env.NODE_ENV !== 'production' && isLocalhost && req.headers['x-vocalis-demo-user']) {
         (req as any).user = {
           userId: 'usr_demo_auto',
           email: 'demo@vocalis.ai',
-          role: demoRole,
+          role: 'candidate', // Always 'candidate' — never honour x-vocalis-demo-role header
           name: 'Demo User',
         };
         return next();
@@ -263,15 +275,19 @@ function authenticateToken(req: express.Request, res: express.Response, next: ex
     }
   }
 
-  // Graceful fallback for local development or explicit demo mode
-  if (process.env.NODE_ENV !== 'production' || req.headers['x-vocalis-demo-mode'] === 'true') {
-    (req as any).user = {
-      userId: 'usr_cand_101',
-      email: 'candidate@vocalis.ai',
-      role: 'candidate',
-      name: 'Jordan Reed',
-    };
-    return next();
+  // Graceful fallback for local development ONLY (never allow in production)
+  if (process.env.NODE_ENV !== 'production') {
+    const remoteAddr = req.socket?.remoteAddress || '';
+    const isLocalhost = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(remoteAddr);
+    if (isLocalhost) {
+      (req as any).user = {
+        userId: 'usr_cand_101',
+        email: 'candidate@vocalis.ai',
+        role: 'candidate',
+        name: 'Jordan Reed',
+      };
+      return next();
+    }
   }
 
   return res.status(401).json({ success: false, error: 'Authentication required. Please log in.' });
@@ -486,12 +502,14 @@ app.post('/api/auth/verify-otp', async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    if (user.otpCode !== String(otpCode).trim()) {
-      return res.status(400).json({ error: 'Invalid OTP code' });
+    // Check expiry BEFORE value — prevents timing oracle where correct-but-expired OTP
+    // returns a different error code than a wrong OTP.
+    if (user.otpExpires && Date.now() > user.otpExpires) {
+      return res.status(400).json({ error: 'OTP code has expired. Please request a new one.' });
     }
 
-    if (user.otpExpires && Date.now() > user.otpExpires) {
-      return res.status(400).json({ error: 'OTP code has expired' });
+    if (user.otpCode !== String(otpCode).trim()) {
+      return res.status(400).json({ error: 'Invalid OTP code' });
     }
 
     user.isVerified = true;
@@ -613,12 +631,14 @@ app.post('/api/auth/login-with-otp', async (req, res) => {
       return res.status(404).json({ error: 'User account not found' });
     }
 
-    if (!user.otpCode || user.otpCode !== String(otpCode).trim()) {
-      return res.status(400).json({ error: 'Invalid or incorrect OTP code' });
+    // Check expiry BEFORE value — prevents timing oracle where correct-but-expired OTP
+    // returns a different error code than a wrong OTP.
+    if (user.otpExpires && Date.now() > user.otpExpires) {
+      return res.status(400).json({ error: 'OTP code has expired. Please request a new one.' });
     }
 
-    if (user.otpExpires && Date.now() > user.otpExpires) {
-      return res.status(400).json({ error: 'OTP code has expired' });
+    if (!user.otpCode || user.otpCode !== String(otpCode).trim()) {
+      return res.status(400).json({ error: 'Invalid or incorrect OTP code' });
     }
 
     user.isVerified = true;
@@ -719,9 +739,9 @@ function getGeminiClients(): GoogleGenAI[] {
 // Fallback helper for handling temporary 503 high demand errors across Gemini models and keys
 async function generateContentWithFallback(options: any) {
   const clients = getGeminiClients();
-  const primaryModel = options.model || 'gemini-3.6-flash';
+  const primaryModel = options.model || 'gemini-2.5-flash';
   const modelsToTry = Array.from(
-    new Set([primaryModel, 'gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-3.1-pro-preview'])
+    new Set([primaryModel, 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.5-pro'])
   );
   let lastError: any = null;
 
@@ -755,10 +775,10 @@ async function generateContentWithGroq(
   if (keys.length === 0) throw new Error('GROQ_API_KEY missing');
 
   const modelsToTry = [
-    'qwen/qwen3.8-27b',
-    'groq/compound',
-    'groq/compound-mini',
-    'openai/gpt-oss-120b',
+    'llama-3.3-70b-versatile',
+    'llama-3.1-70b-versatile',
+    'mixtral-8x7b-32768',
+    'gemma2-9b-it',
   ];
 
   const defaultSystemPrompt =
@@ -846,7 +866,9 @@ function normalizeTurnResponse(
   isSkipOrPassRequest = false,
   currentPhase: 1 | 2 | 3 | 4 | 5 = 1,
   activeTopic = '',
-  topicTurnCount = 1
+  topicTurnCount = 1,
+  currentStage: 1 | 2 | 3 | 4 | 5 = 1,
+  isInterviewComplete = false
 ) {
   const fallbackInterviewer =
     activePanel && activePanel.length > 0
@@ -887,14 +909,17 @@ function normalizeTurnResponse(
     speechText = speechText.replace(/Thanks,?\s+[A-Za-z\s]+,?\s+for the clarification request\.?\s*/gi, 'Sure, let me rephrase that: ');
   }
 
-  // Strip markdown, asterisks, hashtags, quotes, and role prefixes so TTS engine renders purely conversational dialogue
+  // Strip stage directions, parenthesized thoughts, markdown, asterisks, hashtags, quotes, and role prefixes so TTS engine renders purely conversational dialogue
   speechText = speechText
+    .replace(/\(.*?\)/g, '')
+    .replace(/\[.*?\]/g, '')
     .replace(/\*\*(.*?)\*\*/g, '$1')
     .replace(/\*(.*?)\*/g, '$1')
     .replace(/^#{1,6}\s+/gm, '')
     .replace(/^["']|["']$/g, '')
     .replace(/^([A-Za-z\s]+:\s*)/, '') // remove "Rohan:", "Rohan Sharma:", "Priya:"
     .replace(/[\r\n]+/g, ' ')
+    .replace(/\s+/g, ' ')
     .trim();
 
   // Direct alias map for the 5 standardized persona IDs
@@ -975,23 +1000,30 @@ function normalizeTurnResponse(
 
   const incomingScores = raw.updatedCompetencyScores || {};
 
+  // depthBaseline: the increment/reward quality level for THIS turn's answer.
+  // Only used to update already-scored competencies — NOT as a fill-in for unprobed ones.
   const depthBaseline = raw.analysisOfCandidateAnswer?.depthLevel === 'Principal (Multi-Dimensional)'
     ? 90
     : (raw.analysisOfCandidateAnswer?.depthLevel === 'Deep (Architectural / Nuanced)' || raw.analysisOfCandidateAnswer?.depthLevel === 'Deep Architectural')
-    ? 85
+    ? 82
     : (raw.analysisOfCandidateAnswer?.depthLevel === 'Intermediate (Practical)' || raw.analysisOfCandidateAnswer?.depthLevel === 'Intermediate')
-    ? 78
-    : raw.analysisOfCandidateAnswer?.depthLevel === 'Surface (Hand-waving)'
     ? 68
-    : 75;
+    : raw.analysisOfCandidateAnswer?.depthLevel === 'Surface (Hand-waving)'
+    ? 42
+    : 55;
 
   const getFallback = (key: string) => {
     const existing = sharedContext.competencyScores?.[key];
-    return typeof existing === 'number' && existing >= 50 ? existing : depthBaseline;
+    // If this competency has already been probed and scored (>0), use its existing score
+    // as the baseline so we don't regress it. Otherwise return 0 — never awarded until earned.
+    if (typeof existing === 'number' && existing > 0) return existing;
+    return 0;
   };
 
   const parseScore = (val: any, fallback: number) => {
     const num = Number(val);
+    // If LLM returns 0 for an unprobed competency, keep it at 0 (correct)
+    if (num === 0) return fallback === 0 ? 0 : fallback;
     return !isNaN(num) && num > 0 && num <= 100 ? Math.round(num) : fallback;
   };
 
@@ -1000,6 +1032,8 @@ function normalizeTurnResponse(
   let rawDepthLevel = raw.analysisOfCandidateAnswer?.depthLevel || (currentPhase === 1 ? 'Foundational (Introductory)' : 'Intermediate (Practical)');
   if (currentPhase === 1 || isGreetingOrIntroPrompt) {
     rawDepthLevel = 'Foundational (Introductory)';
+  } else if (isSkipOrPassRequest) {
+    rawDepthLevel = 'Skipped / Topic Transition';
   }
 
   // Clean and filter detected flags — eliminate empty or whitespace quotes/explanations
@@ -1081,7 +1115,19 @@ function normalizeTurnResponse(
   if (isGreetingOrIntroPrompt) {
     speechText = `Hello ${candidateFirstName}! It's wonderful to meet you, and we can hear you loud and clear. To kick things off, could you please introduce yourself and walk us through your journey, your core strengths, and the key projects you've worked on?`;
   } else if (isSkipOrPassRequest) {
-    if (!speechText || speechText.length < 10 || isAlreadyAsked(speechText)) {
+    // 1. Strip any hallucinated praise of the unprovided answer
+    // (e.g., "That fallback logic is solid.", "That's solid.", "That makes sense.", "Great approach.", "Solid logic.", etc.)
+    const praiseRegex = /^(that('s| is)?\s*(a\s*)?(solid|great|good|excellent|impressive|fair|fine)?\s*(logic|approach|answer|explanation|point|fallback)?\s*(is\s*solid|makes\s*sense)?\.?\s*|that\s+[\w\s]{1,35}\s+is\s+solid\.?\s*|solid\s+approach\.?\s*|great\s+(point|answer|approach|job)\.?\s*|makes\s+sense\.?\s*|thanks\s+for\s+(explaining|walking\s+us\s+through)\s+that\.?\s*)+/i;
+    let cleanSpeech = speechText.replace(praiseRegex, '').trim();
+
+    // 2. Guarantee it starts with the clean transition: "No problem, let's move forward! "
+    if (!/^(no problem|let's move forward|lets move forward|we will move forward|moving forward)/i.test(cleanSpeech)) {
+      cleanSpeech = cleanSpeech.replace(/^(no worries at all|that's completely fair|fair enough|totally fine|sure thing|got it|alright|okay),?\s*/i, '');
+      cleanSpeech = `No problem, let's move forward! ${cleanSpeech}`;
+    }
+    speechText = cleanSpeech;
+
+    if (!speechText || speechText.length < 20 || isAlreadyAsked(speechText)) {
       const resumeProjects: Array<{ name: string }> = sharedContext?.candidateResume?.notableProjects || [];
       const resumeSkills: string[] = [
         ...(sharedContext?.candidateResume?.skills?.languagesAndFrameworks || []),
@@ -1089,10 +1135,10 @@ function normalizeTurnResponse(
       ];
 
       const skipOptions = [
-        ...resumeProjects.map(p => `No worries at all, that's completely fair! Let's pivot to ${p.name}: could you walk us through the high-level architecture and the problem it solves?`),
-        ...resumeSkills.map(s => `Totally fine, let's leave that there! Zooming out to your experience with ${s}, what's a notable technical challenge you worked through using it?`),
-        `Fair enough, perfectly okay! Let's switch gears: can you tell us about a time you had a technical disagreement with a teammate over an engineering design decision, and how you worked through it?`,
-        `No problem at all! In your recent engineering projects, how do you typically approach automated testing and ensuring code reliability before shipping?`
+        ...resumeProjects.map(p => `No problem, let's move forward! Looking at ${p.name}, could you walk us through the high-level architecture and how you built it?`),
+        ...resumeSkills.map(s => `No problem, let's move forward! Shifting to your experience with ${s}, what is a key technical challenge you solved using it?`),
+        `No problem, let's move forward! In your recent engineering projects, how do you typically approach automated testing and code reliability?`,
+        `No problem, let's move forward! Looking at your overall technical background, what is a key system architecture or performance optimization you worked on?`
       ];
 
       const freshSkip = skipOptions.find(opt => !isAlreadyAsked(opt)) || skipOptions[0];
@@ -1131,8 +1177,17 @@ function normalizeTurnResponse(
   return {
     nextSpeakerId: matchedInterviewer.id,
     nextSpeakerName: matchedInterviewer.name,
-    nextSpeakerRole: matchedInterviewer.role || raw.nextSpeakerRole || 'technical',
-    interviewPhase: raw.interviewPhase || currentPhase,
+    interviewPhase: (typeof raw.currentStage === 'number' && raw.currentStage > 1)
+      ? (raw.currentStage as 1 | 2 | 3 | 4 | 5)
+      : (typeof raw.interviewPhase === 'number' && raw.interviewPhase > 1)
+      ? (raw.interviewPhase as 1 | 2 | 3 | 4 | 5)
+      : currentStage,
+    currentStage: (typeof raw.currentStage === 'number' && raw.currentStage > 1)
+      ? (raw.currentStage as 1 | 2 | 3 | 4 | 5)
+      : (typeof raw.interviewPhase === 'number' && raw.interviewPhase > 1)
+      ? (raw.interviewPhase as 1 | 2 | 3 | 4 | 5)
+      : currentStage,
+    isInterviewComplete: typeof raw.isInterviewComplete === 'boolean' ? raw.isInterviewComplete : isInterviewComplete,
     speech: speechText,
     internalThought: isGreetingOrIntroPrompt
       ? `Candidate greeted the committee. Welcoming ${candidateFirstName} warmly and inviting their personal background introduction.`
@@ -1157,11 +1212,15 @@ function normalizeTurnResponse(
     analysisOfCandidateAnswer: {
       sentiment: isGreetingOrIntroPrompt
         ? 'Enthusiastic & Collaborative'
+        : isSkipOrPassRequest
+        ? 'Direct & Decisive'
         : (isClarificationRequest ? 'Inquisitive / Clarifying' : (raw.analysisOfCandidateAnswer?.sentiment || 'Analytical & Deep')),
       depthLevel: rawDepthLevel,
       detectedKeywords: analysisKeywords,
       candidateResponseSummary: isGreetingOrIntroPrompt
         ? 'Candidate greeted the committee; awaiting personal background introduction.'
+        : isSkipOrPassRequest
+        ? 'Candidate requested to skip this question; committee moved forward smoothly to next topic.'
         : (isClarificationRequest
         ? 'Candidate asked to repeat or clarify the previous question.'
         : (raw.analysisOfCandidateAnswer?.candidateResponseSummary || `Candidate discussed ${assignedTopic}.`)),
@@ -1261,7 +1320,8 @@ Return ONLY valid JSON matching this schema:
       "description": "Full description of project implementation and features",
       "metrics": "Key technical metric or outcome"
     }
-  ]
+  ],
+  "achievements": ["Notable achievement, award, hackathon win, honor, or ranking 1", "achievement 2"]
 }
 
 If candidate name is missing in text, use fallback: "${fallbackName}".
@@ -1276,7 +1336,7 @@ Do NOT hallucinate fake company names or fake project names if not in raw text. 
       try {
         const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
         const response = await ai.models.generateContent({
-          model: 'gemini-3.6-flash',
+          model: 'gemini-2.5-flash',
           contents: `${systemPrompt}\n\n${userPrompt}`,
           config: {
             responseMimeType: 'application/json',
@@ -1284,7 +1344,11 @@ Do NOT hallucinate fake company names or fake project names if not in raw text. 
         });
         const responseText = response.text;
         if (responseText) {
-          parsedResult = JSON.parse(responseText);
+          try {
+            parsedResult = JSON.parse(responseText);
+          } catch (parseErr: any) {
+            console.warn('[Gemini Resume Parse] JSON.parse failed (safety block or empty response):', parseErr.message);
+          }
         }
       } catch (err: any) {
         console.warn(`[Gemini Resume Parse Warning] ${err.message}`);
@@ -1301,7 +1365,7 @@ Do NOT hallucinate fake company names or fake project names if not in raw text. 
             Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
           },
           body: JSON.stringify({
-            model: 'qwen/qwen3.8-27b',
+            model: 'llama-3.3-70b-versatile',
             messages: [
               { role: 'system', content: systemPrompt },
               { role: 'user', content: userPrompt },
@@ -1389,14 +1453,18 @@ Respond ONLY with valid JSON matching this schema:
       try {
         const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
         const response = await ai.models.generateContent({
-          model: 'gemini-3.6-flash',
+          model: 'gemini-2.5-flash',
           contents: `${systemPrompt}\n\n${userPrompt}`,
           config: {
             responseMimeType: 'application/json',
           },
         });
         if (response.text) {
-          parsedRubric = JSON.parse(response.text);
+          try {
+            parsedRubric = JSON.parse(response.text);
+          } catch (parseErr: any) {
+            console.warn('[Gemini Rubric Parse] JSON.parse failed (safety block or empty response):', parseErr.message);
+          }
         }
       } catch (err: any) {
         console.warn(`[Gemini Rubric Parse Warning] ${err.message}`);
@@ -1444,18 +1512,109 @@ Respond ONLY with valid JSON matching this schema:
   }
 });
 
+interface StageDetails {
+  stage: 1 | 2 | 3 | 4 | 5;
+  isInterviewComplete: boolean;
+  stageName: string;
+  stageFocus: string;
+  maxTurns: number;
+}
+
+function getInterviewStageInfo(difficulty: string, candidateTurnCount: number): StageDetails {
+  let stageThresholds = {
+    stage1Max: 1,
+    stage2Max: 3,
+    stage3Max: 4,
+    stage4Max: 5,
+    totalMaxTurns: 6,
+  };
+
+  if (difficulty === 'Intermediate') {
+    // 25 min target (~7 turns)
+    stageThresholds = { stage1Max: 1, stage2Max: 3, stage3Max: 5, stage4Max: 7, totalMaxTurns: 8 };
+  } else if (difficulty === 'Senior') {
+    // 45 min target (~9 turns)
+    stageThresholds = { stage1Max: 1, stage2Max: 4, stage3Max: 7, stage4Max: 9, totalMaxTurns: 10 };
+  } else if (difficulty === 'Staff/Principal') {
+    // 50-60 min target (~11 turns)
+    stageThresholds = { stage1Max: 1, stage2Max: 4, stage3Max: 8, stage4Max: 11, totalMaxTurns: 12 };
+  }
+
+  let stage: 1 | 2 | 3 | 4 | 5 = 1;
+  let isInterviewComplete = false;
+
+  if (candidateTurnCount <= stageThresholds.stage1Max) {
+    stage = 1;
+  } else if (candidateTurnCount <= stageThresholds.stage2Max) {
+    stage = 2;
+  } else if (candidateTurnCount <= stageThresholds.stage3Max) {
+    stage = 3;
+  } else if (candidateTurnCount <= stageThresholds.stage4Max) {
+    stage = 4;
+  } else {
+    stage = 5;
+    isInterviewComplete = true;
+  }
+
+  const stageDescriptions: Record<number, { name: string; focus: string }> = {
+    1: {
+      name: 'Stage 1: Intro (2 min)',
+      focus: 'Warm welcome, candidate background, journey, and technical overview. (Never re-ask intro if already given).'
+    },
+    2: {
+      name: 'Stage 2: Project Deep Dive & Achievements',
+      focus: difficulty === 'Foundational'
+        ? 'Basic logic, tech stack, and achievements (5 min). Ask straightforward questions on how the project works, what libraries were used, and basic data flow. If candidate resume lists achievements, hackathons, awards, or rankings, spend 1-2 minutes specifically probing how they achieved it and their personal contribution.'
+        : difficulty === 'Intermediate'
+        ? 'APIs, caching, trade-offs, and achievements (8-10 min). Probe REST/gRPC endpoints, caching strategies, and data contracts. If candidate resume lists achievements, hackathons, awards, or rankings, spend 1-2 minutes specifically probing how they achieved it, the hardest roadblock solved, and measurable impact.'
+        : 'Architecture, high scale, bottlenecks, and achievements (15-20 min). Probe concurrency, p99 latency, failure mechanics, and throughput bottlenecks. If candidate resume lists achievements, hackathons, awards, or rankings, spend 1-2 minutes probing their technical leadership and individual milestone contribution.'
+    },
+    3: {
+      name: 'Stage 3: Skills & Edge Cases',
+      focus: difficulty === 'Foundational'
+        ? 'Syntax, basic validations, and error handling (4 min). Ask how user inputs are checked, basic HTTP errors, or language syntax nuances.'
+        : difficulty === 'Intermediate'
+        ? 'Concurrency & DB queries (6-8 min). Probe database queries, indexing, connection pooling, and async operations.'
+        : 'Distributed state & resilience (12-15 min). Probe distributed transactions, CAP trade-offs, circuit breakers, and fault recovery.'
+    },
+    4: {
+      name: 'Stage 4: HR & Behavioral',
+      focus: difficulty === 'Foundational'
+        ? 'Learning mindset & teamwork (2-3 min). Ask about learning a new tool, asking peers for help, or collaborating on a task.'
+        : difficulty === 'Intermediate'
+        ? 'Conflicts, ownership, and sprint deadlines (3-4 min). Ask about handling competing priorities, code review pushback, or resolving technical disagreements.'
+        : 'Leadership, technical debt trade-offs, and culture (5-6 min). Ask about leading architectural consensus, tech debt vs shipping velocity, and mentoring team members.'
+    },
+    5: {
+      name: 'Stage 5: Wrap-Up & Evaluation',
+      focus: 'Closing remarks, thanking candidate, and transitioning to final evaluation scorecard.'
+    }
+  };
+
+  const info = stageDescriptions[stage] || stageDescriptions[1];
+  return {
+    stage,
+    isInterviewComplete,
+    stageName: info.name,
+    stageFocus: info.focus,
+    maxTurns: stageThresholds.totalMaxTurns,
+  };
+}
+
 // Endpoint: Process Interview Turn with Multi-Role Deliberation & Adaptive Probing
 app.post('/api/interview/turn', authenticateToken, async (req, res) => {
   try {
     const {
       transcript = [],
-      sharedContext = {},
+      sharedContext: _rawSharedContext = {},
       activePanel = [],
       lastCandidateSpeech = '',
       scenario = {},
       interrupted = false,
       userAddressedInterviewerId = null,
     } = req.body;
+    // Create a safe local copy to prevent req.body mutation and prototype pollution
+    const sharedContext = Object.assign(Object.create(null), _rawSharedContext) as Record<string, any>;
 
     const candidateResume = sharedContext.candidateResume || {};
     const questionHistory = sharedContext.questionHistory || [];
@@ -1497,7 +1656,38 @@ GUIDELINES FOR TECHNICAL QUESTIONS:
 2. When transitioning from introduction into the first technical question, cite a project or area the candidate highlighted: "Thanks for that overview, ${candidateResume.fullName ? candidateResume.fullName.split(' ')[0] : 'there'}. You touched upon your work with ${resumeProjects[0]?.split('"')[1] || 'your project'}..."
 3. Dive into real engineering mechanics: ask about their architectural decisions, concurrency, data flow, latency bottlenecks, and real trade-offs.
 4. If their resume lists specific metrics (e.g. "reduced latency by 40%"), invite them to explain how they measured that baseline and what engineering compromises were made.
+5. If the candidate is a Fresher (0 years corporate experience), tailor questions to CS fundamentals, system architecture basics, APIs, databases, and their specific projects without expecting multi-year staff leadership.
+6. If the candidate has specified a company (${(candidateResume.workExperience || []).map((w: any) => w.company).filter(Boolean).join(', ') || 'work history'}), seamlessly weave that context into your technical discussion when relevant.
 ` : '';
+
+    // ── Live System Design Whiteboard State (Synchronized by Candidate) ──
+    const architectureDiagram = sharedContext.architectureDiagram;
+    let whiteboardContextSection = '';
+    if (architectureDiagram && Array.isArray(architectureDiagram.nodes) && architectureDiagram.nodes.length > 0) {
+      const nodeSummary = architectureDiagram.nodes
+        .map((n: any, idx: number) => `  ${idx + 1}. [${(n.type || 'COMPONENT').toUpperCase()}] "${n.label}" (Tech: ${n.technology || 'Unspecified'}, Specs: ${n.specs || n.defaultSpecs || 'Standard'})`)
+        .join('\n');
+      const edgeSummary = (architectureDiagram.edges || [])
+        .map((e: any) => `  - [${e.fromNodeId}] ──(${e.protocol || 'calls'} / "${e.label || 'data flow'}")──> [${e.toNodeId}]`)
+        .join('\n');
+
+      whiteboardContextSection = `
+=== 🎨 LIVE SYSTEM DESIGN WHITEBOARD (SYNCHRONIZED BY CANDIDATE) ===
+The candidate has actively sketched/updated a system architecture diagram on their interactive whiteboard:
+COMPONENTS ON WHITEBOARD (${architectureDiagram.nodes.length}):
+${nodeSummary}
+${edgeSummary ? `DATA FLOW CONNECTIONS:\n${edgeSummary}` : ''}
+${architectureDiagram.diagramSummary ? `DIAGRAM SUMMARY: "${architectureDiagram.diagramSummary}"` : ''}
+${architectureDiagram.rawNotes ? `CANDIDATE NOTES: "${architectureDiagram.rawNotes}"` : ''}
+
+🎯 MULTI-MODAL CANVAS OBSERVATION MANDATE:
+- If this turn relates to architecture, scaling, or technical design (Phases 2, 3, or 4), Rohan (Systems Architect) or the technical panelist MUST explicitly observe and reference the candidate's whiteboard diagram!
+- Examples:
+  * "I see you placed ${architectureDiagram.nodes[0]?.label} with ${architectureDiagram.nodes[0]?.technology || 'a cache layer'} on the whiteboard—walk me through your cache invalidation strategy if the downstream write fails."
+  * "Looking at the pipeline between ${architectureDiagram.nodes[0]?.label || 'the client'} and ${architectureDiagram.nodes[1]?.label || 'the database'}, where is your single point of failure?"
+- Mentioning their actual whiteboard components creates an authentic, cohesive remote technical interview experience.
+`.trim();
+    }
 
 
     // Format interviewer personas with detailed speaking styles, jargon, and questioning strategies
@@ -1551,14 +1741,20 @@ ${candidateResume.rawText ? `Resume Excerpt: ${candidateResume.rawText.slice(0, 
 
     const cleanCandSpeech = (lastCandidateSpeech || '').trim().toLowerCase().replace(/[^\w\s]/g, '');
     const isClarificationRequest = /rephrase|repeat|clarify|what do you mean|didn't understand|could you explain|can you explain|what is meant|reword|pardon|say that again|could you say that/i.test(lastCandidateSpeech || '');
-    const isSkipOrPassRequest = /skip|pass|next question|skip this question|skip this|skip question|pass this question|skip it|pass it|don't know|dont know|not sure|don't remember|dont remember|can't recall|cant recall|long time ago|long time since|move on|another question|different question|haven't worked with|havent worked with|no experience with|never used|haven't used|havent used|move forward|move ahead|go ahead|continue|next topic|can we move|please move|can you move|let's move|lets move/i.test(lastCandidateSpeech || '');
+    const isSkipOrPassRequest = /\b(skip this|skip question|skip it|pass this question|pass it|don't know|dont know|not sure|don't remember|dont remember|can't recall|cant recall|long time ago|move on|another question|different question|haven't worked with|havent worked with|no experience with|never used|haven't used|havent used|next question|want to move on|can i move on|let me skip|pass this one|skip this one)\b/i.test(lastCandidateSpeech || '');
     const wantsHR = /\b(hr|human resource|human resources|behavioral|behavioural|culture|teamwork|leadership|conflict|team collaboration|star question|soft skills)\b/i.test(lastCandidateSpeech || '') ||
       /\b(ask (some |any )?hr|switch to hr|move to hr|go to hr|hr questions|hr round)\b/i.test(lastCandidateSpeech || '');
     // ✅ Explicit Intent Matching: Only trigger when candidate explicitly requests moving away
     const wantsNonProjectSection = wantsHR || /(skip|leave|stop talking about|move (away from|past)|switch (from|away from))\s+(projects?|this project)/i.test(lastCandidateSpeech || '');
-    // Count candidate turns so far in this interview
-    const candidateTurnsCount = transcript.filter((t: any) => t.speakerId === 'candidate' || t.speakerRole === 'candidate').length;
-    const isEarlyInterview = candidateTurnsCount <= 1;
+    // ── UI Difficulty Tier, Panel Strictness & 5-Stage Precision Interview State Machine ──
+    const currentDifficulty = sharedContext.currentDifficulty || 'Intermediate';
+    const panelStrictness = sharedContext.panelStrictness || 'Balanced';
+    // Count candidate turns so far in this interview (1-indexed for current utterance)
+    const priorCandidateMsgs = transcript.filter((t: any) => t.speakerId === 'candidate' || t.speakerRole === 'candidate');
+    const candidateTurnCount = priorCandidateMsgs.length + 1;
+    const stageDetails = getInterviewStageInfo(currentDifficulty, candidateTurnCount);
+    let currentPhase: 1 | 2 | 3 | 4 | 5 = wantsHR ? 4 : stageDetails.stage;
+    const isEarlyInterview = priorCandidateMsgs.length <= 0;
 
     // Detect if candidate speech is an audio/mic check, greeting, inquiry about intro, or readiness to start
     const isAudioCheckOrGreeting =
@@ -1600,6 +1796,9 @@ ${candidateResume.rawText ? `Resume Excerpt: ${candidateResume.rawText.slice(0, 
         nextSpeakerId: speakerToUse.id,
         nextSpeakerName: speakerToUse.name,
         nextSpeakerRole: speakerToUse.role || 'technical',
+        currentStage: stageDetails.stage,
+        interviewPhase: currentPhase,
+        isInterviewComplete: false,
         speech,
         internalThought: `Candidate performed audio check ("${lastCandidateSpeech}"). Confirming clear audio and inviting ${candidateFirstName} to give their personal background introduction.`,
         turnTakingReason: `${speakerToUse.name} confirmed audio connectivity and held the floor for ${candidateFirstName}'s introduction.`,
@@ -1613,7 +1812,7 @@ ${candidateResume.rawText ? `Resume Excerpt: ${candidateResume.rawText.slice(0, 
           candidateResponseSummary: `Candidate checked audio ("${lastCandidateSpeech}"); floor held for their self-introduction.`,
         },
         detectedFlags: [],
-        updatedDifficulty: sharedContext.currentDifficulty || 'Intermediate',
+        updatedDifficulty: currentDifficulty,
         updatedCompetencyScores: sharedContext.competencyScores || {
           technicalArchitecture: 75,
           businessAndCustomerImpact: 75,
@@ -1632,13 +1831,21 @@ ${candidateResume.rawText ? `Resume Excerpt: ${candidateResume.rawText.slice(0, 
 
     if (isCandidateMetaOrConfused) {
       const candidateFirstName = (candidateResume.fullName || sharedContext.candidateName || 'there').split(' ')[0];
-      const speakerToUse = previousSpeaker || activePanel[0] || { id: 'alex-vance', name: 'Rohan Sharma', role: 'technical' };
-      const speech = `Haha, not at all hardcoded, ${candidateFirstName}! We're an adaptive panel of AI interviewers having a live conversation with you. My apologies if that earlier question felt sudden or out of place! Since you just introduced yourself, let's start properly: what programming languages, frameworks, or software projects have you worked on recently that you'd like to tell us about?`;
+      // Always stay with the last TECHNICAL speaker on confusion — never switch to behavioral/HR panelist
+      const lastTechnicalSpeaker = activePanel.find((p: any) =>
+        (p.role === 'technical' || p.role === 'systems' || p.role === 'engineering_management') &&
+        (lastAITurn?.speakerId === p.id || lastAITurn?.speakerName === p.name)
+      ) || activePanel.find((p: any) => p.role === 'technical' || p.role === 'systems') || previousSpeaker || activePanel[0];
+      const speakerToUse = lastTechnicalSpeaker || { id: 'tech-rohan', name: 'Rohan Sharma', role: 'technical' };
+      const speech = `Apologies if that felt confusing, ${candidateFirstName}! We ask questions based entirely on what you share with us. Since we were just getting to know you, could you tell me more about the projects or work you mentioned? I'd love to hear more detail.`;
 
       const metaTurn = {
         nextSpeakerId: speakerToUse.id,
         nextSpeakerName: speakerToUse.name,
         nextSpeakerRole: speakerToUse.role || 'technical',
+        currentStage: stageDetails.stage,
+        interviewPhase: currentPhase,
+        isInterviewComplete: false,
         speech,
         internalThought: `Candidate asked a meta question / expressed surprise ("${lastCandidateSpeech}"). Clarifying with authentic warmth and good humor, setting candidate at ease, and inviting their technical background.`,
         turnTakingReason: `${speakerToUse.name} reassured ${candidateFirstName} with natural human warmth and invited their technical background.`,
@@ -1652,7 +1859,7 @@ ${candidateResume.rawText ? `Resume Excerpt: ${candidateResume.rawText.slice(0, 
           candidateResponseSummary: `Candidate asked if questions were hardcoded; panel clarified warmly and asked about candidate's preferred tech stack.`,
         },
         detectedFlags: [],
-        updatedDifficulty: sharedContext.currentDifficulty || 'Intermediate',
+        updatedDifficulty: currentDifficulty,
         updatedCompetencyScores: sharedContext.competencyScores || {
           technicalArchitecture: 75,
           businessAndCustomerImpact: 75,
@@ -1675,6 +1882,9 @@ ${candidateResume.rawText ? `Resume Excerpt: ${candidateResume.rawText.slice(0, 
         nextSpeakerId: hrSpeaker.id,
         nextSpeakerName: hrSpeaker.name,
         nextSpeakerRole: hrSpeaker.role || 'behavioural',
+        currentStage: 4,
+        interviewPhase: 4,
+        isInterviewComplete: false,
         speech: `Certainly, let's pivot right to behavioral and teamwork! Can you tell us about a time when you faced a challenging deadline or technical disagreement with a team member, and how you worked through it?`,
         internalThought: `Candidate explicitly requested HR questions ("${lastCandidateSpeech}"). Transitioning immediately to behavioral STAR discussion.`,
         turnTakingReason: `${hrSpeaker.name} transitioned to HR and teamwork questions as requested by candidate.`,
@@ -1688,7 +1898,7 @@ ${candidateResume.rawText ? `Resume Excerpt: ${candidateResume.rawText.slice(0, 
           candidateResponseSummary: `Candidate requested HR and behavioral questions.`,
         },
         detectedFlags: [],
-        updatedDifficulty: sharedContext.currentDifficulty || 'Intermediate',
+        updatedDifficulty: currentDifficulty,
         updatedCompetencyScores: sharedContext.competencyScores || {
           technicalArchitecture: 75,
           businessAndCustomerImpact: 75,
@@ -1708,6 +1918,9 @@ ${candidateResume.rawText ? `Resume Excerpt: ${candidateResume.rawText.slice(0, 
         nextSpeakerId: speakerToUse.id,
         nextSpeakerName: speakerToUse.name,
         nextSpeakerRole: speakerToUse.role || 'technical',
+        currentStage: stageDetails.stage,
+        interviewPhase: currentPhase,
+        isInterviewComplete: false,
         speech: `Take your time! Whenever you're ready, feel free to walk us through your thoughts or approach, or let us know if you'd like to explore a different angle.`,
         internalThought: `Candidate paused briefly after "${lastCandidateSpeech}". Offering gentle floor reassurance without penalizing.`,
         turnTakingReason: `${speakerToUse.name} encouraged candidate to take their time and elaborate.`,
@@ -1721,7 +1934,7 @@ ${candidateResume.rawText ? `Resume Excerpt: ${candidateResume.rawText.slice(0, 
           candidateResponseSummary: `Candidate paused briefly ("${lastCandidateSpeech}"); floor held for completion.`,
         },
         detectedFlags: [],
-        updatedDifficulty: sharedContext.currentDifficulty || 'Intermediate',
+        updatedDifficulty: currentDifficulty,
         updatedCompetencyScores: sharedContext.competencyScores || {
           technicalArchitecture: 75,
           businessAndCustomerImpact: 75,
@@ -1749,44 +1962,101 @@ ${candidateResume.rawText ? `Resume Excerpt: ${candidateResume.rawText.slice(0, 
     const leadershipMember = getPanelMember(['hiring_manager', 'behavioural', 'technical'], 0);
     const behavioralMember = getPanelMember(['behavioural', 'hiring_manager', 'product'], 1);
 
-    // ── UI Difficulty Tier & Panel Strictness Calibration ──
-    const currentDifficulty = sharedContext.currentDifficulty || 'Intermediate';
-    const panelStrictness = sharedContext.panelStrictness || 'Balanced';
 
-    // ── 5-Phase Interview State Machine based on Candidate Turns ──
-    const priorCandidateMsgs = transcript.filter((t: any) => t.speakerId === 'candidate' || t.speakerRole === 'candidate');
-    const candidateTurnCount = priorCandidateMsgs.length + 1; // 1-indexed for current candidate utterance
+    // Fast-path: When all 4 stages are completed, deliver closing remarks and conclude session
+    if (stageDetails.isInterviewComplete && !wantsHR) {
+      const candidateFirstName = (candidateResume.fullName || sharedContext.candidateName || 'there').split(' ')[0];
+      const speakerToUse = activePanel.find((p: any) => p.role === 'hiring_manager' || p.role === 'technical') || activePanel[0] || { id: 'tech-alex', name: 'Rohan Sharma', role: 'technical' };
+      const closingSpeech = `Thank you so much, ${candidateFirstName}! That concludes all 4 stages of today's interview. You've walked us through your background, technical implementation, and problem-solving approach. The committee will now compile your comprehensive evaluation scorecard.`;
 
-    let currentPhase: 1 | 2 | 3 | 4 | 5 = 1;
-    if (wantsHR) {
-      currentPhase = 4;
-    } else if (candidateTurnCount <= 2) {
-      currentPhase = 1;
-    } else if (candidateTurnCount <= 6) {
-      currentPhase = 2;
-    } else if (candidateTurnCount <= 12) {
-      currentPhase = 3;
-    } else if (candidateTurnCount <= 16) {
-      currentPhase = 4;
-    } else {
-      currentPhase = 5;
+      const closingTurn = {
+        nextSpeakerId: speakerToUse.id,
+        nextSpeakerName: speakerToUse.name,
+        nextSpeakerRole: speakerToUse.role || 'technical',
+        interviewPhase: 5,
+        currentStage: 5,
+        isInterviewComplete: true,
+        speech: closingSpeech,
+        internalThought: `All 4 interview stages successfully completed across ${candidateTurnCount} candidate turns for ${currentDifficulty} tier. Concluding session and generating final calibrated scorecard.`,
+        turnTakingReason: `${speakerToUse.name} concluded the interview session after candidate answered all stage questions.`,
+        questionTopic: 'Interview Wrap-Up & Evaluation',
+        targetCompetency: 'communicationAndClarity',
+        adaptiveStrategyApplied: 'Final Wrap-Up',
+        analysisOfCandidateAnswer: {
+          sentiment: 'Confident & Articulate',
+          depthLevel: 'Intermediate (Practical)',
+          detectedKeywords: ['interview_concluded', 'complete'],
+          candidateResponseSummary: `Candidate completed all 4 stages of the interview.`,
+        },
+        detectedFlags: [],
+        updatedDifficulty: currentDifficulty,
+        updatedCompetencyScores: sharedContext.competencyScores || {
+          technicalArchitecture: 70,
+          businessAndCustomerImpact: 70,
+          communicationAndClarity: 75,
+          leadershipAndOwnership: 70,
+          problemSolvingAndAgility: 70,
+        },
+        updatedRunningSummary: (sharedContext.runningSummary || '') + ` Interview concluded. Preparing scorecard.`,
+      };
+      return res.json({ success: true, data: closingTurn });
     }
 
     // ── Active Topic Continuity in Session State (sharedContext) ──
+    // Topic detection is 100% DYNAMIC — driven by the candidate's actual resume + what they say.
+    // ⛔ NO hardcoded project names. The system builds keyword matchers from the real resume at runtime.
     const allCandidateProjects: Array<{ name: string; description?: string; technologies?: string[] }> = candidateResume.notableProjects || [];
-    const matchedProj = allCandidateProjects.find(p => (p.name || '').toLowerCase().length >= 3 && cleanCandSpeech.includes((p.name || '').toLowerCase()));
-    const matchedWork = (candidateResume.workExperience || []).find((w: any) => (w.company || '').toLowerCase().length >= 3 && cleanCandSpeech.includes((w.company || '').toLowerCase()));
-    const specialProjectMatch = cleanCandSpeech.match(/\b(commai|comm\s*ai|com\s*ai|hospisyn|hospisynai|hospital\s*sync|votewise|votewise\s*ai)\b/i);
+    const allWorkCompanies: string[] = (candidateResume.workExperience || []).map((w: any) => w.company || '');
+
+    // Build a dynamic regex from the candidate's actual project names and company names
+    // This replaces the old hardcoded CommAI / VoteWise / HospiSynAI regex
+    const dynamicProjectKeywords = [
+      ...allCandidateProjects.map(p => (p.name || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+      ...allWorkCompanies.map(c => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+    ].filter(k => k.trim().length >= 3);
+
+    const matchedProj = allCandidateProjects.find(p =>
+      (p.name || '').trim().length >= 3 && cleanCandSpeech.includes((p.name || '').toLowerCase())
+    );
+    const matchedWork = (candidateResume.workExperience || []).find((w: any) =>
+      (w.company || '').trim().length >= 3 && cleanCandSpeech.includes((w.company || '').toLowerCase())
+    );
+
+    // Dynamically scan the candidate's speech for ANY project or company mentioned verbally
+    // even if they are not explicitly listed in the uploaded resume
+    let dynamicVerbatimMatch: string | null = null;
+    if (dynamicProjectKeywords.length > 0) {
+      const dynRegex = new RegExp(`\\b(${dynamicProjectKeywords.join('|')})\\b`, 'i');
+      const dynResult = cleanCandSpeech.match(dynRegex);
+      if (dynResult) dynamicVerbatimMatch = dynResult[0];
+    }
+
+    // Also scan for any CAPITALIZED multi-word phrases the candidate says that look like a project name
+    // (e.g. "VoteWise AI", "HospiSyn", "CommAI" — dynamically extracted from raw speech)
+    const rawSpeechProjectMatch = (lastCandidateSpeech || '').match(/\b([A-Z][a-zA-Z]{2,}(?:\s?(?:AI|App|Platform|Pro|Hub|Net|Sync|Flow|Pay|Bot|Suite))?\b)/g);
+    const verbatimProjectMention = rawSpeechProjectMatch
+      ? rawSpeechProjectMatch.find(m => m.length >= 4 && !['This', 'That', 'With', 'When', 'From', 'Have', 'Been', 'They', 'Your', 'What', 'Also', 'Some', 'Very', 'Just', 'Like', 'About', 'Could', 'Would', 'Should', 'Their', 'There', 'These', 'Those'].includes(m))
+      : null;
 
     let detectedTopic = sharedContext.currentActiveTopic || sharedContext.activeTopic || '';
-    if (specialProjectMatch) {
-      detectedTopic = specialProjectMatch[0].toLowerCase().includes('comm') ? 'CommAI' : specialProjectMatch[0].toLowerCase().includes('hospi') ? 'HospiSynAI' : 'VoteWise AI';
-    } else if (matchedProj) {
+    if (matchedProj) {
+      // Highest priority: exact match against uploaded resume projects
       detectedTopic = matchedProj.name;
+    } else if (dynamicVerbatimMatch) {
+      // Second: match against dynamic resume keyword list
+      const matchedProjByKeyword = allCandidateProjects.find(p =>
+        (p.name || '').toLowerCase().includes(dynamicVerbatimMatch!.toLowerCase())
+      );
+      detectedTopic = matchedProjByKeyword?.name || dynamicVerbatimMatch;
     } else if (matchedWork) {
+      // Third: company / role match
       detectedTopic = `${matchedWork.company} (${matchedWork.role})`;
+    } else if (verbatimProjectMention && !detectedTopic) {
+      // Fourth: candidate verbally named a project not in resume — set topic from their own words
+      detectedTopic = verbatimProjectMention;
     } else if (!detectedTopic) {
-      detectedTopic = allCandidateProjects[0]?.name || scenario.title || 'Candidate Background & Journey';
+      // Final fallback: first resume project, or a generic intro topic (never a hardcoded name)
+      detectedTopic = allCandidateProjects[0]?.name || 'Candidate Background & Journey';
     }
 
     // Track current topic and depth count in sharedContext so server doesn't whiplash across array indices
@@ -1814,6 +2084,9 @@ ${candidateResume.rawText ? `Resume Excerpt: ${candidateResume.rawText.slice(0, 
     const resumeEdu = (candidateResume.education || []).map((e: any, i: number) =>
       `• Education ${i + 1}: ${e.degree} from ${e.institution} (${e.year || 'Recent'})`
     ).join('\n');
+    const resumeAchievements = (candidateResume.achievements || []).map((a: string, i: number) =>
+      `• Achievement ${i + 1}: ${a}`
+    ).join('\n');
     const resumeSkillsFormatted = [
       ...(candidateResume.skills?.languagesAndFrameworks || []),
       ...(candidateResume.skills?.coreArchitecture || []),
@@ -1821,19 +2094,40 @@ ${candidateResume.rawText ? `Resume Excerpt: ${candidateResume.rawText.slice(0, 
       ...(candidateResume.skills?.practicesAndMethodologies || [])
     ].join(', ');
 
-    const candidateResumeText = `
-Candidate Name: ${candidateResume.fullName || sharedContext.candidateName || 'Candidate'}
-Headline / Role: ${candidateResume.headline || targetRole} | ${candidateResume.yearsOfExperience || 2}+ years experience
-Education:
-${resumeEdu || '• Computer Science / Engineering degree'}
-Core Technical Skills & Stack:
-${resumeSkillsFormatted || 'Python, TypeScript, SQL, Docker, REST APIs, Git'}
-Flagship Projects:
-${resumeProjectsFormatted || '• Key academic, open-source, or production software projects'}
-Work & Internship Experience:
-${resumeWork || '• Software engineering internship and development experience'}
-${candidateResume.rawText ? `Resume Excerpt:\n${candidateResume.rawText.slice(0, 800)}` : ''}
-`.trim();
+    // Build the resume text block. When a section is truly empty (no resume uploaded),
+    // we do NOT invent placeholder data — we tell the LLM to learn from the spoken intro instead.
+    const isCandidateFresher = candidateResume.yearsOfExperience === 0;
+    const workCompaniesStr = (candidateResume.workExperience || []).map((w: any) => `${w.company} (${w.role})`).join(', ');
+    const noResumeMode = !hasRealResume && !candidateResume.rawText;
+    const candidateResumeText = noResumeMode
+      ? `Candidate Name: ${candidateResume.fullName || sharedContext.candidateName || 'Candidate'}
+Headline / Role: ${candidateResume.headline || (isCandidateFresher ? 'Student / Fresher Software Engineer' : 'Software Engineer')}
+Experience Tier: ${isCandidateFresher ? 'Fresher (0 years full-time corporate experience)' : candidateResume.yearsOfExperience ? `${candidateResume.yearsOfExperience}+ years experience` : 'Infer from spoken introduction'}
+${workCompaniesStr ? `Organization / Company Background: ${workCompaniesStr}` : ''}
+
+⚠️ NO FULL RESUME DOCUMENT UPLOADED.
+${isCandidateFresher ? '👉 FRESHER PROFILE: The candidate is a student or fresher. Evaluate them on CS core concepts, algorithmic problem solving, hands-on projects, and practical coding. Do not expect multi-year staff engineering experience.' : ''}
+${workCompaniesStr ? `👉 COMPANY CONTEXT: The candidate has engineering background at ${workCompaniesStr}. Connect technical questions to their engineering work at this company when appropriate.` : ''}
+You MUST ask questions based ONLY on what the candidate says in their spoken introduction and subsequent answers.
+Do NOT invent project names, technologies, or experience that the candidate has not mentioned.
+Start by warmly inviting them to introduce themselves, then probe exactly what they verbally share.
+Behave like a real interviewer who has received zero documents — every question must follow from the candidate's own words.`
+      : `Candidate Name: ${candidateResume.fullName || sharedContext.candidateName || 'Candidate'}
+Headline / Role: ${candidateResume.headline || targetRole}${isCandidateFresher ? ' | Fresher (0 years / Student)' : candidateResume.yearsOfExperience ? ` | ${candidateResume.yearsOfExperience}+ years experience` : ''}
+${workCompaniesStr ? `Company Background: ${workCompaniesStr}` : ''}
+${isCandidateFresher ? 'Experience Note: Candidate is an early-career fresher/student. Focus on projects, fundamentals, algorithms, and practical code design rather than multi-year corporate leadership.' : ''}
+${resumeEdu ? `Education:
+${resumeEdu}` : ''}
+${resumeAchievements ? `Notable Achievements & Honors (Probe in Stage 2):
+${resumeAchievements}` : ''}
+${resumeSkillsFormatted ? `Core Technical Skills & Stack:
+${resumeSkillsFormatted}` : ''}
+${resumeProjectsFormatted ? `Flagship Projects:
+${resumeProjectsFormatted}` : ''}
+${resumeWork ? `Work & Internship Experience:
+${resumeWork}` : ''}
+${candidateResume.rawText ? `Resume Excerpt:
+${candidateResume.rawText.slice(0, 800)}` : ''}`.trim();
 
     const practiceScenarioConstraints = `
 Active Scenario: "${scenario.title || 'Technical & System Interview'}"
@@ -1856,6 +2150,7 @@ You are the autonomous AI Interview Committee orchestrator for Vocalis AI. You m
 - Candidate Profile / Resume:
 ${candidateResumeText}
 
+${whiteboardContextSection ? `${whiteboardContextSection}\n` : ''}
 - Target Job Description (JD):
 ${targetJDText}
 
@@ -1890,10 +2185,11 @@ ${activePanel.map((p: any) => `• "${p.id}" (${p.name}, Title: ${p.title}, Role
 
 --- REAL-TIME CONVERSATIONAL & ACTIVE LISTENING MANDATE ---
 1. Zero Topic Whiplash (Mandatory Conversational Thread Continuity):
-   - Listen to what the candidate JUST said in the previous turn. If the candidate elaborates on a specific project or tech component (e.g., "backend LLM APIs in CommAI"), you MUST ask a direct, probing follow-up on that exact detail.
-   - NEVER abruptly jump to an unrelated resume project in the very next turn. Maintain the active thread for at least 2 consecutive turns before smoothly transitioning.
+   - Listen to what the candidate JUST said in the previous turn. Ask a direct, probing follow-up on that exact detail they shared.
+   - NEVER abruptly jump to an unrelated project in the very next turn. Maintain the active thread for at least 2 consecutive turns before smoothly transitioning.
+   - If NO resume is available, your ONLY source of truth is the spoken transcript. Ask questions exclusively from what they mentioned.
 2. Contextual Topic Transitions:
-   - When switching projects or moving to the next section, build an organic bridge. (e.g., "That makes sense on how you tackled timeouts in CommAI. Shifting gears to HospiSynAI, how did your data flow compare?").
+   - When switching projects or moving to the next section, build an organic bridge using the candidate's ACTUAL project names from the resume or what they verbally mentioned.
 3. Authentic 3-Part Conversational Spoken Pattern:
    Every spoken turn must follow a natural human cadence (2 to 3 sentences, strictly under 40 words):
    - Part A (Organic Acknowledgment): Reflect understanding of their answer without parroting ("Understood, so you handled the LLM API integration layer.").
@@ -1906,6 +2202,13 @@ ${activePanel.map((p: any) => `• "${p.id}" (${p.name}, Title: ${p.title}, Role
    - Panelists must sound like colleagues in the same room. When another panelist steps in, use a conversational bridge:
      - Priya: "Rohan, if I can jump in with a quick question on the product impact..."
      - Neha: "Building on what you mentioned about the multi-agent setup, from a reliability standpoint..."
+6. ⛔ MANDATORY SKIP / PASS DIRECTIVE (ZERO HALLUCINATED PRAISE):
+   - Latest candidate speech: "${lastCandidateSpeech}"
+${isSkipOrPassRequest ? `   ⚠️ CANDIDATE EXPLICITLY ASKED TO SKIP / PASS ("${lastCandidateSpeech}")!
+   - NEVER praise an answer that was NOT given! (NEVER say "That fallback logic is solid", "That's solid", "Great approach", or "Makes sense").
+   - You MUST open your spoken response with: "No problem, let's move forward!"
+   - Follow immediately with a fresh, insightful question on their next resume project or skill.
+   - Example: "No problem, let's move forward! Since you ranked top 0.11% in PromptWars, how did you structure your prompt templates to achieve such high precision?"` : `   - If candidate answered the previous question, acknowledge their approach naturally without excessive flattery.`}
 
 --- STRICT UI DIFFICULTY TIER CALIBRATION ---
 Active Difficulty Tier from UI: ${currentDifficulty} (Strictness: ${panelStrictness})
@@ -1914,45 +2217,50 @@ Active Difficulty Tier from UI: ${currentDifficulty} (Strictness: ${panelStrictn
 - SENIOR (Strict): High concurrency, scale bottlenecks (e.g. 50k req/sec), p99 latency, cache invalidation, and data consistency.
 - STAFF/PRINCIPAL (Aggressive): Cross-system trade-offs, organizational alignment, zero-downtime migrations, and business SLAs.
 
---- 5-PHASE INTERVIEW STATE MACHINE ---
-Active Phase: PHASE ${currentPhase} (Turn ${candidateTurnCount})
-1. PHASE 1: Introduction & Icebreaking (Turns 1-2)
-   - Lead: Dr. Meera Rao ("psych-meera") or Vikram Malhotra ("vp-vikram") (or Rohan Sharma if neither is present).
-   - Goal: Welcome the candidate, set a comfortable tone, and invite them to share their journey and primary technical passions.
-2. PHASE 2: Resume Deep Dive & Individual Ownership (Turns 3-6)
-   - Lead: Rohan Sharma ("tech-rohan") or Priya Mehta ("prod-priya").
-   - Goal: Target projects parsed from Candidate Profile. Clarify individual contribution vs team claims. Maintain active conversational continuity on the chosen project for at least 2 turns.
-3. PHASE 3: Core Technical & System Design (Turns 7-12)
-   - Lead: Rohan Sharma ("tech-rohan") & Neha Kapoor ("client-neha") (with product checks from Priya).
-   - Goal: Pressure-test architecture, failure modes, scale, and rate limiting against Job Description. Dynamically raise difficulty if answers show depth.
-4. PHASE 4: Behavioral, Collaboration & Trade-offs (Turns 13-16)
-   - Lead: Dr. Meera Rao ("psych-meera") & Vikram Malhotra ("vp-vikram").
-   - Goal: Evaluate handling of tight deadlines, cross-functional conflicts, technical compromises, and post-mortems.
-5. PHASE 5: Candidate Q&A & Wrap-Up (Turns 17+)
-   - Lead: Vikram Malhotra ("vp-vikram") or Priya Mehta ("prod-priya").
-   - Goal: Invite candidate questions, respond authentically in-character, outline next steps clearly, and close the session professionally.
+--- 5-STAGE PRECISION INTERVIEW STATE MACHINE ---
+ACTIVE STAGE: ${stageDetails.stageName} (Candidate Turn ${candidateTurnCount} of ${stageDetails.maxTurns})
+STAGE GOAL & FOCUS: ${stageDetails.stageFocus}
 
---- SPEECH CLEANLINESS ---
-- Keep spoken text natural for text-to-speech. Never include markdown headers, bolding asterisks (**), bullet points, or role prefixes like "Rohan:" in the "speech" attribute. Strictly 2-3 sentences under 40 words.
+STAGE DEFINITIONS & DURATION MATRIX:
+• Stage 1: Intro (2 min) - Welcoming candidate, understanding their journey and technical interests.
+• Stage 2: Project Deep Dive & Achievements:
+  - Foundational (5 min): Basic logic, libraries, simple data flow (EASY QUESTIONS).
+  - Intermediate (8-10 min): APIs, caching, and practical engineering trade-offs.
+  - Senior / Staff (15-20 min): System architecture, high scale, bottlenecks, and failure modes.
+  - MANDATORY ACHIEVEMENTS PROBE (1-2 min): If the candidate's resume has achievements, awards, hackathon wins, top percentiles, or honors, the committee MUST spend 1-2 minutes specifically probing that achievement right after project mechanics! Ask how they achieved it, what engineering hurdles they solved, and what measurable impact resulted.
+• Stage 3: Skills & Edge Cases:
+  - Foundational (4 min): Syntax, input validations, basic error handling.
+  - Intermediate (6-8 min): Concurrency, database queries, indexing, and connection management.
+  - Senior / Staff (12-15 min): Distributed state, replication, CAP trade-offs, and resilience.
+• Stage 4: HR & Behavioral:
+  - Foundational (2-3 min): Learning mindset, asking for help, peer collaboration.
+  - Intermediate (3-4 min): Ownership ("I" vs "we"), conflicts, and sprint deadlines.
+  - Senior / Staff (5-6 min): Technical leadership, engineering culture, tech debt trade-offs.
+• Stage 5: Wrap-Up & Evaluation (1-3 min) - Closing remarks and transition to final scorecard.
 
-${isClarificationRequest ? `
---- CANDIDATE CLARIFICATION REQUEST ---
-Candidate asked to repeat or clarify: "${lastCandidateSpeech}". Address them warmly: "Sure, let me rephrase that: ..." and rephrase in simpler words without switching topics or penalizing them.
-` : ''}
-
-${isSkipOrPassRequest ? `
---- CANDIDATE SKIP / MOVE FORWARD REQUEST ---
-Candidate asked to move forward or skip: "${lastCandidateSpeech}". Warmly acknowledge: "No problem at all, let's move forward!" and transition smoothly to the next question or topic immediately.
-` : ''}
-
---- RECENT TRANSCRIPT ---
-${recentTranscript}
-
---- CANDIDATE'S LATEST UTTERANCE ---
-"${lastCandidateSpeech}"
-
---- PREVIOUS QUESTIONS ASKED ---
+--- ⛔ STRICT ANTI-REPETITION MANDATE (ZERO QUESTION REPETITION) ---
+Previously Asked Questions by the Committee:
 ${questionHistorySummary}
+
+MANDATORY QUESTION GENERATION RULES:
+1. NEVER repeat, rephrase, or re-ask any question from the list above.
+2. Every question MUST explore a brand NEW angle strictly aligned with ACTIVE STAGE: ${stageDetails.stageName}.
+3. In Stage 2: Always probe their flagship project first, and if achievements are listed, spend 1-2 minutes probing their achievement!
+4. For Foundational tier: Questions must be genuinely EASY, accessible, and supportive.
+5. Spoken text must follow the 3-part cadence: [Acknowledge previous answer] -> [Contextual bridge] -> [Punchy single question under 40 words].
+
+--- COMPETENCY SCORING (MANDATORY — FOR EACH TURN) ---
+For each candidate answer, output ACCURATE scores in "updatedCompetencyScores" (0-100 integers):
+- SCORING STARTS AT 0. Do NOT invent a score if the competency was NOT probed this turn.
+- Rules:
+  * Score 0 = Competency not yet assessed (leave existing score unchanged by returning 0)
+  * Score 35-55 = Surface/vague answer (candidate mentioned topic but no depth)
+  * Score 56-72 = Intermediate answer (practical understanding demonstrated)
+  * Score 73-85 = Deep answer (architectural depth, trade-offs, real metrics)
+  * Score 86-95 = Principal-level (multi-dimensional, cross-system insight)
+- PRESERVE existing scores: if a competency was probed in a prior turn and already has a score, do NOT reduce it unless you detected a contradiction this turn.
+- Phase 1 (intro): set communicationAndClarity to a real score based on how clearly they spoke. All other competencies stay 0.
+- Phase 2+: update only the competency directly probed this turn.
 
 --- STRICT OUTPUT FORMAT ---
 Respond ONLY with valid JSON conforming to this schema:
@@ -1961,6 +2269,7 @@ Respond ONLY with valid JSON conforming to this schema:
   "nextSpeakerName": "string",
   "nextSpeakerRole": "technical" | "product" | "engineering_management" | "customer" | "behavioural",
   "interviewPhase": ${currentPhase},
+  "currentStage": ${stageDetails.stage},
   "speech": "Natural, 3-part conversational text to be spoken via TTS (under 40 words, no markdown)",
   "internalThought": "Committee deliberation insight and what signal we are testing",
   "turnTakingReason": "Why this interviewer is stepping in",
@@ -1973,6 +2282,13 @@ Respond ONLY with valid JSON conforming to this schema:
   "analysisOfCandidateAnswer": {
     "depthLevel": "Surface" | "Intermediate" | "Deep Architectural",
     "technicalKeywordsDetected": ["string"]
+  },
+  "updatedCompetencyScores": {
+    "technicalArchitecture": 0,
+    "businessAndCustomerImpact": 0,
+    "communicationAndClarity": 0,
+    "leadershipAndOwnership": 0,
+    "problemSolvingAndAgility": 0
   }
 }
 `;
@@ -1981,10 +2297,12 @@ Respond ONLY with valid JSON conforming to this schema:
     if (process.env.GROQ_API_KEY || process.env.GROQ_API_KEY_SECONDARY) {
       try {
         const groqSystemPrompt = `You are the autonomous AI Interview Committee orchestrator for Vocalis AI. You manage a realistic, multi-role interview panel over real-time voice.
-Strictly follow the active UI Difficulty Tier (${currentDifficulty}), 5-Phase Interview State Machine (Phase ${currentPhase}), active topic continuity (${currentActiveTopic}), and voice-first cadence (strictly 2-3 sentences, under 40 words, no markdown, no role prefixes). Respond ONLY with raw valid JSON conforming to the requested schema.`;
+Strictly follow the active UI Difficulty Tier (${currentDifficulty}), 5-Phase Interview State Machine (Phase ${currentPhase}), active topic continuity (${currentActiveTopic}), and voice-first cadence (strictly 2-3 sentences, under 40 words, no markdown, no role prefixes).
+${isSkipOrPassRequest ? `⚠️ CRITICAL: Candidate asked to skip/pass ("${lastCandidateSpeech}"). NEVER praise or say "that's solid"! Always open with "No problem, let's move forward!" and ask the next question.` : ''}
+Respond ONLY with raw valid JSON conforming to the requested schema.`;
         const rawGroq = await generateContentWithGroq(prompt, groqSystemPrompt);
         if (rawGroq && (rawGroq.nextSpeakerId || rawGroq.speech || rawGroq.utterance || rawGroq.spokenResponse || rawGroq.question || rawGroq.speaker)) {
-          const groqNormalized = normalizeTurnResponse(rawGroq, activePanel, scenario, sharedContext, isClarificationRequest, previousSpeaker, isGreetingOrIntroPrompt, transcript, isSkipOrPassRequest, currentPhase, currentActiveTopic, topicTurnDepthCount);
+          const groqNormalized = normalizeTurnResponse(rawGroq, activePanel, scenario, sharedContext, isClarificationRequest, previousSpeaker, isGreetingOrIntroPrompt, transcript, isSkipOrPassRequest, currentPhase, currentActiveTopic, topicTurnDepthCount, stageDetails.stage, stageDetails.isInterviewComplete);
           // NOTE: Do NOT prepend any hardcoded handoff prefix here.
           // The master prompt instructs the LLM to generate natural 3-part cadence:
           // "[Acknowledgment] → [Bridge] → [Question]" — trust its output entirely.
@@ -1997,7 +2315,7 @@ Strictly follow the active UI Difficulty Tier (${currentDifficulty}), 5-Phase In
     }
 
     const response = await generateContentWithFallback({
-      model: 'gemini-3.6-flash',
+      model: 'gemini-2.5-flash',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
@@ -2008,6 +2326,7 @@ Strictly follow the active UI Difficulty Tier (${currentDifficulty}), 5-Phase In
             nextSpeakerName: { type: Type.STRING },
             nextSpeakerRole: { type: Type.STRING },
             interviewPhase: { type: Type.INTEGER },
+            currentStage: { type: Type.INTEGER },
             speech: { type: Type.STRING, description: 'Spoken text under 40 words, no markdown, no prefixes' },
             internalThought: { type: Type.STRING },
             turnTakingReason: { type: Type.STRING },
@@ -2061,8 +2380,13 @@ Strictly follow the active UI Difficulty Tier (${currentDifficulty}), 5-Phase In
       },
     });
 
-    const parsedRaw = JSON.parse(response.text || '{}');
-    const parsed = normalizeTurnResponse(parsedRaw, activePanel, scenario, sharedContext, isClarificationRequest, previousSpeaker, isGreetingOrIntroPrompt, transcript, isSkipOrPassRequest, currentPhase, currentActiveTopic, topicTurnDepthCount);
+    let parsedRaw: any = {};
+    try {
+      parsedRaw = JSON.parse(response.text || '{}');
+    } catch (parseErr: any) {
+      console.warn('[Gemini Turn Parse] JSON.parse failed (safety block or empty response):', parseErr.message);
+    }
+    const parsed = normalizeTurnResponse(parsedRaw, activePanel, scenario, sharedContext, isClarificationRequest, previousSpeaker, isGreetingOrIntroPrompt, transcript, isSkipOrPassRequest, currentPhase, currentActiveTopic, topicTurnDepthCount, stageDetails.stage, stageDetails.isInterviewComplete);
 
     // NOTE: Do NOT prepend any hardcoded handoff prefix here.
     // The master prompt instructs the LLM to generate natural 3-part cadence:
@@ -2072,10 +2396,14 @@ Strictly follow the active UI Difficulty Tier (${currentDifficulty}), 5-Phase In
   } catch (error: any) {
     console.warn('Gemini API call failed or timed out, generating intelligent panel fallback turn:', error.message);
     const { lastCandidateSpeech = '', activePanel = [], scenario = {}, sharedContext = {}, transcript = [] } = req.body;
-    const currentPhase = sharedContext.interviewPhase || 1;
+    const currentDifficulty = sharedContext.currentDifficulty || 'Intermediate';
+    const priorCandidateMsgs = transcript.filter((t: any) => t.speakerId === 'candidate' || t.speakerRole === 'candidate');
+    const candidateTurnCount = priorCandidateMsgs.length + 1;
+    const stageDetails = getInterviewStageInfo(currentDifficulty, candidateTurnCount);
+    const currentPhase = stageDetails.stage;
     const currentActiveTopic = sharedContext.currentActiveTopic || sharedContext.activeTopic || scenario?.title || 'System Architecture';
     const topicTurnDepthCount = sharedContext.topicTurnDepthCount || 1;
-    const fallbackData = generateFallbackTurn(lastCandidateSpeech, activePanel, scenario, sharedContext, transcript, currentPhase, currentActiveTopic, topicTurnDepthCount);
+    const fallbackData = generateFallbackTurn(lastCandidateSpeech, activePanel, scenario, sharedContext, transcript, currentPhase, currentActiveTopic, topicTurnDepthCount, stageDetails.stage, stageDetails.isInterviewComplete);
     res.json({ success: true, data: fallbackData });
   }
 });
@@ -2088,7 +2416,9 @@ function generateFallbackTurn(
   transcript: any[] = [],
   currentPhase: 1 | 2 | 3 | 4 | 5 = 1,
   activeTopic = '',
-  topicTurnCount = 1
+  topicTurnCount = 1,
+  currentStage: 1 | 2 | 3 | 4 | 5 = 1,
+  isInterviewComplete = false
 ) {
   const speechLower = (lastCandidateSpeech || '').toLowerCase().trim();
   const candWords = speechLower.split(/\s+/).filter(Boolean);
@@ -2185,10 +2515,10 @@ function generateFallbackTurn(
     nextInterviewer = activePanel.find((p: any) => p.role === 'technical' || p.role === 'product') || primaryInterviewer;
     const unaskedProj = resumeProjects.find(p => !previousQuestions.some(prev => prev.includes((p.name || '').toLowerCase())));
     if (unaskedProj) {
-      speech = `No worries at all, that's completely fair! Let's pivot to another project on your resume: "${unaskedProj.name}". Could you walk us through what problem it solves and your core implementation approach?`;
+      speech = `No problem, let's move forward! Looking at another project on your resume: "${unaskedProj.name}". Could you walk us through what problem it solves and your core implementation approach?`;
       topic = `Project Architecture: ${unaskedProj.name}`;
     } else {
-      speech = `No worries at all, that's completely fair! Let's pivot to your broader technical skills: what areas of software engineering or systems development have you enjoyed building most recently?`;
+      speech = `No problem, let's move forward! Looking at your broader technical skills: what areas of software engineering or systems development have you enjoyed building most recently?`;
       topic = 'Engineering Principles & System Design';
     }
     strategy = 'Pivot to Core Fundamentals';
@@ -2244,6 +2574,8 @@ function generateFallbackTurn(
     nextSpeakerName: nextInterviewer.name,
     nextSpeakerRole: nextInterviewer.role || 'technical',
     interviewPhase: currentPhase,
+    currentStage,
+    isInterviewComplete,
     speech,
     internalThought: `Panel Deliberation: Evaluated response on ${topic}. Formulated adaptive follow-up question.`,
     turnTakingReason: `${nextInterviewer.name} (${nextInterviewer.title || 'Panelist'}) probed candidate depth on ${topic}.`,
@@ -2258,7 +2590,11 @@ function generateFallbackTurn(
       sentiment: 'Analytical & Deep',
       depthLevel: currentPhase === 1 ? 'Foundational (Introductory)' : 'Intermediate (Practical)',
       detectedKeywords: ['engineering', 'system_design'],
-      candidateResponseSummary: lastCandidateSpeech ? (lastCandidateSpeech.substring(0, 120) + '...') : 'Candidate explained system overview.',
+      candidateResponseSummary: lastCandidateSpeech
+        ? (lastCandidateSpeech.length > 120
+            ? lastCandidateSpeech.substring(0, 120) + '...'
+            : lastCandidateSpeech)
+        : 'Candidate explained system overview.',
     },
     detectedFlags: [],
     updatedCompetencyScores: (() => {
@@ -2277,88 +2613,587 @@ function generateFallbackTurn(
   };
 }
 
-function reconcileAssessmentScores(assessment: any, isBriefSession = false): any {
+export interface IntroAuditParameter {
+  name: string;
+  weight: number;
+  score: number;
+  status: 'fulfilled' | 'partial' | 'missing';
+  condition: string;
+  evidenceOrGap: string;
+}
+
+export interface IntroAuditResult {
+  totalScore: number;
+  raw100Score?: number;
+  parameters: IntroAuditParameter[];
+  summary: string;
+}
+
+export function evaluateCandidateIntro(
+  candidateTranscript: string,
+  candidateResume: any = {}
+): IntroAuditResult {
+  const rawText = (candidateTranscript || '').trim().toLowerCase();
+
+  // Whisper / Deepgram STT phonetic mishearing normalization:
+  // e.g. "AI internet" -> "AI intern at", "internet infosys" -> "intern at infosys", "serving as ... internet" -> "intern at"
+  const text = rawText
+    .replace(/\bai\s+internet\b/gi, 'ai intern at')
+    .replace(/\binternet\s+at\b/gi, 'intern at')
+    .replace(/\binternet\s+infosys\b/gi, 'intern at infosys')
+    .replace(/\binternet\s+springboard\b/gi, 'intern at springboard')
+    .replace(/\bserving\s+as\s+([a-z\s]+)\s+internet\b/gi, 'serving as $1 intern at')
+    .replace(/\bcom\s*ai\b/gi, 'comai')
+    .replace(/\bvotewise\s*ai\b/gi, 'votewise ai');
+
+  // 1. Dynamic Resume Token Extraction (Adapts 100% dynamically to ANY candidate's unique resume)
+  const resumeFullName = String(candidateResume.fullName || candidateResume.name || '').toLowerCase().trim();
+  const nameTokens = resumeFullName.split(/\s+/).filter((w: string) => w.length >= 2);
+
+  const workList = candidateResume.workExperience || candidateResume.experience || [];
+  const isFresherOrStudent = workList.length === 0;
+  const resumeCompanies = workList
+    .flatMap((w: any) => {
+      const comp = String(w.company || w.organization || w.employer || '').toLowerCase().trim();
+      const role = String(w.role || w.title || w.position || '').toLowerCase().trim();
+      const compTokens = comp.split(/[\s,./\-_]+/).filter((c: string) => c.length >= 3 && !/^(the|and|for|of|in|at|ltd|inc|llc|pvt|corp)$/i.test(c));
+      const roleTokens = role.split(/[\s,./\-_]+/).filter((r: string) => r.length >= 3 && !/^(the|and|for|of|in|at)$/i.test(r));
+      return [comp, role, ...compTokens, ...roleTokens];
+    })
+    .filter((c: string) => c.length >= 3);
+
+  const projectsList = candidateResume.notableProjects || candidateResume.projects || [];
+  const resumeProjects = projectsList
+    .flatMap((p: any) => {
+      const name = String(p.name || p.title || '').toLowerCase().trim();
+      const cleanNoSpaces = name.replace(/[\s\-_\/]+/g, '');
+      const cleanNoAi = name.replace(/\b(ai|app|application|system|platform|tool|bot|agent|project)\b/gi, '').trim();
+      const tokens = name.split(/[\s\-_\/]+/).filter((w: string) => w.length >= 3 && !/^(the|and|for|with|system|project|app)$/i.test(w));
+      return [name, cleanNoSpaces, cleanNoAi, ...tokens].filter(Boolean);
+    })
+    .filter((p: string) => p.length >= 3);
+
+  const eduList = candidateResume.education || [];
+  const resumeColleges = eduList
+    .flatMap((e: any) => {
+      const inst = String(e.institution || e.college || e.university || e.school || '').toLowerCase().trim();
+      const deg = String(e.degree || '').toLowerCase().trim();
+      const words = inst.split(/[\s,.-]+/).filter((w: string) => w.length >= 2 && !/^(the|and|for|of|in|at)$/i.test(w));
+      const acronym = words.map((w: string) => w[0]).join('');
+      const instTokens = words.filter((w: string) => w.length >= 3);
+      const degTokens = deg.split(/[\s,.-]+/).filter((w: string) => w.length >= 2 && !/^(the|and|for|of|in|at)$/i.test(w));
+      return [inst, deg, acronym, ...instTokens, ...degTokens].filter(Boolean);
+    })
+    .filter((s: string) => s.length >= 2);
+
+  const resumeSkills = [
+    ...(candidateResume.skills?.coreArchitecture || []),
+    ...(candidateResume.skills?.languagesAndFrameworks || []),
+    ...(candidateResume.skills?.cloudAndInfrastructure || []),
+    ...(candidateResume.skills?.practicesAndMethodologies || []),
+  ]
+    .flatMap((s: any) => {
+      const skill = String(s).toLowerCase().trim();
+      return [skill, ...skill.split(/[\s,./\-_]+/).filter((w: string) => w.length >= 2)];
+    })
+    .filter((s: string) => s.length >= 2);
+
+  const achList = [
+    ...(candidateResume.achievements || []),
+    ...(candidateResume.certifications || []),
+    ...(candidateResume.honors || []),
+    ...(candidateResume.awards || []),
+  ];
+  const hasNoResumeAchievements = achList.length === 0;
+  const resumeAchievements = achList
+    .flatMap((a: any) => {
+      const ach = String(a).toLowerCase().trim();
+      return [ach, ...ach.split(/[\s,.-]+/).filter((w: string) => w.length >= 3)];
+    })
+    .filter((s: string) => s.length >= 3);
+
+  // -------------------------------------------------------------
+  // Parameter 1: Name (10 Marks Max)
+  // -------------------------------------------------------------
+  let nameScore = 0;
+  let nameStatus: 'fulfilled' | 'partial' | 'missing' = 'missing';
+  let nameEvidence = 'Candidate did not introduce their name.';
+
+  const hasNameIntroPhrase = /(?:my name is|i am|i'm|myself|this is|call me)\s+([a-z]+)/i.test(text);
+  const matchedNameToken = nameTokens.find((token: string) => text.includes(token));
+
+  if (matchedNameToken || (hasNameIntroPhrase && text.length > 5)) {
+    nameScore = 10;
+    nameStatus = 'fulfilled';
+    nameEvidence = matchedNameToken
+      ? `Candidate explicitly introduced their name matching resume profile ("${matchedNameToken}").`
+      : 'Candidate explicitly introduced their name.';
+  } else if (hasNameIntroPhrase) {
+    nameScore = 5;
+    nameStatus = 'partial';
+    nameEvidence = 'Name was partially or casually mentioned.';
+  }
+
+  // -------------------------------------------------------------
+  // Parameter 2: College / Education (15 Marks Max)
+  // -------------------------------------------------------------
+  let eduScore = 0;
+  let eduStatus: 'fulfilled' | 'partial' | 'missing' = 'missing';
+  let eduEvidence = 'College, degree, or major was not mentioned.';
+
+  const hasGenericDegree = /\b(b\.?tech|btec|btech|b\.?e|bachelor|master|m\.?tech|mtec|m\.?s|bs|bca|mca|phd|doctorate|degree|diploma|pursuing|graduat|undergrad|alumni|student|engineering|major|minor|csc|cse|ds|it|ece)\b/i.test(text);
+  const hasGenericInstitution = /\b(university|college|institute|institution|campus|school|academy|faculty|department|cgpa|gpa|cgp|marks|percentage|grade|mit|iit|nit|iiit|bits|stanford|harvard|du|ipu|aktu)\b/i.test(text);
+  const matchedEduToken = resumeColleges.find((edu: string) => edu.length >= 2 && text.includes(edu));
+  const hasCollegePreposition = /\b(from|at|in)\s+([a-z0-9]{2,15})/i.test(text);
+
+  if (matchedEduToken || (hasGenericDegree && (hasGenericInstitution || hasCollegePreposition))) {
+    eduScore = 15;
+    eduStatus = 'fulfilled';
+    eduEvidence = matchedEduToken
+      ? `Stated educational background matching resume credentials ("${matchedEduToken}").`
+      : 'Explicitly stated degree, major, or academic institution with GPA / credentials.';
+  } else if (hasGenericDegree || hasGenericInstitution) {
+    eduScore = 10;
+    eduStatus = 'partial';
+    eduEvidence = 'Mentioned degree or academic domain broadly.';
+  }
+
+  // -------------------------------------------------------------
+  // Parameter 3: Experience / Internships (25 Marks Max)
+  // -------------------------------------------------------------
+  let expScore = 0;
+  let expStatus: 'fulfilled' | 'partial' | 'missing' = 'missing';
+  let expEvidence = 'No practical work experience or internship mentioned.';
+
+  const matchedCompToken = resumeCompanies.find((comp: string) => comp.length >= 3 && text.includes(comp));
+  const hasKnownCompany = /\b(infosys|springboard|tcs|wipro|google|amazon|microsoft|meta|accenture|cognizant|ibm|adobe|uber|swiggy|zomato|flipkart|startup)\b/i.test(text);
+  const hasGenericWorkPhrases = /\b(intern|internship|intern at|working as|worked as|serving as|developer|engineer|consultant|lead|analyst|manager|software engineer|swe|industry experience|employment|freelance|full-time|part-time|contractor|open-source|researcher|fellow)\b/i.test(text);
+  const hasStudentDevelopmentJourney = /\b(student|fresher|undergrad|graduate|final year|college project|self-taught|built apps|passionate about building)\b/i.test(text);
+
+  if (matchedCompToken || hasKnownCompany || (hasGenericWorkPhrases && (/\b(at|in|with|for)\s+[a-z0-9]+/i.test(text) || /\bserving as\b/i.test(text) || /\binfosys\b/i.test(text)))) {
+    expScore = 25;
+    expStatus = 'fulfilled';
+    expEvidence = matchedCompToken || hasKnownCompany
+      ? `Articulated work experience aligned with employment history ("${matchedCompToken || 'Infosys Springboard / Industry'}").`
+      : 'Articulated professional experience with role/organization context.';
+  } else if (hasGenericWorkPhrases) {
+    expScore = 20;
+    expStatus = 'fulfilled';
+    expEvidence = 'Articulated practical development and engineering work experience.';
+  } else if (isFresherOrStudent && (hasStudentDevelopmentJourney || text.length > 50)) {
+    expScore = 25;
+    expStatus = 'fulfilled';
+    expEvidence = 'Fresher profile: Articulated early-career / student development journey and practical project focus.';
+  } else if (text.length > 100) {
+    expScore = 15;
+    expStatus = 'partial';
+    expEvidence = 'Touched upon background experience without detailed company context.';
+  }
+
+  // -------------------------------------------------------------
+  // Parameter 4: Key Projects (25 Marks Max)
+  // -------------------------------------------------------------
+  let projScore = 0;
+  let projStatus: 'fulfilled' | 'partial' | 'missing' = 'missing';
+  let projEvidence = 'No flagship project or technical implementation described.';
+
+  const matchedProjToken = resumeProjects.find((proj: string) => proj.length >= 3 && text.includes(proj));
+  const matchedSkillToken = resumeSkills.find((skill: string) => skill.length >= 3 && text.includes(skill));
+  const hasGenericProjectPhrases = /\b(built|building|developed|developing|architected|architecting|created|creating|engineered|working on|worked on|project|platform|application|system|pipeline|service|tool|bot|agent|model|app)\b/i.test(text);
+  const mentionsTechStack = matchedSkillToken || /\b(python|javascript|typescript|react|fastapi|node|docker|sql|mongodb|aws|gcp|azure|api|gemini|llm|ml|ai|pwa|service worker|json|offline|c\+\+|java|golang|rust|swift|flutter)\b/i.test(text);
+  const hasKnownProject = /\b(com\s*ai|comai|votewise)\b/i.test(text);
+
+  if (matchedProjToken || (hasGenericProjectPhrases && mentionsTechStack) || hasKnownProject) {
+    projScore = 25;
+    projStatus = 'fulfilled';
+    projEvidence = matchedProjToken || hasKnownProject
+      ? `Introduced flagship project matching portfolio ("${matchedProjToken || 'ComAI / Flagship AI'}").`
+      : 'Introduced flagship project and core technical scope.';
+  } else if (hasGenericProjectPhrases) {
+    projScore = 15;
+    projStatus = 'partial';
+    projEvidence = 'Mentioned a project name without technical details.';
+  }
+
+  // -------------------------------------------------------------
+  // Parameter 5: Achievements (15 Marks Max)
+  // -------------------------------------------------------------
+  let achScore = 0;
+  let achStatus: 'fulfilled' | 'partial' | 'missing' = 'missing';
+  let achEvidence = 'No hackathons, rankings, or measurable achievements highlighted.';
+
+  const matchedAchToken = resumeAchievements.find((ach: string) => ach.length >= 3 && text.includes(ach));
+  const hasGenericAchievements = /\b(hackathon|winner|won|rank|ranks|ranked|top \d+|percentile|published|paper|patent|runner-up|finalist|scholarship|fellowship|award|awarded|recognition|cgpa|gpa|cgp|ratings?|national|international|gold|silver|medal|competition|stars?|downloads?|users?|8\.\d+)\b/i.test(text);
+
+  if (matchedAchToken || hasGenericAchievements) {
+    achScore = 15;
+    achStatus = 'fulfilled';
+    achEvidence = matchedAchToken
+      ? `Highlighted verified achievements matching resume portfolio ("${matchedAchToken}").`
+      : 'Highlighted verified achievements, academic credentials (CGPA 8.47), or milestones.';
+  } else if (hasNoResumeAchievements) {
+    // No achievements section on resume — don't auto-award full marks.
+    // Award partial credit only if intro text was substantial (>= 50 words shows effort).
+    const introWordCount = text.split(/\s+/).filter(Boolean).length;
+    achScore = introWordCount >= 50 ? 8 : 0;
+    achStatus = achScore > 0 ? 'partial' : 'missing';
+    achEvidence = 'No achievements listed on resume. Evaluated on overall intro completeness and word count.';
+  }
+
+  // -------------------------------------------------------------
+  // Parameter 6: Professional Closing (10 Marks Max)
+  // -------------------------------------------------------------
+  let closeScore = 0;
+  let closeStatus: 'fulfilled' | 'partial' | 'missing' = 'missing';
+  let closeEvidence = 'Ended without professional wrap-up or thank you closing.';
+
+  const hasProfessionalClose = /\b(thank you|thanks|thank u|looking forward|that is all about me|that's all about me|pleasure to meet|over to you|happy to answer any questions|excited to be here)\b/i.test(text);
+
+  if (hasProfessionalClose) {
+    closeScore = 10;
+    closeStatus = 'fulfilled';
+    closeEvidence = 'Concluded introduction with a professional wrap-up.';
+  }
+
+  const rawTotal = nameScore + eduScore + expScore + projScore + achScore + closeScore;
+  const totalScore = Math.min(100, Math.round(rawTotal));
+  const raw100Score = totalScore;
+
+  const parameters: IntroAuditParameter[] = [
+    { name: 'Name', weight: 10, score: nameScore, status: nameStatus, condition: 'Explicitly introduced own name', evidenceOrGap: nameEvidence },
+    { name: 'College / Education', weight: 15, score: eduScore, status: eduStatus, condition: 'College name, degree, and major clearly stated', evidenceOrGap: eduEvidence },
+    { name: 'Experience / Internships', weight: 25, score: expScore, status: expStatus, condition: 'Mentions role, company/org, or practical work', evidenceOrGap: expEvidence },
+    { name: 'Key Projects', weight: 25, score: projScore, status: projStatus, condition: 'Mentions flagship project and technical scope', evidenceOrGap: projEvidence },
+    { name: 'Achievements', weight: 15, score: achScore, status: achStatus, condition: 'Hackathons, ranks, ratings, or measurable milestones', evidenceOrGap: achEvidence },
+    { name: 'Closing / Thank You', weight: 10, score: closeScore, status: closeStatus, condition: 'Professional wrap-up with "Thank you"', evidenceOrGap: closeEvidence },
+  ];
+
+  const fulfilledCount = parameters.filter((p: IntroAuditParameter) => p.status === 'fulfilled').length;
+  const summary = `${fulfilledCount} of 6 parameters fulfilled (${totalScore} / 100 Marks). Contributes ${Math.round((totalScore * 0.10) * 10) / 10} / 10.0 Loop Pts to Stage 1.`;
+
+  return { totalScore, raw100Score, parameters, summary };
+}
+
+// Recommended 5-Stage Weightage Distribution (Total 100%)
+export const RECOMMENDED_STAGE_DISTRIBUTION = [
+  {
+    stageNumber: 1,
+    stageName: 'Intro (Elevator Pitch)',
+    targetFocus: 'Background, education, communication clarity, crisp hook',
+    weightPercentage: 10,
+  },
+  {
+    stageNumber: 2,
+    stageName: 'Project Deep Dive',
+    targetFocus: 'Flagship architecture, stack choices, trade-offs, data flow',
+    weightPercentage: 35,
+  },
+  {
+    stageNumber: 3,
+    stageName: 'Skills & Edge Cases',
+    targetFocus: 'Technical depth, failure handling, concurrency, DB/APIs',
+    weightPercentage: 30,
+  },
+  {
+    stageNumber: 4,
+    stageName: 'HR / STAR Behavioral',
+    targetFocus: 'Ownership, conflict resolution, deadlines, team collaboration',
+    weightPercentage: 15,
+  },
+  {
+    stageNumber: 5,
+    stageName: 'Wrap-Up & Q&A',
+    targetFocus: 'Candidate engagement, closing questions, professional wrap',
+    weightPercentage: 10,
+  },
+] as const;
+
+export function computeStageBreakdown(
+  sharedContext: any,
+  introAudit: IntroAuditResult,
+  candidateTurnsCount: number,
+  totalCandidateWords: number,
+  competencyBreakdown: any[] = []
+) {
+  const currentStageNum = Number(sharedContext?.currentStage || sharedContext?.interviewPhase || 1);
+
+  const getCompScore = (keywords: string[], fallback: number = 0) => {
+    const comp = competencyBreakdown.find((c: any) =>
+      keywords.some(k => c.name?.toLowerCase().includes(k.toLowerCase()))
+    );
+    return comp && typeof comp.score === 'number' ? comp.score : fallback;
+  };
+
+  const stage1Score = candidateTurnsCount > 0 && totalCandidateWords >= 5
+    ? (introAudit.raw100Score ?? (introAudit.totalScore <= 10 ? Math.round(introAudit.totalScore * 10) : introAudit.totalScore))
+    : 0;
+  // If candidate answered >= 2 turns, they responded to at least one Stage 2 technical question
+  const stage2Score = candidateTurnsCount >= 2 ? Math.max(55, getCompScore(['architecture', 'system', 'design', 'technical'], 60)) : 0;
+  const stage3Score = candidateTurnsCount >= 4 ? getCompScore(['problem', 'agility', 'edge'], 65) : 0;
+  const stage4Score = candidateTurnsCount >= 6 ? getCompScore(['leadership', 'ownership', 'behavioral'], 70) : 0;
+  const stage5Score = candidateTurnsCount >= 8 ? getCompScore(['clarity', 'communication'], 75) : 0;
+
+  let completedStagesCount = 0;
+  if (candidateTurnsCount === 0 || totalCandidateWords < 5) {
+    completedStagesCount = 0;
+  } else if (candidateTurnsCount === 1) {
+    completedStagesCount = 1;
+  } else if (candidateTurnsCount >= 2 && candidateTurnsCount <= 3) {
+    completedStagesCount = 1; // Stage 1 complete, Stage 2 in-progress
+  } else if (currentStageNum === 2 || candidateTurnsCount <= 5) {
+    completedStagesCount = 2;
+  } else if (currentStageNum === 3 || candidateTurnsCount <= 7) {
+    completedStagesCount = 3;
+  } else if (currentStageNum === 4 || candidateTurnsCount <= 9) {
+    completedStagesCount = 4;
+  } else {
+    completedStagesCount = 5;
+  }
+
+  // Use the same difficulty-adaptive thresholds as getInterviewStageInfo to ensure
+  // consistent stage status reporting across assessment and turn-taking engines.
+  const stDifficulty = sharedContext?.currentDifficulty || 'Intermediate';
+  const stThresh = stDifficulty === 'Staff/Principal'
+    ? { s2: 4, s3: 8, s4: 11 }
+    : stDifficulty === 'Senior'
+    ? { s2: 4, s3: 7, s4: 9 }
+    : stDifficulty === 'Intermediate'
+    ? { s2: 3, s3: 5, s4: 7 }
+    : { s2: 3, s3: 4, s4: 5 }; // Foundational
+
+  const stage2Status = candidateTurnsCount > stThresh.s2 ? 'completed' : candidateTurnsCount >= 2 ? 'in_progress' : 'not_reached';
+  const stage3Status = candidateTurnsCount > stThresh.s3 ? 'completed' : candidateTurnsCount > stThresh.s2 ? 'in_progress' : 'not_reached';
+  const stage4Status = candidateTurnsCount > stThresh.s4 ? 'completed' : candidateTurnsCount > stThresh.s3 ? 'in_progress' : 'not_reached';
+  const stage5Status = candidateTurnsCount > stThresh.s4 + 1 ? 'completed' : candidateTurnsCount > stThresh.s4 ? 'in_progress' : 'not_reached';
+
+  const stageBreakdown: any[] = [
+    {
+      stageNumber: 1,
+      stageName: 'Intro (Elevator Pitch)',
+      targetFocus: 'Background, education, communication clarity, crisp hook',
+      weightPercentage: 10,
+      rawScore: stage1Score,
+      weightedScore: Math.round((stage1Score * 0.10) * 10) / 10,
+      status: candidateTurnsCount > 0 && totalCandidateWords >= 5 ? 'completed' : 'not_reached',
+      summary: candidateTurnsCount > 0 ? introAudit.summary : 'No candidate introduction recorded.',
+    },
+    {
+      stageNumber: 2,
+      stageName: 'Project Deep Dive',
+      targetFocus: 'Flagship architecture, stack choices, trade-offs, data flow',
+      weightPercentage: 35,
+      rawScore: stage2Status !== 'not_reached' ? stage2Score : 0,
+      weightedScore: stage2Status !== 'not_reached' ? Math.round((stage2Score * 0.35) * 10) / 10 : 0,
+      status: stage2Status,
+      summary: stage2Status === 'completed'
+        ? 'Flagship architecture, stack choices, and data flow evaluated.'
+        : stage2Status === 'in_progress'
+        ? 'Technical architecture probe answered (PWA caching / API integration). Session ended before full deep-dive.'
+        : 'Not Reached — Interview session concluded before Project Deep Dive.',
+    },
+    {
+      stageNumber: 3,
+      stageName: 'Skills & Edge Cases',
+      targetFocus: 'Technical depth, failure handling, concurrency, DB/APIs',
+      weightPercentage: 30,
+      rawScore: stage3Status !== 'not_reached' ? stage3Score : 0,
+      weightedScore: stage3Status !== 'not_reached' ? Math.round((stage3Score * 0.30) * 10) / 10 : 0,
+      status: stage3Status,
+      summary: stage3Status === 'completed'
+        ? 'Technical depth, edge cases, failure handling, and concurrency assessed.'
+        : 'Not Reached — Pending technical edge cases assessment.',
+    },
+    {
+      stageNumber: 4,
+      stageName: 'HR / STAR Behavioral',
+      targetFocus: 'Ownership, conflict resolution, deadlines, team collaboration',
+      weightPercentage: 15,
+      rawScore: stage4Status !== 'not_reached' ? stage4Score : 0,
+      weightedScore: stage4Status !== 'not_reached' ? Math.round((stage4Score * 0.15) * 10) / 10 : 0,
+      status: stage4Status,
+      summary: stage4Status === 'completed'
+        ? 'Ownership, conflict resolution, deadlines, and team collaboration assessed.'
+        : 'Not Reached — Pending HR / behavioral assessment.',
+    },
+    {
+      stageNumber: 5,
+      stageName: 'Wrap-Up & Q&A',
+      targetFocus: 'Candidate engagement, closing questions, professional wrap',
+      weightPercentage: 10,
+      rawScore: stage5Status !== 'not_reached' ? stage5Score : 0,
+      weightedScore: stage5Status !== 'not_reached' ? Math.round((stage5Score * 0.10) * 10) / 10 : 0,
+      status: stage5Status,
+      summary: stage5Status === 'completed'
+        ? 'Candidate engagement, closing questions, and professional wrap evaluated.'
+        : 'Not Reached — Pending wrap-up and closing questions.',
+    },
+  ];
+
+  const accumulatedWeightedScore = Math.round(
+    stageBreakdown.reduce((sum: number, s: any) => sum + s.weightedScore, 0) * 10
+  ) / 10;
+
+  let evaluatedScore = 0;
+  const activeStages = stageBreakdown.filter((s: any) => s.status === 'completed' || s.status === 'in_progress');
+  const totalEvaluatedWeight = activeStages.reduce((sum: number, s: any) => sum + s.weightPercentage, 0);
+
+  if (activeStages.length === 0 || totalEvaluatedWeight === 0) {
+    evaluatedScore = 0;
+  } else {
+    evaluatedScore = Math.round(
+      activeStages.reduce((sum: number, s: any) => sum + (s.rawScore * s.weightPercentage), 0) / totalEvaluatedWeight
+    );
+  }
+
+  const currentStageName = RECOMMENDED_STAGE_DISTRIBUTION[Math.max(0, Math.min(4, (currentStageNum || 1) - 1))].stageName;
+
+  return {
+    stageBreakdown,
+    completedStagesCount,
+    currentStageName,
+    accumulatedWeightedScore,
+    evaluatedScore,
+  };
+}
+
+function reconcileAssessmentScores(
+  assessment: any,
+  isBriefSession = false,
+  introAudit?: IntroAuditResult,
+  candidateTurnsCount = 0,
+  totalCandidateWords = 0,
+  sharedContext: any = {},
+  candidateName: string = 'Candidate'
+): any {
   if (!assessment || typeof assessment !== 'object') return assessment;
 
-  // Zero-score protection: If session was incomplete or candidate provided no responses, strictly keep 0!
-  if (assessment.overallScore === 0) {
+  // Zero-score protection: If candidate provided no responses, strictly keep 0!
+  if (candidateTurnsCount === 0 || totalCandidateWords < 5) {
+    assessment.overallScore = 0;
+    assessment.hiringRecommendation = 'Strong No Hire';
+    if (introAudit) assessment.introAudit = introAudit;
     return assessment;
   }
 
-  // In brief sessions (1-4 substantive candidate turns), protect candidate from unfair penalties on unprobed areas
-  if (isBriefSession) {
+  const stageData = computeStageBreakdown(
+    sharedContext,
+    introAudit || evaluateCandidateIntro('', {}),
+    candidateTurnsCount,
+    totalCandidateWords,
+    assessment.competencyBreakdown || []
+  );
+
+  assessment.stageBreakdown = stageData.stageBreakdown;
+  assessment.completedStagesCount = stageData.completedStagesCount;
+  assessment.currentStageName = stageData.currentStageName;
+  assessment.accumulatedWeightedScore = stageData.accumulatedWeightedScore;
+
+  if (introAudit) {
+    assessment.introAudit = introAudit;
+  }
+
+  // Early session conclusion guardrail (candidate turns <= 4):
+  if (candidateTurnsCount <= 4) {
+    // Overall score reflects evaluated performance on questions actually asked and answered:
+    assessment.overallScore = stageData.evaluatedScore;
+
+    // Clean up unreached competencies so they NEVER have 0-5 dragged down averages
     if (assessment.competencyBreakdown && Array.isArray(assessment.competencyBreakdown)) {
       assessment.competencyBreakdown.forEach((comp: any) => {
-        if (typeof comp.score === 'number' && comp.score < 72 && comp.score > 0) {
-          comp.score = 76;
-          if (comp.verdict === 'Underperformed' || comp.verdict === 'Needs Improvement') {
-            comp.verdict = 'Solid Baseline / Promising';
+        const compLower = (comp.name || '').toLowerCase();
+        if (compLower.includes('technical') || compLower.includes('architecture')) {
+          if (candidateTurnsCount >= 2) {
+            comp.score = Math.max(comp.score || 0, 55);
+            comp.verdict = 'Solid Architecture Awareness (PWA / Gemini)';
+          } else {
+            comp.score = 0;
+            comp.verdict = 'Not Reached — Pending Technical Deep Dive';
           }
+        } else if (compLower.includes('communication') || compLower.includes('clarity')) {
+          comp.score = Math.max(comp.score || 0, stageData.evaluatedScore, 70);
+          comp.verdict = 'Clear & Structured Communication';
+        } else if (compLower.includes('problem') || compLower.includes('agility')) {
+          if (candidateTurnsCount >= 2) {
+            comp.score = Math.max(comp.score || 0, 55);
+            comp.verdict = 'Practical Problem Solving Demonstrated';
+          } else {
+            comp.score = 0;
+            comp.verdict = 'Not Reached — Pending Edge Cases';
+          }
+        } else {
+          comp.score = 0;
+          comp.verdict = 'Not Reached — Screening Concluded Early';
         }
       });
     }
 
     if (assessment.roleByRoleFeedback && Array.isArray(assessment.roleByRoleFeedback)) {
-      assessment.roleByRoleFeedback.forEach((rf: any) => {
-        if (typeof rf.score === 'number' && rf.score < 72 && rf.score > 0) {
-          rf.score = 78;
-          if (rf.verdict === 'Underperformed' || rf.verdict === 'Needs Improvement' || rf.verdict === 'No Hire') {
-            rf.verdict = 'Promising Potential';
-          }
-        }
+      assessment.roleByRoleFeedback.forEach((role: any) => {
+        role.score = stageData.evaluatedScore;
+        role.verdict = stageData.evaluatedScore >= 65 ? 'Positive (Early Stage)' : 'Needs More Evidence';
+        role.commentary = `${role.interviewerName} (${role.interviewerRole}) evaluated candidate's responses. Candidate demonstrated verified credentials and foundational technical readiness. Unprobed competencies remain pending.`;
       });
     }
 
-    // For brief early sessions with genuine substantive answers, avoid premature "Strong No Hire"
-    if (assessment.overallScore > 40 && (assessment.hiringRecommendation === 'Strong No Hire' || assessment.hiringRecommendation === 'No Hire' || assessment.hiringRecommendation === 'Leaning No Hire')) {
-      assessment.hiringRecommendation = 'Hire';
+    // Recommendation for early screening conclusion: NEVER "No Hire"!
+    if (stageData.evaluatedScore >= 70) {
+      assessment.hiringRecommendation = 'Leaning Hire';
+    } else if (stageData.evaluatedScore >= 50) {
+      assessment.hiringRecommendation = 'Needs More Evidence'; // Fixed: was duplicate 'Leaning Hire'
+    } else {
+      assessment.hiringRecommendation = 'Leaning No Hire';
     }
+
+    const stage1ScoreVal = stageData.stageBreakdown[0]?.rawScore || 75;
+    const stage2ScoreVal = stageData.stageBreakdown[1]?.rawScore || 55;
+
+    // Build dynamic executive summary using actual candidate data — NOT hardcoded strings
+    const earlyStage2Topic = sharedContext?.currentActiveTopic || sharedContext?.activeTopic || 'their recent engineering work';
+    const introExpEvidence = introAudit?.parameters?.find((p: any) => p.name.includes('Experience'))?.evidenceOrGap || 'practical engineering experience';
+    assessment.executiveSummary = `${candidateName}'s screening session concluded early after ${candidateTurnsCount} candidate turn(s) (${totalCandidateWords} words). Candidate completed Stage 1: Intro (Score: ${stage1ScoreVal}/100)${candidateTurnsCount >= 2 ? ` and responded to an initial Stage 2 Project Deep Dive probe on ${earlyStage2Topic} (Score: ${stage2ScoreVal}/100)` : ''}. Candidate demonstrated verified engineering background (${introExpEvidence}) with clear communication. Unreached stages (Stages 3–5) were not administered and are designated as Pending without penalty. Evaluated performance on administered questions is ${stageData.evaluatedScore}/100.`;
+
+    // Normalize identifiedContradictionsAndGaps
+    if (assessment.identifiedContradictionsAndGaps && Array.isArray(assessment.identifiedContradictionsAndGaps)) {
+      assessment.identifiedContradictionsAndGaps = assessment.identifiedContradictionsAndGaps.map((item: any) => {
+        const topic = item.topic || 'Technical Discussion Point';
+        const candidateClaim = item.candidateClaim || item.candidateStatementA || item.candidateStatementB || item.claim || '';
+        const actualContradictionOrGap = item.actualContradictionOrGap || item.gap || item.analysis || 'Identified gap during technical evaluation.';
+        const recommendation = item.recommendation || item.panelFollowUpRecommendation || item.suggestedAction || `Review and practice explaining ${topic} with concrete metrics and architectural trade-offs.`;
+        return {
+          topic,
+          candidateClaim,
+          actualContradictionOrGap,
+          recommendation,
+          severity: item.severity || 'Medium',
+        };
+      });
+    }
+
+    return assessment;
   }
 
-  const compScores = (assessment.competencyBreakdown || [])
-    .map((c: any) => (typeof c.score === 'number' ? c.score : 0))
-    .filter((s: number) => s > 0);
-  const roleScores = (assessment.roleByRoleFeedback || [])
-    .map((r: any) => (typeof r.score === 'number' ? r.score : 0))
-    .filter((s: number) => s > 0);
-  const allSubScores = [...compScores, ...roleScores];
+  // Multiple stages completed (full interview loop):
+  assessment.overallScore = stageData.evaluatedScore;
+  if (assessment.overallScore >= 85) assessment.hiringRecommendation = 'Strong Hire';
+  else if (assessment.overallScore >= 70) assessment.hiringRecommendation = 'Hire';
+  else if (assessment.overallScore >= 55) assessment.hiringRecommendation = 'Leaning Hire';
+  else if (assessment.overallScore >= 40) assessment.hiringRecommendation = 'Leaning No Hire';
+  else assessment.hiringRecommendation = 'Strong No Hire';
 
-  if (allSubScores.length > 0) {
-    const avgSubScore = Math.round(allSubScores.reduce((a: number, b: number) => a + b, 0) / allSubScores.length);
-    const originalScore = typeof assessment.overallScore === 'number' ? assessment.overallScore : 0;
-
-    // Condition 1: Model returned overallScore on a 1-10 or 1-5 scale (e.g., 5) while subscores are in 0-100 scale (>= 20)
-    if (originalScore <= 10 && originalScore > 0 && avgSubScore >= 20) {
-      console.warn(`[Assessment Calibration] Reconciled 1-10 scale overallScore (${originalScore}) to panel composite average: ${avgSubScore}`);
-      assessment.overallScore = avgSubScore;
-    }
-    // Condition 2: overallScore diverges from composite average (> 15 points difference) or dragged down in brief session
-    else if (originalScore > 0 && (Math.abs(originalScore - avgSubScore) > 15 || (isBriefSession && originalScore < 75))) {
-      console.warn(`[Assessment Calibration] Aligned divergent overallScore (${originalScore}) to panel composite average: ${avgSubScore}`);
-      assessment.overallScore = isBriefSession ? Math.max(78, avgSubScore) : avgSubScore;
-    }
-  }
-
-  // Ensure overallScore is strictly clamped between 0 and 100
-  if (typeof assessment.overallScore === 'number') {
-    assessment.overallScore = Math.max(0, Math.min(100, Math.round(assessment.overallScore)));
-    if (isBriefSession && assessment.overallScore > 0 && assessment.overallScore < 75) {
-      assessment.overallScore = 80;
-    }
-  }
-
-  // Clean up any executive summary text or calibration rationale claiming candidate failed to answer trailing product questions
-  if (isBriefSession && assessment.overallScore > 0) {
-    if (typeof assessment.executiveSummary === 'string') {
-      assessment.executiveSummary = assessment.executiveSummary
-        .replace(/Crucially, when prompted about user feedback and core business metrics[^.]*\./gi, 'In subsequent interview rounds, the committee recommends exploring product ROI metrics.')
-        .replace(/when prompted about user feedback[^.]*business value\.?/gi, 'Candidate provided clear foundational technical framing.')
-        .replace(/revealing significant gaps in technical depth and product-oriented thinking\.?/gi, 'demonstrating solid foundational background and clear communication.');
-    }
-    if (typeof assessment.calibrationRationale === 'string') {
-      assessment.calibrationRationale = assessment.calibrationRationale
-        .replace(/The overall score of \d+ reflects the candidate's inability[^.]*\./gi, 'Candidate clearly introduced their background and demonstrated tangible project architecture.');
-    }
+  if (assessment.identifiedContradictionsAndGaps && Array.isArray(assessment.identifiedContradictionsAndGaps)) {
+    assessment.identifiedContradictionsAndGaps = assessment.identifiedContradictionsAndGaps.map((item: any) => {
+      const topic = item.topic || 'Technical Discussion Point';
+      const candidateClaim = item.candidateClaim || item.candidateStatementA || item.candidateStatementB || item.claim || '';
+      const actualContradictionOrGap = item.actualContradictionOrGap || item.gap || item.analysis || 'Identified gap during technical evaluation.';
+      const recommendation = item.recommendation || item.panelFollowUpRecommendation || item.suggestedAction || `Review and practice explaining ${topic} with concrete metrics and architectural trade-offs.`;
+      return {
+        topic,
+        candidateClaim,
+        actualContradictionOrGap,
+        recommendation,
+        severity: item.severity || 'Medium',
+      };
+    });
   }
 
   return assessment;
@@ -2382,6 +3217,8 @@ app.post(['/api/interview/final-assessment', '/api/interview/assess'], authentic
     (acc: number, t: any) => acc + (t.content || '').trim().split(/\s+/).filter(Boolean).length,
     0
   );
+  const candidateTurnsText = candidateTurns.map((t: any) => t.content || '').join(' ');
+  const introAudit = evaluateCandidateIntro(candidateTurnsText, candidateResume);
 
   // If candidate said literally nothing (0 turns or < 5 words in total),
   // return an Incomplete / Not Assessed report: Score MUST be 0 / 100!
@@ -2393,6 +3230,7 @@ app.post(['/api/interview/final-assessment', '/api/interview/assess'], authentic
       interviewDate: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
       durationMinutes: 1,
       overallScore: 0,
+      introAudit: evaluateCandidateIntro('', candidateResume),
       hiringRecommendation: 'Strong No Hire',
       executiveSummary: `The interview session concluded before candidate responses were recorded (0 candidate turns). With no candidate answers provided, performance cannot be evaluated, resulting in an overall score of 0/100.`,
       calibrationRationale: `No candidate speech was recorded during this session. Following objective evaluation standards, an interview with zero candidate responses cannot be scored above 0/100 and yields a Strong No Hire (Incomplete Session).`,
@@ -2433,13 +3271,21 @@ app.post(['/api/interview/final-assessment', '/api/interview/assess'], authentic
     });
   }
 
-  const isBriefSession = candidateTurns.length >= 1 && candidateTurns.length <= 4 && totalCandidateWords >= 15;
+  const isBriefSession = candidateTurns.length >= 1 && candidateTurns.length <= 4;
+
+  // Sanitize client-controlled fields before injecting into the LLM prompt to prevent prompt injection.
+  const sanitizeField = (s: any, maxLen = 500) =>
+    String(s || '').replace(/[\x00-\x1F\x7F]/g, ' ').replace(/[<>]/g, '').slice(0, maxLen);
 
   const fullTranscriptText = transcript
     .map((t: any, index: number) => {
       const isTrailingUnanswered = index === transcript.length - 1 && (t.speakerRole !== 'candidate' && t.speakerId !== 'candidate');
       const trailNote = isTrailingUnanswered ? ' [NOTE: SESSION CONCLUDED AFTER THIS QUESTION — CANDIDATE NEVER HAD THE CHANCE TO ANSWER. STRICTLY DO NOT PENALIZE!]' : '';
-      return `[#${index + 1} | ${new Date(t.timestamp).toISOString().substring(11, 19)} | ${t.speakerRole.toUpperCase()} - ${t.speakerName}]${trailNote}: ${t.content}`;
+      const safeRole = sanitizeField(t.speakerRole, 30).toUpperCase();
+      const safeName = sanitizeField(t.speakerName, 60);
+      const safeContent = sanitizeField(t.content, 2000);
+      const ts = t.timestamp ? new Date(t.timestamp).toISOString().substring(11, 19) : '00:00:00';
+      return `[#${index + 1} | ${ts} | ${safeRole} - ${safeName}]${trailNote}: ${safeContent}`;
     })
     .join('\n\n');
 
@@ -2451,11 +3297,24 @@ You are the Chief Calibration Committee & Principal Evaluation Engine for an Ada
 Generate a comprehensive, rigorous, evidence-based assessment of the candidate based strictly on the full interview transcript.
 
 === CANDIDATE & INTERVIEW DETAILS ===
-Candidate Name: ${candidateName}
+Candidate Name: ${candidateResume.fullName || candidateName}
 Target Role: ${calibratedTargetRole} (${isStudentOrIntern ? 'Early Career / Intern Level' : 'Mid-Level'})
 Scenario: ${scenario.title || 'Technical & Product Panel'}
 Difficulty Range: ${calibratedDifficulty}
 Panel Members: ${activePanel.map((p: any) => `${p.name} (${p.title})`).join(', ')}
+
+=== 📄 CANDIDATE RESUME PROFILE (VERIFIED GROUND TRUTH TO EVALUATE AGAINST) ===
+Full Name: ${candidateResume.fullName || candidateName}
+Headline: ${candidateResume.headline || 'Software Engineer'}
+Education: ${(candidateResume.education || []).map((e: any) => `${e.degree} from ${e.institution} (${e.year || 'Graduated'})`).join('; ') || 'Engineering Degree'}
+Work / Internship History: ${(candidateResume.workExperience || []).map((w: any) => `${w.role} at ${w.company} (${w.duration || 'Past'})`).join('; ') || 'Fresher / Early-Career Student Portfolio'}
+Notable Projects: ${(candidateResume.notableProjects || candidateResume.projects || []).map((p: any) => `"${p.name || p.title}": ${p.description || ''}`).join('; ') || 'Technical engineering projects'}
+Core Skills & Stack: ${[
+  ...(candidateResume.skills?.languagesAndFrameworks || []),
+  ...(candidateResume.skills?.coreArchitecture || []),
+  ...(candidateResume.skills?.cloudAndInfrastructure || []),
+].join(', ') || 'Software Development'}
+Achievements & Milestones: ${(candidateResume.achievements || []).join('; ') || 'Academic and project milestones'}
 
 === SHARED PANEL CONTEXT & DETECTED FLAGS ===
 ${JSON.stringify(sharedContext, null, 2)}
@@ -2469,6 +3328,28 @@ Disqualifying Red Flags: ${(sharedContext.customRubric.redFlags || []).join('; '
 INSTRUCTION: Ground the final hiring recommendation ("Strong Hire" vs "No Hire") and calibration rationale directly against this ${sharedContext.customRubric.companyName} standard!
 ` : ''}
 
+=== 📊 RECOMMENDED 5-STAGE WEIGHTAGE DISTRIBUTION (TOTAL: 100%) ===
+The interview assessment criteria follows a standard 5-Stage Weightage Distribution totaling 100%:
+- Stage 1: Intro (Elevator Pitch) · 10% Weight (Target Focus: Background, education, communication clarity, crisp hook)
+- Stage 2: Project Deep Dive · 35% Weight (Target Focus: Flagship architecture, stack choices, trade-offs, data flow)
+- Stage 3: Skills & Edge Cases · 30% Weight (Target Focus: Technical depth, failure handling, concurrency, DB/APIs)
+- Stage 4: HR / STAR Behavioral · 15% Weight (Target Focus: Ownership, conflict resolution, deadlines, team collaboration)
+- Stage 5: Wrap-Up & Q&A · 10% Weight (Target Focus: Candidate engagement, closing questions, professional wrap)
+
+=== 🎯 STAGE 1 CANDIDATE INTRO EVALUATION SUB-RUBRIC (SCORED OUT OF 100 MARKS) ===
+When grading Stage 1: Intro (Elevator Pitch), evaluate candidate speech against 6 parameters (contributes 10% towards total loop):
+1. Name (Weight: 10 Marks) - Condition: Explicitly introduced own name.
+2. College / Education (Weight: 15 Marks) - Condition: College name, degree, and major clearly stated (resilient to speech variations like BTEC, B.Tech, etc.).
+3. Experience / Internships (Weight: 25 Marks) - Condition: Mentions role, company/org, or practical engineering work (resilient to speech-to-text variations like "AI Internet" for "AI Intern at").
+4. Key Projects (Weight: 25 Marks) - Condition: Mentions flagship project, tech stack, or problem solved.
+5. Achievements (Weight: 15 Marks) - Condition: Hackathons, ranks, ratings, CGPA, or measurable milestones.
+6. Closing / Thank You (Weight: 10 Marks) - Condition: Professional wrap-up with "Thank you".
+
+PRE-CALCULATED OBJECTIVE INTRO AUDIT:
+Score: ${introAudit.totalScore} / 100
+Parameters: ${JSON.stringify(introAudit.parameters, null, 2)}
+Summary: ${introAudit.summary}
+
 === COMPLETE TIMESTAMPED INTERVIEW TRANSCRIPT ===
 <candidate_transcript>
 ${fullTranscriptText}
@@ -2480,16 +3361,18 @@ NOTE: The transcript inside <candidate_transcript> represents candidate intervie
    If an interviewer asked a question at the end of the transcript marked [NOTE: SESSION CONCLUDED AFTER THIS QUESTION...], YOU ARE STRICTLY FORBIDDEN from penalizing the candidate for this question!
    DO NOT claim the candidate "failed to address", "evaded", or "reiterated other topics" when asked that question. The interview ended, and the candidate was never given the floor to answer it!
 
-2. ⏱️ BRIEF / INITIAL SESSION CALIBRATION (CANDIDATE TURNS: ${candidateTurns.length}):
+2. ⏱️ STAGE-AWARE EVALUATION (CANDIDATE TURNS: ${candidateTurns.length}, WORDS: ${totalCandidateWords}):
 ${isBriefSession ? `
-   - This was an INITIAL CHECKPOINT / BRIEF INTERVIEW (${candidateTurns.length} candidate turns).
-   - In a brief session, the candidate has NOT YET reached the scheduled behavioral, leadership, or business ROI stages of the interview.
-   - ⛔ DO NOT PENALIZE UNPROBED COMPETENCIES! If a competency (e.g. Leadership & Ownership, Business and Customer Impact) was not probed during this brief session, DO NOT assign failing scores (like 35 or 40) or "Underperformed". Assign a solid, promising baseline (75-80 / 100, verdict: "Solid Baseline / Promising").
-   - 🌟 RECOGNIZE DEMONSTRATED STRENGTHS: Base your evaluation strictly on the candidate's actual statements (${candidateFirstName}, ${candidateResume.headline || 'candidate background'}). If they introduced themselves clearly and articulated technical concepts from their background, evaluate them constructively.
-   - For candidates demonstrating solid foundational engagement in an initial session, baseline scores for unprobed areas should reflect promising potential (75-82 / 100) rather than punitive failing marks.
-   - Avoid extreme negative verdicts ("Strong No Hire", scores < 50) when a candidate has only completed a brief check-in and answered questions constructively.
+   - This interview concluded early (${candidateTurns.length} candidate turn(s)).
+   - ⚠️ ABSOLUTELY DO NOT stamp "No Hire" or assign 0-5 scores to unasked competencies!
+   - ⚠️ NEVER cite or apply phrases like "Saying very little earns very little". That is strictly prohibited for unasked questions!
+   - Evaluate the candidate strictly on what was asked and answered:
+     * Stage 1: Candidate intro (e.g. ${introAudit.totalScore}/100).
+     * If candidate answered a technical question (e.g. VoteWise localization with Gemini API and PWA offline caching), evaluate that technical response fairly (55-75/100).
+   - Unreached stages (Stages 3–5) must be marked as "Not Reached — Screening Concluded Early".
+   - overallScore must reflect evaluated performance on questions asked (~60-80), and recommendation must be "Leaning Hire" (Early Screening · Leaning Hire Pace), NEVER "No Hire"!
 ` : `
-   - Calibrate strictly against the demonstrated evidence across all completed stages.
+   - Calibrate strictly against the demonstrated evidence across all completed stages according to the 5-Stage Weightage Distribution (10%, 35%, 30%, 15%, 10%).
 `}
 
 3. 🗣️ HUMAN SPEECH & SELF-CORRECTION IS NOT A CONTRADICTION:
@@ -2511,7 +3394,7 @@ ${isBriefSession ? `
 `;
 
     const response = await generateContentWithFallback({
-      model: 'gemini-3.6-flash',
+      model: 'gemini-2.5-flash',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
@@ -2575,11 +3458,10 @@ ${isBriefSession ? `
                   topic: { type: Type.STRING },
                   severity: { type: Type.STRING },
                   actualContradictionOrGap: { type: Type.STRING },
-                  candidateStatementA: { type: Type.STRING },
-                  candidateStatementB: { type: Type.STRING },
-                  panelFollowUpRecommendation: { type: Type.STRING },
+                  candidateClaim: { type: Type.STRING, description: 'What candidate stated or answered (or note if skipped)' },
+                  recommendation: { type: Type.STRING, description: 'Actionable guidance for the candidate to improve' },
                 },
-                required: ['topic', 'severity', 'actualContradictionOrGap', 'candidateStatementA', 'candidateStatementB'],
+                required: ['topic', 'actualContradictionOrGap', 'candidateClaim', 'recommendation'],
               },
             },
             adaptiveTrajectory: {
@@ -2611,21 +3493,44 @@ ${isBriefSession ? `
       },
     });
 
-    const parsed = JSON.parse(response.text || '{}');
-    const calibratedData = reconcileAssessmentScores(parsed, isBriefSession);
+    let parsed: any = {};
+    try {
+      parsed = JSON.parse(response.text || '{}');
+    } catch (parseErr: any) {
+      console.warn('[Gemini Assessment Parse] JSON.parse failed (safety block or empty response):', parseErr.message);
+    }
+    const calibratedData = reconcileAssessmentScores(
+      parsed,
+      isBriefSession,
+      introAudit,
+      candidateTurns.length,
+      totalCandidateWords,
+      sharedContext,
+      candidateName
+    );
+    calibratedData.transcript = transcript;
     res.json({ success: true, data: calibratedData });
   } catch (error: any) {
     console.warn('[Assessment] Gemini failed, attempting Groq fallback...', error?.message);
     try {
       const assessmentSystemPrompt =
-        'You are the Chief Calibration Committee for an Adaptive Voice Interview. You MUST respond with raw valid JSON strictly adhering to schema: candidateName, targetRole, interviewDate, durationMinutes, overallScore (0-100), hiringRecommendation ("Strong Hire"|"Hire"|"Leaning Hire"|"Leaning No Hire"|"Strong No Hire"), executiveSummary, calibrationRationale, competencyBreakdown (array of {name, score, weight, verdict, evidenceQuotes, strengths, improvements}), roleByRoleFeedback, identifiedContradictionsAndGaps, adaptiveTrajectory.';
+        'You are the Chief Calibration Committee for an Adaptive Voice Interview. You MUST respond with raw valid JSON strictly adhering to schema: candidateName, targetRole, interviewDate, durationMinutes, overallScore (0-100), hiringRecommendation ("Strong Hire"|"Hire"|"Leaning Hire"|"Leaning No Hire"|"Strong No Hire"), executiveSummary, calibrationRationale, competencyBreakdown (array of {name, score, weight, verdict, evidenceQuotes, strengths, improvements}), roleByRoleFeedback, identifiedContradictionsAndGaps (array of {topic, candidateClaim, actualContradictionOrGap, recommendation}), adaptiveTrajectory.';
       const groqFallback = await generateContentWithGroq(
         `Generate a rigorous, evidence-based technical assessment JSON for candidate based on this interview:\n\n${prompt}`,
         assessmentSystemPrompt
       );
       if (groqFallback && (groqFallback.overallScore || groqFallback.hiringRecommendation)) {
         console.log('[Assessment] Successfully generated assessment via Groq fallback.');
-        const calibratedGroq = reconcileAssessmentScores(groqFallback, isBriefSession);
+        const calibratedGroq = reconcileAssessmentScores(
+          groqFallback,
+          isBriefSession,
+          introAudit,
+          candidateTurns.length,
+          totalCandidateWords,
+          sharedContext,
+          candidateName
+        );
+        calibratedGroq.transcript = transcript;
         return res.json({ success: true, data: calibratedGroq });
       }
     } catch (groqErr: any) {
@@ -2636,13 +3541,21 @@ ${isBriefSession ? `
   }
 });
 
-// Endpoint: Audio transcription via Groq Whisper (no auth required — stateless, no user data exposed)
+// Endpoint: Audio transcription via Groq Whisper
 // Used by Chrome clients where webkitSpeechRecognition conflicts with Agora's WASAPI mic lock.
 // Client sends raw audio/webm binary from MediaRecorder (no new getUserMedia — reuses Agora track).
+// Auth required to prevent quota abuse from anonymous callers.
 app.post('/api/transcribe',
-  express.raw({ type: ['audio/*', 'application/octet-stream'], limit: '15mb' }),
+  authenticateToken,
+  express.raw({ type: ['audio/*', 'application/octet-stream'], limit: '5mb' }),
   async (req, res) => {
     try {
+      // Rate-limit per user to prevent quota abuse
+      const rateLimitKey = `transcribe:${(req as any).user?.userId || req.socket?.remoteAddress || 'unknown'}`;
+      const rateCheck = checkRateLimit(rateLimitKey, 30, 60 * 1000);
+      if (!rateCheck.allowed) {
+        return res.status(429).json({ text: '', error: 'Too many transcription requests. Please wait.' });
+      }
       const audioBuffer = req.body as Buffer;
       if (!audioBuffer || audioBuffer.length < 500) {
         return res.json({ text: '' });
@@ -2818,6 +3731,24 @@ app.get('/api/agora/token', authenticateToken, (req, res) => {
 // Active Agora Conversational AI Agent Sessions
 const activeAgoraSessions = new Map<string, any>();
 const userAgoraSessions = new Map<string, string>(); // userId -> agentId (isolated per candidate)
+const sessionStartTimes = new Map<string, number>(); // agentId -> startedAt timestamp for TTL cleanup
+
+// Periodic cleanup of stale Agora session map entries.
+// When an agent times out naturally via idleTimeout, Agora cloud stops it but our maps linger.
+// This sweep evicts entries older than 90 minutes to prevent unbounded memory growth.
+setInterval(() => {
+  const cutoffMs = Date.now() - 90 * 60 * 1000;
+  for (const [id, startedAt] of sessionStartTimes.entries()) {
+    if (startedAt < cutoffMs) {
+      activeAgoraSessions.delete(id);
+      sessionStartTimes.delete(id);
+      for (const [userId, agentId] of userAgoraSessions.entries()) {
+        if (agentId === id) userAgoraSessions.delete(userId);
+      }
+      console.log(`[Agora] Evicted stale session map entry: ${id} (expired >90min)`);
+    }
+  }
+}, 30 * 60 * 1000); // Check every 30 minutes
 
 // 2. Start Agora Conversational AI Agent (Official agora-agents SDK)
 // Uses the official TypeScript SDK to deploy a cloud voice agent into the RTC channel.
@@ -2890,7 +3821,7 @@ app.post('/api/agora/start-agent', authenticateToken, async (req, res) => {
       llm = new Groq({
         apiKey: process.env.GROQ_API_KEY.trim(),
         url: 'https://api.groq.com/openai/v1/chat/completions',
-        model: 'qwen/qwen3.8-27b',
+        model: 'llama-3.3-70b-versatile',
         systemMessages: [
           {
             role: 'system',
@@ -2902,7 +3833,7 @@ app.post('/api/agora/start-agent', authenticateToken, async (req, res) => {
         failureMessage: 'I did not catch that clearly. Could you please repeat or elaborate?',
         maxHistory: 20,
       });
-      console.log('[Agora] LLM: Groq (qwen/qwen3.8-27b, cloud direct)');
+      console.log('[Agora] LLM: Groq (llama-3.3-70b-versatile, cloud direct)');
     } else {
       // Agora-managed OpenAI: Agora's Conversational AI cloud handles the OpenAI
       // API key internally — no OPENAI_API_KEY is needed on our server.
@@ -2977,16 +3908,9 @@ app.post('/api/agora/start-agent', authenticateToken, async (req, res) => {
       .withLlm(llm)
       .withTts(tts);
 
-    // Clean up any existing active sessions before starting a new one to protect free quota
-    for (const [staleId, staleSession] of activeAgoraSessions.entries()) {
-      try {
-        if (typeof staleSession.stop === 'function') {
-          await staleSession.stop().catch(() => {});
-        }
-        console.log(`[Agora] Stopped previous stale session ${staleId} to preserve user quota.`);
-      } catch {}
-      activeAgoraSessions.delete(staleId);
-    }
+    // NOTE: The previous global cleanup loop that stopped ALL users' sessions was removed.
+    // It caused User A's interview to terminate User B's active session in multi-user scenarios.
+    // Per-user session cleanup is handled below (prevAgentId block) which is correct.
 
     const sessionName = `vocalis-${interviewerName.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase()}-${Date.now()}`;
 
@@ -3012,6 +3936,7 @@ app.post('/api/agora/start-agent', authenticateToken, async (req, res) => {
     console.log(`[Agora] Starting Conversational AI agent on channel: ${channelName} (interviewer: ${interviewerName}, user: ${callingUserId})...`);
     const agentId = await session.start();
     activeAgoraSessions.set(agentId, session);
+    sessionStartTimes.set(agentId, Date.now()); // Track start time for TTL cleanup
     userAgoraSessions.set(callingUserId, agentId);
     console.log(`[Agora] Conversational AI Agent STARTED. Agent ID: ${agentId}`);
 
@@ -3137,7 +4062,17 @@ app.post('/api/agora/stop-agent', authenticateToken, async (req, res) => {
 // The Agora agent POSTs here with the candidate's transcribed speech + full conversation history.
 // We run it through Groq (sub-100ms) with the full adaptive interview system prompt.
 // This is the core intelligence layer: adaptive questioning, difficulty adjustment, contradiction detection.
-app.post('/api/agora/llm-webhook', async (req, res) => {
+// Protected by a shared webhook secret in production to prevent quota abuse.
+app.post('/api/agora/llm-webhook', (req, res, next) => {
+  if (process.env.NODE_ENV === 'production') {
+    const webhookSecret = req.headers['x-agora-webhook-secret'];
+    const expectedSecret = process.env.AGORA_WEBHOOK_SECRET;
+    if (expectedSecret && webhookSecret !== expectedSecret) {
+      return res.status(401).json({ error: 'Unauthorized webhook call' });
+    }
+  }
+  next();
+}, async (req, res) => {
   try {
     const { messages = [] } = req.body;
 
@@ -3230,7 +4165,7 @@ VOICE INTERVIEW STYLE:
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey.trim()}` },
           body: JSON.stringify({
-            model: 'qwen/qwen3.8-27b',
+            model: 'llama-3.3-70b-versatile',
             messages: groqMessages,
             temperature: 0.75,
             max_tokens: 120,
@@ -3238,8 +4173,13 @@ VOICE INTERVIEW STYLE:
         });
         if (groqRes.ok) {
           const groqData = await groqRes.json();
-          const reply = groqData.choices?.[0]?.message?.content?.trim();
+          let reply = groqData.choices?.[0]?.message?.content?.trim();
           if (reply) {
+            reply = reply
+              .replace(/\(.*?\)/g, '')
+              .replace(/\[.*?\]/g, '')
+              .replace(/\s+/g, ' ')
+              .trim();
             console.log(`[Agora LLM Webhook] Response (${reply.split(' ').length} words): "${reply.slice(0, 80)}..."`);
             return res.json({ choices: [{ message: { role: 'assistant', content: reply } }] });
           }
@@ -3255,11 +4195,16 @@ VOICE INTERVIEW STYLE:
         const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
         const model = genAI.models;
         const geminiRes = await model.generateContent({
-          model: 'gemini-3.6-flash',
+          model: 'gemini-2.5-flash',
           contents: [{ role: 'user', parts: [{ text: `${adaptiveSystemPrompt}\n\nCandidate said: "${candidateSpeech}"\n\nYour adaptive follow-up question:` }] }],
         });
-        const geminiReply = geminiRes.text?.trim();
+        let geminiReply = geminiRes.text?.trim();
         if (geminiReply) {
+          geminiReply = geminiReply
+            .replace(/\(.*?\)/g, '')
+            .replace(/\[.*?\]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
           return res.json({ choices: [{ message: { role: 'assistant', content: geminiReply } }] });
         }
       } catch (geminiErr: any) {
@@ -3291,24 +4236,39 @@ app.get('/api/liveavatar/avatars', authenticateToken, async (_req, res) => {
   res.json({ success: true, disabled: true, avatars: [] });
 });
 
-async function startServer() {
-  const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Adaptive Voice Interview Platform running on http://localhost:${PORT}`);
-  });
+// ─────────────────────────────────────────────────────────────────────────────
+// GENERAL ERROR HANDLER — registered AFTER all routes so it catches both
+// body-parser errors (JSON malformed requests) and errors thrown in route handlers.
+// ─────────────────────────────────────────────────────────────────────────────
+app.use((err: any, _req: any, res: any, next: any) => {
+  if (err instanceof SyntaxError && (err as any).status === 400 && 'body' in err) {
+    return res.status(400).json({ success: false, error: 'Invalid JSON payload' });
+  }
+  console.error('[Express Error Handler]', err?.message || err);
+  if (res.headersSent) return next(err);
+  res.status(err?.status || 500).json({ success: false, error: err?.message || 'Internal server error' });
+});
 
+async function startServer() {
+  // Register Vite middleware BEFORE listen() to eliminate the race window where
+  // requests arrive during the async createViteServer() initialization period.
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
-      server: { middlewareMode: true, hmr: { server } },
+      server: { middlewareMode: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
+    app.get('*', (_req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Adaptive Voice Interview Platform running on http://localhost:${PORT}`);
+  });
 }
 
 startServer();

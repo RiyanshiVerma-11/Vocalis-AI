@@ -68,6 +68,20 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
   const [panelStrictness, setPanelStrictness] = useState<'Supportive' | 'Balanced' | 'Strict' | 'Relentless Bar Raiser'>('Balanced');
   const [customTradeOffConstraints, setCustomTradeOffConstraints] = useState<string>('');
 
+  // ── Experience Level & Company (manually set before interview) ──
+  const [experienceLevel, setExperienceLevel] = useState<'Fresher' | 'Junior' | 'Mid-level' | 'Senior'>(() => {
+    if (defaultResumeObj.yearsOfExperience === 0) return 'Fresher';
+    if (defaultResumeObj.yearsOfExperience && defaultResumeObj.yearsOfExperience > 0) {
+      if (defaultResumeObj.yearsOfExperience <= 2) return 'Junior';
+      if (defaultResumeObj.yearsOfExperience <= 5) return 'Mid-level';
+      return 'Senior';
+    }
+    return 'Fresher';
+  });
+  const [currentCompany, setCurrentCompany] = useState<string>(() => {
+    return defaultResumeObj.workExperience?.[0]?.company || '';
+  });
+
   // Active hiring requisition from recruiter
   const [activeReq] = useState<any>(() => {
     try {
@@ -195,6 +209,15 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
     if (preset.headline) {
       setTargetRole(preset.headline);
     }
+    if (preset.yearsOfExperience === 0) {
+      setExperienceLevel('Fresher');
+      setCurrentCompany('');
+    } else if (preset.yearsOfExperience && preset.yearsOfExperience > 0) {
+      if (preset.yearsOfExperience <= 2) setExperienceLevel('Junior');
+      else if (preset.yearsOfExperience <= 5) setExperienceLevel('Mid-level');
+      else setExperienceLevel('Senior');
+      setCurrentCompany(preset.workExperience?.[0]?.company || '');
+    }
   };
 
   const [resumeStatusMsg, setResumeStatusMsg] = useState<string | null>(null);
@@ -210,6 +233,21 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
       setSelectedResumeId(parsed.id);
       setCandidateName(parsed.fullName);
       setTargetRole(parsed.headline);
+      if (parsed.yearsOfExperience !== undefined) {
+        if (parsed.yearsOfExperience === 0) {
+          setExperienceLevel('Fresher');
+          setCurrentCompany('');
+        } else if (parsed.yearsOfExperience <= 2) {
+          setExperienceLevel('Junior');
+        } else if (parsed.yearsOfExperience <= 5) {
+          setExperienceLevel('Mid-level');
+        } else {
+          setExperienceLevel('Senior');
+        }
+      }
+      if (parsed.workExperience && parsed.workExperience.length > 0 && parsed.workExperience[0].company) {
+        setCurrentCompany(parsed.workExperience[0].company);
+      }
       setResumeStatusMsg(`✓ Resume Loaded: ${parsed.fullName} (${parsed.headline}) — ${parsed.notableProjects?.length || 0} Projects Detected`);
       setTimeout(() => setResumeStatusMsg(null), 5000);
     } catch {
@@ -246,10 +284,50 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
     }
     setResumeGateError(null);
 
+    // Merge manually-entered experience + company into the candidateProfile
+    const expYearsMap: Record<string, number> = {
+      'Fresher': 0,
+      'Junior': 1.5,
+      'Mid-level': 4,
+      'Senior': 7,
+    };
+    // Manual choice takes absolute priority:
+    const resolvedYears = experienceLevel === 'Fresher'
+      ? 0
+      : (currentResume.yearsOfExperience && currentResume.yearsOfExperience > 0)
+        ? currentResume.yearsOfExperience
+        : (expYearsMap[experienceLevel] ?? 1);
+
+    const hasManualCompany = currentCompany.trim().length > 0 && experienceLevel !== 'Fresher';
+    const companyClean = currentCompany.trim();
+
+    let resolvedWorkExp = currentResume.workExperience ? [...currentResume.workExperience] : [];
+    if (experienceLevel === 'Fresher') {
+      // Clear non-internship corporate roles so panel never assumes senior full-time employment
+      resolvedWorkExp = resolvedWorkExp.filter((w: any) => (w.role || '').toLowerCase().includes('intern'));
+    } else if (hasManualCompany) {
+      const existingIdx = resolvedWorkExp.findIndex((w: any) => (w.company || '').toLowerCase() === companyClean.toLowerCase());
+      if (existingIdx >= 0) {
+        resolvedWorkExp[existingIdx] = {
+          ...resolvedWorkExp[existingIdx],
+          company: companyClean,
+        };
+      } else {
+        resolvedWorkExp.unshift({
+          company: companyClean,
+          role: targetRole.trim() || 'Software Engineer',
+          duration: `${resolvedYears > 1 ? Math.floor(resolvedYears) : 1}+ year${resolvedYears !== 1 ? 's' : ''}`,
+          highlights: [],
+        });
+      }
+    }
+
     const candidateProfile: CandidateResume = {
       ...currentResume,
       fullName: candidateName.trim() || currentResume.fullName,
       headline: targetRole.trim() || currentResume.headline,
+      yearsOfExperience: resolvedYears,
+      workExperience: resolvedWorkExp,
       city: currentResume.city || currentUser?.city,
       state: currentResume.state || currentUser?.state,
       country: currentResume.country || currentUser?.country,
@@ -648,6 +726,82 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
             </div>
           </div>
         </div>
+
+        {/* Experience Level & Company Manual Setup */}
+        <div className="pt-3 border-t border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-800 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Briefcase className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Experience Level (Confirmation):</span>
+              </span>
+              <span className="text-[10px] font-mono text-indigo-600 font-bold bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                {experienceLevel === 'Fresher' ? '0 years (Student / Fresher)' : experienceLevel === 'Junior' ? '1-3 years' : experienceLevel === 'Mid-level' ? '3-6 years' : '6+ years'}
+              </span>
+            </label>
+            <div className="grid grid-cols-4 gap-1.5">
+              {(['Fresher', 'Junior', 'Mid-level', 'Senior'] as const).map((lvl) => (
+                <button
+                  key={lvl}
+                  type="button"
+                  onClick={() => {
+                    setExperienceLevel(lvl);
+                    if (lvl === 'Fresher') setCurrentCompany('');
+                  }}
+                  className={`py-2 px-1.5 rounded-xl border text-[11px] font-bold transition cursor-pointer text-center ${
+                    experienceLevel === lvl
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs ring-1 ring-indigo-400'
+                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  <div>{lvl}</div>
+                  <div className={`text-[9px] mt-0.5 font-mono ${experienceLevel === lvl ? 'text-indigo-200' : 'text-slate-400'}`}>
+                    {lvl === 'Fresher' ? '0 yr' : lvl === 'Junior' ? '1-3 yr' : lvl === 'Mid-level' ? '3-6 yr' : '6+ yr'}
+                  </div>
+                </button>
+              ))}
+            </div>
+            {experienceLevel === 'Fresher' && (
+              <p className="text-[11px] text-emerald-700 bg-emerald-50/80 p-2 rounded-lg border border-emerald-200 font-medium leading-relaxed">
+                🎓 <strong>Fresher Track:</strong> Interview questions will focus on your college projects, core CS fundamentals, internships, and algorithmic problem-solving.
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            {experienceLevel !== 'Fresher' ? (
+              <>
+                <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <UserCheck className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Current / Previous Company Name:</span>
+                </label>
+                <input
+                  type="text"
+                  value={currentCompany}
+                  onChange={(e) => setCurrentCompany(e.target.value)}
+                  placeholder="e.g. Infosys, TCS, Google, CommAI, Startup..."
+                  className="w-full bg-slate-50 rounded-xl px-3.5 py-2 text-xs text-slate-900 border border-slate-200 focus:border-indigo-600 focus:bg-white outline-none font-medium"
+                />
+                <p className="text-[10px] text-slate-500">
+                  {currentCompany.trim() ? (
+                    <span className="text-indigo-700 font-semibold">
+                      ✨ AI interviewers will probe architectural decisions and projects at <strong>{currentCompany.trim()}</strong>.
+                    </span>
+                  ) : (
+                    'Enter your company name so panelists can ask questions tailored to your experience there.'
+                  )}
+                </p>
+              </>
+            ) : (
+              <div className="h-full flex flex-col justify-center p-3 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-slate-500 text-xs">
+                <span className="font-bold text-slate-700">No Corporate Experience Required</span>
+                <span className="text-[11px] mt-0.5 text-slate-500">
+                  As a fresher, your interview questions will be calibrated around academic foundations, hands-on projects, and problem-solving agility.
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* STEP 2: Job Role / Track Selection (Segmented Toggle) */}
@@ -852,30 +1006,38 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
                 <Sliders className="w-3.5 h-3.5 text-indigo-600" />
                 <span>Difficulty Tier</span>
               </label>
-              <div className="grid grid-cols-2 gap-2">
-                {(['Foundational', 'Intermediate', 'Senior', 'Staff/Principal'] as DifficultyLevel[]).map(
-                  (diff) => (
-                    <button
-                      key={diff}
-                      type="button"
-                      onClick={() => setSelectedDifficulty(diff)}
-                      className={`text-xs py-2 px-3 rounded-xl font-bold border transition cursor-pointer flex items-center justify-between ${
-                        selectedDifficulty === diff
-                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
-                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      <span>{diff}</span>
-                      {diff === 'Intermediate' && (
-                        <span className={`text-[9px] px-1.5 py-0.2 rounded uppercase font-black ${
-                          selectedDifficulty === diff ? 'bg-indigo-700 text-indigo-100' : 'bg-indigo-100 text-indigo-700'
-                        }`}>
-                          Default
-                        </span>
-                      )}
-                    </button>
-                  )
-                )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {[
+                  { diff: 'Foundational' as DifficultyLevel, time: '15 min', focus: 'Basic logic & tech stack' },
+                  { diff: 'Intermediate' as DifficultyLevel, time: '25 min', focus: 'APIs, caching & queries' },
+                  { diff: 'Senior' as DifficultyLevel, time: '45 min', focus: 'Architecture & high scale' },
+                  { diff: 'Staff/Principal' as DifficultyLevel, time: '55 min', focus: 'Enterprise systems & vision' },
+                ].map(({ diff, time, focus }) => (
+                  <button
+                    key={diff}
+                    type="button"
+                    onClick={() => setSelectedDifficulty(diff)}
+                    className={`p-2.5 rounded-xl border transition cursor-pointer text-left flex flex-col justify-between ${
+                      selectedDifficulty === diff
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm ring-1 ring-indigo-500'
+                        : 'bg-slate-50 text-slate-800 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <span className="text-xs font-black">{diff}</span>
+                      <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                        selectedDifficulty === diff ? 'bg-indigo-700 text-indigo-100' : 'bg-slate-200 text-slate-700'
+                      }`}>
+                        ⏱️ {time}
+                      </span>
+                    </div>
+                    <span className={`text-[10px] mt-1 font-medium ${
+                      selectedDifficulty === diff ? 'text-indigo-100' : 'text-slate-500'
+                    }`}>
+                      {focus}
+                    </span>
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -890,7 +1052,55 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
               />
             </div>
 
-            {/* Recruiter Persona Strictness Calibration */}
+            {/* ── Experience Level + Company (Manual Quick Fill) ── */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-800 flex items-center gap-1">
+                <Briefcase className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Experience Level</span>
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {(['Fresher', 'Junior', 'Mid-level', 'Senior'] as const).map((lvl) => (
+                  <button
+                    key={lvl}
+                    type="button"
+                    onClick={() => {
+                      setExperienceLevel(lvl);
+                      if (lvl === 'Fresher') setCurrentCompany('');
+                    }}
+                    className={`py-2 px-2.5 rounded-xl border text-[11px] font-bold transition cursor-pointer text-center ${
+                      experienceLevel === lvl
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm ring-1 ring-indigo-400'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div>{lvl}</div>
+                    <div className={`text-[9px] mt-0.5 font-mono ${ experienceLevel === lvl ? 'text-indigo-200' : 'text-slate-400'}`}>
+                      {lvl === 'Fresher' ? '0 yr' : lvl === 'Junior' ? '1-3 yr' : lvl === 'Mid-level' ? '3-6 yr' : '6+ yr'}
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              {/* Company name — only shown when candidate has experience */}
+              {experienceLevel !== 'Fresher' && (
+                <div className="pt-1 space-y-1 animate-in fade-in slide-in-from-top-1 duration-200">
+                  <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+                    <UserCheck className="w-3 h-3 text-indigo-500" />
+                    <span>Current / Previous Company Name <span className="text-slate-400 font-normal">(optional)</span></span>
+                  </label>
+                  <input
+                    id="current-company-input"
+                    type="text"
+                    value={currentCompany}
+                    onChange={(e) => setCurrentCompany(e.target.value)}
+                    placeholder={`e.g. Infosys, TCS, Google, Startup...`}
+                    className="w-full bg-slate-50 rounded-xl px-3.5 py-2 text-xs text-slate-900 border border-slate-200 focus:border-indigo-600 focus:bg-white outline-none font-medium"
+                  />
+                  <p className="text-[10px] text-slate-500">The AI panel will naturally reference this company during technical questions.</p>
+                </div>
+              )}
+            </div>
+
             <div className="space-y-1.5 pt-2 border-t border-slate-100">
               <label className="text-xs font-bold text-slate-800 flex items-center justify-between">
                 <span>Panel Strictness & Tone Bar</span>

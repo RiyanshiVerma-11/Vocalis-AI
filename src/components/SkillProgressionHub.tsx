@@ -4,7 +4,7 @@ import {
   ArchivedSession,
   AggregatedGrowthMetrics,
 } from '../services/sessionHistoryService';
-import { StructuredAssessment } from '../types';
+import { StructuredAssessment, UserSession } from '../types';
 import {
   TrendingUp,
   Award,
@@ -46,7 +46,7 @@ const addNotification = (session: ArchivedSession, candidateName: string) => {
   localStorage.setItem(NOTIF_KEY, JSON.stringify([notif, ...existing].slice(0, 50)));
 };
 
-interface SkillProgressionHubProps {
+export interface SkillProgressionHubProps {
   onSelectAssessment: (assessment: StructuredAssessment) => void;
   onBackToStudio: () => void;
   candidateName?: string;
@@ -54,6 +54,7 @@ interface SkillProgressionHubProps {
   candidateLocation?: string;
   /** 'candidate' shows the coaching dashboard; 'recruiter' shows the hiring analytics view */
   viewerRole?: 'candidate' | 'recruiter';
+  currentUser?: UserSession | null;
 }
 
 export const SkillProgressionHub: React.FC<SkillProgressionHubProps> = ({
@@ -63,10 +64,12 @@ export const SkillProgressionHub: React.FC<SkillProgressionHubProps> = ({
   targetRole = 'Senior / Staff Software Engineer',
   candidateLocation,
   viewerRole = 'candidate',
+  currentUser,
 }) => {
   // All hooks must be at top level (React rules)
-  const [sessions, setSessions] = useState<ArchivedSession[]>(() => sessionHistoryService.getStoredSessions());
-  const [metrics, setMetrics] = useState<AggregatedGrowthMetrics>(() => sessionHistoryService.getAggregatedGrowthMetrics());
+  const userId = currentUser?.id;
+  const [sessions, setSessions] = useState<ArchivedSession[]>(() => sessionHistoryService.getStoredSessions(userId));
+  const [metrics, setMetrics] = useState<AggregatedGrowthMetrics>(() => sessionHistoryService.getAggregatedGrowthMetrics(userId));
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'Hire' | 'NoHire'>('all');
   const [recruiterNotifs, setRecruiterNotifs] = useState(() => getNotifications());
 
@@ -79,6 +82,7 @@ export const SkillProgressionHub: React.FC<SkillProgressionHubProps> = ({
         candidateName={candidateName}
         targetRole={targetRole}
         candidateLocation={candidateLocation}
+        currentUser={currentUser}
         onNotifyRecruiter={(session) => {
           addNotification(session, candidateName);
           setRecruiterNotifs(getNotifications());

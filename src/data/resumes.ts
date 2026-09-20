@@ -170,47 +170,35 @@ export function getResumeById(id: string): CandidateResume {
   return RESUME_PRESETS.find((r) => r.id === id) || DEFAULT_RESUME;
 }
 
+// Creates a minimal identity-only profile when no resume has been uploaded.
+// ⚠️ IMPORTANT: ALL fields that carry invented data are intentionally left empty.
+// The LLM will ask questions purely based on what the candidate says during their
+// spoken introduction — exactly like a real interviewer who hasn't seen a resume.
 export function createDefaultCandidateResume(fullName: string, headline?: string): CandidateResume {
-  const name = fullName.trim() || 'Candidate User';
-  const roleHeadline = headline?.trim() || 'Full-Stack & AI Systems Engineer';
+  const name = fullName.trim() || 'Candidate';
+  const roleHeadline = headline?.trim() || '';
   return {
     id: `user-profile-${name.toLowerCase().replace(/[^a-z0-9]/g, '-') || 'default'}`,
     fullName: name,
     headline: roleHeadline,
-    yearsOfExperience: 3,
-    location: 'Remote / Open to Relocation',
-    summary: `Candidate profile for ${name}. Experienced software engineer with expertise in scalable web architectures, AI integration, and core software design patterns.`,
+    // yearsOfExperience intentionally omitted — LLM will infer from spoken intro
+    yearsOfExperience: 0,
+    location: '',
+    summary: '',
+    // No skills injected — avoids LLM assuming tech stack candidate didn't mention
     skills: {
-      coreArchitecture: ['System Architecture', 'Microservices', 'RESTful APIs', 'State Management'],
-      languagesAndFrameworks: ['TypeScript', 'JavaScript', 'React', 'Node.js', 'Python'],
-      cloudAndInfrastructure: ['Cloud Native Services', 'Docker', 'PostgreSQL', 'Redis'],
-      practicesAndMethodologies: ['Agile / Scrum', 'CI/CD Pipelines', 'Code Review', 'Clean Architecture'],
+      coreArchitecture: [],
+      languagesAndFrameworks: [],
+      cloudAndInfrastructure: [],
+      practicesAndMethodologies: [],
     },
-    workExperience: [
-      {
-        company: 'Software Engineering Services',
-        role: roleHeadline,
-        duration: '2022 - Present',
-        highlights: [
-          'Architected high-throughput web applications and AI-driven workflow engines.',
-          'Optimized database queries and API response times for enhanced end-user experience.',
-        ],
-      },
-    ],
-    education: [
-      {
-        institution: 'University / Institute of Technology',
-        degree: 'B.S. in Computer Science / Engineering',
-        year: '2022',
-      },
-    ],
-    notableProjects: [
-      {
-        name: 'AI-Powered Scalable Web Platform',
-        description: 'Designed and deployed an end-to-end full-stack web platform with real-time API integrations and cloud infrastructure.',
-        metrics: 'Sub-100ms response time, 99.9% availability',
-      },
-    ],
+    // No work experience invented — LLM probes only what candidate says
+    workExperience: [],
+    // No education invented — LLM probes only what candidate says
+    education: [],
+    // CRITICAL: Empty projects — never ask about projects the candidate didn't mention
+    notableProjects: [],
+    achievements: [],
   };
 }
 

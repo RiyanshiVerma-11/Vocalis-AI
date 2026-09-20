@@ -318,12 +318,23 @@ export function parseResumeText(rawText: string, fallbackName?: string): Candida
     }
   }
 
-  if (notableProjects.length === 0) {
-    notableProjects.push({
-      name: `${languagesAndFrameworks[0] || 'AI'} Engineering Platform`,
-      description: summary || text.slice(0, 200),
-      metrics: 'End-to-end features & technical design',
-    });
+  // ── 7. ACHIEVEMENTS & AWARDS ─────────────────────────────────────────────
+  const achievements: string[] = [];
+  const achBlockMatch = text.match(/(?:ACHIEVEMENTS?|HONORS?|AWARDS?|ACCOMPLISHMENTS?|RECOGNITION)([\s\S]*?)(?:PROJECTS?|EXPERIENCE|EDUCATION|SKILLS|CERTIFICATIONS?|TECHNICAL|$)/i);
+  if (achBlockMatch && achBlockMatch[1]) {
+    const achLines = achBlockMatch[1]
+      .split('\n')
+      .map((l) => l.replace(/^[•\-*–—\d.)\s]+/, '').trim())
+      .filter((l) => l.length >= 8 && !/^(ACHIEVEMENTS?|HONORS?|AWARDS?|ACCOMPLISHMENTS?|RECOGNITION)$/i.test(l));
+    achievements.push(...achLines.slice(0, 6));
+  }
+
+  // Also check inline mentions of rankings or hackathons if section was absent
+  if (achievements.length === 0) {
+    const inlineMatches = text.match(/(?:Rank\s*\d+|Winner|Finalist|\b1st\b|\b2nd\b|\b3rd\b|Top\s*\d+%?|Hackathon|Published|Certified|Scholarship)[^\n.]{10,80}/gi);
+    if (inlineMatches) {
+      achievements.push(...inlineMatches.slice(0, 4).map((s) => s.trim()));
+    }
   }
 
   return {
@@ -345,6 +356,7 @@ export function parseResumeText(rawText: string, fallbackName?: string): Candida
     workExperience,
     education,
     notableProjects,
+    achievements,
     rawText: text,
   };
 }
@@ -382,51 +394,14 @@ export function generatePersonalizedOpening(
   difficulty: DifficultyLevel = 'Intermediate',
   strictness: string = 'Balanced'
 ): string {
-  const otherMembers = activePanel
-    .filter((p) => p.id !== initialSpeaker.id)
-    .map((p) => `${p.name} (${p.title})`);
-
-  let otherMembersFormatted = '';
-  if (otherMembers.length === 1) {
-    otherMembersFormatted = otherMembers[0];
-  } else if (otherMembers.length === 2) {
-    otherMembersFormatted = `${otherMembers[0]} and ${otherMembers[1]}`;
-  } else if (otherMembers.length > 2) {
-    otherMembersFormatted = `${otherMembers.slice(0, -1).join(', ')}, and ${otherMembers[otherMembers.length - 1]}`;
-  }
-
-  const panelIntro = otherMembersFormatted
-    ? `I am ${initialSpeaker.name} (${initialSpeaker.title}), joined by ${otherMembersFormatted}.`
-    : `I am ${initialSpeaker.name} (${initialSpeaker.title}).`;
-
   const validName =
     candidateResume.fullName && candidateResume.fullName !== 'Candidate' && candidateResume.fullName !== 'SUMMARY'
-      ? candidateResume.fullName
+      ? candidateResume.fullName.split(' ')[0]
       : '';
 
   const greeting = validName ? `Welcome ${validName}!` : 'Welcome!';
 
-  const projNames =
-    candidateResume.notableProjects && candidateResume.notableProjects.length > 0
-      ? candidateResume.notableProjects.map((p) => p.name.split('(')[0].trim()).slice(0, 2).join(' and ')
-      : '';
-
-  // If scenario is custom-freeform or personalized interview, ask directly about candidate's resume projects
-  // Standard real-world opening: warm welcome, panel introduction, and natural 'introduce yourself'
-  if (
-    !scenario ||
-    scenario.id === 'custom-freeform' ||
-    scenario.id === 'candidate-personalized-interview'
-  ) {
-    return `${greeting} ${panelIntro} It's wonderful to meet you today. To kick things off: Could you please introduce yourself and tell us a bit about your journey, your background, and what you're passionate about?`;
-  }
-
-  // For simulation scenarios (like PS11 cache invalidation or outage post-mortems), frame clearly as a technical case study
-  const headlineRef = candidateResume.headline ? ` in ${candidateResume.headline}` : '';
-  const cleanScenarioPrompt = scenario.starterPrompt
-    ? scenario.starterPrompt.replace(/^Welcome![^:]*:\s*/i, '').replace(/^Hello,[^:]*:\s*/i, '')
-    : scenario.context || '';
-
-  return `${greeting} ${panelIntro} We reviewed your background${headlineRef}. For today's technical case study: ${cleanScenarioPrompt}`;
+  // Clean, fast, direct opening: warm welcome and immediate intro prompt (no wasting time listing the entire panel)
+  return `${greeting} Great to have you with us today. To kick off our interview, please go ahead and introduce yourself—tell us a bit about your journey, your technical background, and what you've been working on recently.`;
 }
 

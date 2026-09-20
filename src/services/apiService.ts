@@ -20,6 +20,8 @@ export interface TurnResponseData {
   internalThought: string;
   turnTakingReason: string;
   interviewPhase?: 1 | 2 | 3 | 4 | 5;
+  currentStage?: 1 | 2 | 3 | 4 | 5;
+  isInterviewComplete?: boolean;
   activeTopic?: string;
   topicTurnCount?: number;
   anchoredResumeEntity?: string;

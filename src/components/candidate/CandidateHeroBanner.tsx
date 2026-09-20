@@ -101,30 +101,30 @@ export const CandidateHeroBanner: React.FC<CandidateHeroBannerProps> = ({
           {
             label: 'Sessions Done',
             value: `${metrics.totalSessions}`,
-            sub: 'practice loops',
+            sub: metrics.totalSessions === 1 ? '1 practice loop' : 'practice loops',
             icon: <BookOpen className="w-3.5 h-3.5 text-indigo-400" />,
           },
           {
             label: 'Latest Score',
-            value: `${latestScore}%`,
-            sub: scoreLabel.label,
+            value: metrics.totalSessions === 0 ? '—' : `${latestScore}%`,
+            sub: metrics.totalSessions === 0 ? 'Not yet started' : scoreLabel.label,
             icon: <Trophy className="w-3.5 h-3.5 text-amber-400" />,
-            color: latestScore >= 70 ? 'text-emerald-400' : latestScore >= 50 ? 'text-amber-400' : 'text-rose-400',
+            color: metrics.totalSessions === 0 ? 'text-slate-400' : latestScore >= 70 ? 'text-emerald-400' : latestScore >= 50 ? 'text-amber-400' : 'text-rose-400',
           },
           {
             label: 'Average Score',
-            value: `${metrics.averageScore}%`,
-            sub: 'across all sessions',
+            value: metrics.totalSessions === 0 ? '—' : `${metrics.averageScore}%`,
+            sub: metrics.totalSessions === 0 ? 'Start first interview' : 'across all sessions',
             icon: <BarChart3 className="w-3.5 h-3.5 text-blue-400" />,
           },
           {
-            label: '3-Month Change',
-            value: `${metrics.scoreDelta >= 0 ? '+' : ''}${metrics.scoreDelta}%`,
-            sub: `${metrics.firstSessionScore}% → ${metrics.latestSessionScore}%`,
+            label: 'Growth Progress',
+            value: metrics.totalSessions <= 1 ? '—' : `${metrics.scoreDelta >= 0 ? '+' : ''}${metrics.scoreDelta}%`,
+            sub: metrics.totalSessions <= 1 ? 'Benchmark established' : `${metrics.firstSessionScore}% → ${metrics.latestSessionScore}%`,
             icon: metrics.scoreDelta >= 0
               ? <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" />
               : <ArrowDownRight className="w-3.5 h-3.5 text-rose-400" />,
-            color: metrics.scoreDelta >= 0 ? 'text-emerald-400' : 'text-rose-400',
+            color: metrics.totalSessions <= 1 ? 'text-slate-400' : metrics.scoreDelta >= 0 ? 'text-emerald-400' : 'text-rose-400',
           },
         ].map((stat) => (
           <div key={stat.label} className="bg-white/5 backdrop-blur-sm rounded-lg p-2.5 border border-white/10 space-y-0.5">
