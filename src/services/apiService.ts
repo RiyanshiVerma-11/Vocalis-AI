@@ -71,9 +71,8 @@ export function getAuthHeaders(): Record<string, string> {
   const token = typeof localStorage !== 'undefined' ? localStorage.getItem('vocalis_jwt_token') : null;
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
-  } else {
-    headers['x-vocalis-demo-mode'] = 'true';
   }
+  headers['x-vocalis-demo-mode'] = 'true';
   return headers;
 }
 

@@ -184,6 +184,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       onLoginSuccess(user);
     } catch (err: any) {
       console.warn('[Demo Auth Fallback]', err);
+      try {
+        localStorage.removeItem('vocalis_jwt_token');
+      } catch {}
       const isRecruiter = preset.role === 'recruiter';
       const companySpecs = isRecruiter ? {
         companyName: 'Stripe Payments',
