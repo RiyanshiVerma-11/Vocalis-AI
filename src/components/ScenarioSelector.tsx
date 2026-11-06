@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { InterviewScenario, Interviewer, InterviewerRole, DifficultyLevel, CandidateResume, UserSession } from '../types';
 import { INTERVIEW_SCENARIOS } from '../data/scenarios';
 import { ALL_INTERVIEWERS } from '../data/interviewers';
 import { RESUME_PRESETS, createDefaultCandidateResume } from '../data/resumes';
 import { parseResumeTextAsync } from '../utils/resumeParser';
+import { extractTextFromFile } from '../utils/rubricParser';
 import { generateDynamicPanel } from '../utils/dynamicPanelGenerator';
 import {
   Play,
@@ -18,6 +19,7 @@ import {
   Zap,
   CheckCircle2,
   UploadCloud,
+  Upload,
   Edit3,
   User as UserIcon,
   ChevronDown,
@@ -222,6 +224,76 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
 
   const [resumeStatusMsg, setResumeStatusMsg] = useState<string | null>(null);
   const [isParsing, setIsParsing] = useState(false);
+  const [resumeInputMode, setResumeInputMode] = useState<'upload' | 'preset' | 'paste'>('upload');
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
+  const resumeFileInputRef = useRef<HTMLInputElement>(null);
+
+  const applyParsedResumeData = (parsed: CandidateResume, sourceLabel?: string) => {
+    setCustomResume(parsed);
+    setSelectedResumeId(parsed.id);
+    setCandidateName(parsed.fullName);
+    setTargetRole(parsed.headline);
+    if (parsed.yearsOfExperience !== undefined) {
+      if (parsed.yearsOfExperience === 0) {
+        setExperienceLevel('Fresher');
+        setCurrentCompany('');
+      } else if (parsed.yearsOfExperience <= 2) {
+        setExperienceLevel('Junior');
+      } else if (parsed.yearsOfExperience <= 5) {
+        setExperienceLevel('Mid-level');
+      } else {
+        setExperienceLevel('Senior');
+      }
+    }
+    if (parsed.workExperience && parsed.workExperience.length > 0 && parsed.workExperience[0].company) {
+      setCurrentCompany(parsed.workExperience[0].company);
+    }
+    const label = sourceLabel ? `${sourceLabel}: ` : '';
+    setResumeStatusMsg(`✓ ${label}${parsed.fullName} (${parsed.headline}) — ${parsed.notableProjects?.length || 0} Projects Detected`);
+    setTimeout(() => setResumeStatusMsg(null), 6000);
+  };
+
+  const handleResumeFileUpload = async (file: File) => {
+    setIsParsing(true);
+    setResumeStatusMsg(`📄 Reading ${file.name}...`);
+    try {
+      const extractedText = await extractTextFromFile(file);
+
+      // Generate base64 fallback for server-side zlib decoding
+      let fileBase64: string | undefined;
+      try {
+        const arrayBuf = await file.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuf);
+        let binary = '';
+        const len = bytes.byteLength;
+        const chunkSize = 8192;
+        for (let i = 0; i < len; i += chunkSize) {
+          binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunkSize, len)));
+        }
+        fileBase64 = btoa(binary);
+      } catch (bErr) {
+        console.warn('Base64 encoding fallback skipped:', bErr);
+      }
+
+      // For PDFs or if client extraction yielded dictionary syntax, clear rawText to force server-side zlib decompression
+      const isPdfOrShort = file.name.toLowerCase().endsWith('.pdf') || !extractedText || extractedText.length < 50 || /<<\/Type|\/MediaBox/i.test(extractedText);
+      const cleanSendText = isPdfOrShort ? '' : extractedText;
+
+      setResumeStatusMsg('⏳ AI parsing resume structure & projects...');
+      const parsed = await parseResumeTextAsync(cleanSendText, candidateName || currentCandidateName || 'Candidate', {
+        fileBase64,
+        fileName: file.name,
+      });
+      setUploadedFileName(file.name);
+      applyParsedResumeData(parsed, file.name);
+    } catch (err: any) {
+      console.error('Resume document upload error:', err);
+      setResumeStatusMsg('⚠️ Document parsing error. Try pasting plain text.');
+    } finally {
+      setIsParsing(false);
+    }
+  };
 
   const handleApplyPastedResume = async () => {
     if (!pastedText.trim()) return;
@@ -229,27 +301,7 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
     setResumeStatusMsg('⏳ AI parsing your resume...');
     try {
       const parsed = await parseResumeTextAsync(pastedText, candidateName || currentCandidateName || 'Candidate');
-      setCustomResume(parsed);
-      setSelectedResumeId(parsed.id);
-      setCandidateName(parsed.fullName);
-      setTargetRole(parsed.headline);
-      if (parsed.yearsOfExperience !== undefined) {
-        if (parsed.yearsOfExperience === 0) {
-          setExperienceLevel('Fresher');
-          setCurrentCompany('');
-        } else if (parsed.yearsOfExperience <= 2) {
-          setExperienceLevel('Junior');
-        } else if (parsed.yearsOfExperience <= 5) {
-          setExperienceLevel('Mid-level');
-        } else {
-          setExperienceLevel('Senior');
-        }
-      }
-      if (parsed.workExperience && parsed.workExperience.length > 0 && parsed.workExperience[0].company) {
-        setCurrentCompany(parsed.workExperience[0].company);
-      }
-      setResumeStatusMsg(`✓ Resume Loaded: ${parsed.fullName} (${parsed.headline}) — ${parsed.notableProjects?.length || 0} Projects Detected`);
-      setTimeout(() => setResumeStatusMsg(null), 5000);
+      applyParsedResumeData(parsed);
     } catch {
       setResumeStatusMsg('⚠️ Parse failed, try again.');
     } finally {
@@ -534,73 +586,189 @@ export const ScenarioSelector: React.FC<ScenarioSelectorProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           {/* Left 2 Cols: Resume Section */}
           <div className="lg:col-span-2 space-y-2.5">
-            {currentUser?.isDemo || currentUser?.email?.endsWith('@vocalis.ai') ? (
-              <div className="p-4 bg-indigo-50/80 border border-indigo-200 rounded-xl space-y-2">
-                <div className="flex items-center gap-2 text-indigo-900 font-bold text-xs">
-                  <CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0" />
-                  <span>Demo Account Active — Prefilled Resume Loaded</span>
-                </div>
-                <p className="text-[11px] text-indigo-700 leading-relaxed">
-                  You are exploring in Demo Mode with a prefilled engineering resume profile (<strong>{currentResume.fullName}</strong> — <em>{currentResume.headline}</em>). You can start the interview directly!
-                </p>
-                <div className="text-[10px] text-slate-500 italic pt-1 border-t border-indigo-100">
-                  Note: Custom resume parsing and PDF uploads are enabled for registered user accounts.
-                </div>
+            <div className="space-y-3">
+              {/* Input Method Selector Tabs */}
+              <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setResumeInputMode('upload')}
+                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                    resumeInputMode === 'upload'
+                      ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/80'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <UploadCloud className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Upload PDF / DOCX</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setResumeInputMode('preset')}
+                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                    resumeInputMode === 'preset'
+                      ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/80'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <FileText className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Select Profile</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setResumeInputMode('paste')}
+                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                    resumeInputMode === 'paste'
+                      ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/80'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Edit3 className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Paste Text</span>
+                </button>
               </div>
-            ) : (
-              <>
-                <label className="text-xs font-bold text-slate-800 flex items-center justify-between">
-                  <span className="flex items-center gap-1.5">
-                    <UploadCloud className="w-4 h-4 text-indigo-600" />
-                    <span>Paste Your Full Resume or LinkedIn Bio:</span>
-                  </span>
-                  <span className="text-[11px] text-slate-400 font-normal">Auto-detects Name, Projects & Tech Stack</span>
-                </label>
-                <textarea
-                  rows={4}
-                  value={pastedText}
-                  onChange={(e) => setPastedText(e.target.value)}
-                  placeholder="Paste plain text resume here (e.g. Jordan Reed, B.Tech CSE Data Science, HospiSynAI, VoteWise AI, Infosys Springboard 7.0, Python, FastAPI, Docker, RAG...)"
-                  className="w-full bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs text-slate-900 focus:border-indigo-600 focus:bg-white outline-none font-sans"
-                />
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                  <button
-                    type="button"
-                    onClick={handleApplyPastedResume}
-                    disabled={isParsing}
-                    className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-extrabold px-4 py-2 rounded-xl text-xs flex items-center gap-2 shadow-xs cursor-pointer transition shrink-0"
-                  >
-                    {isParsing ? (
-                      <>
-                        <Sparkles className="w-4 h-4 animate-spin" />
-                        <span>AI Parsing Resume...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Check className="w-4 h-4" />
-                        <span>Parse Resume & Load Profile</span>
-                      </>
-                    )}
-                  </button>
 
-                  {resumeStatusMsg ? (
-                    <div className="px-3 py-1.5 bg-emerald-50 border border-emerald-300 rounded-lg text-emerald-800 text-[11px] font-bold flex items-center gap-1.5 animate-in fade-in">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                      <span>{resumeStatusMsg}</span>
+              {/* Mode 1: Direct Document Upload (PDF, DOCX, DOC, TXT) */}
+              {resumeInputMode === 'upload' && (
+                <div className="space-y-2">
+                  <input
+                    ref={resumeFileInputRef}
+                    type="file"
+                    accept=".pdf,.doc,.docx,.txt,.md,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        handleResumeFileUpload(e.target.files[0]);
+                      }
+                    }}
+                  />
+                  <div
+                    onClick={() => resumeFileInputRef.current?.click()}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setIsDraggingFile(true);
+                    }}
+                    onDragLeave={() => setIsDraggingFile(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setIsDraggingFile(false);
+                      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                        handleResumeFileUpload(e.dataTransfer.files[0]);
+                      }
+                    }}
+                    className={`border-2 border-dashed rounded-2xl p-5 text-center cursor-pointer transition flex flex-col items-center justify-center gap-2 ${
+                      isDraggingFile
+                        ? 'border-indigo-600 bg-indigo-50/80'
+                        : 'border-slate-300 hover:border-indigo-500 bg-slate-50/60 hover:bg-indigo-50/30'
+                    }`}
+                  >
+                    <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600 shadow-xs">
+                      {isParsing ? (
+                        <Sparkles className="w-6 h-6 animate-spin text-indigo-600" />
+                      ) : (
+                        <Upload className="w-6 h-6 text-indigo-600" />
+                      )}
                     </div>
-                  ) : isDemoUser ? (
-                    <span className="text-[11px] text-slate-500">
-                      Or choose a sample preset ➔
-                    </span>
-                  ) : (
-                    <span className="text-[11px] text-indigo-600 font-semibold flex items-center gap-1">
-                      <Edit3 className="w-3 h-3 text-indigo-500" />
-                      <span>Paste your resume to generate profile ➔</span>
-                    </span>
-                  )}
+                    <div>
+                      <p className="text-xs font-bold text-slate-800">
+                        {uploadedFileName ? (
+                          <span className="text-emerald-700 flex items-center justify-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Uploaded: {uploadedFileName}</span>
+                          </span>
+                        ) : (
+                          'Click to upload or drag & drop your resume'
+                        )}
+                      </p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Supports <strong>.pdf</strong>, <strong>.docx</strong>, <strong>.doc</strong>, or <strong>.txt</strong>
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="mt-1 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] shadow-xs transition"
+                    >
+                      {uploadedFileName ? 'Choose Different File' : 'Browse Document'}
+                    </button>
+                  </div>
                 </div>
-              </>
-            )}
+              )}
+
+              {/* Mode 2: Dropdown Preset Profiles */}
+              {resumeInputMode === 'preset' && (
+                <div className="space-y-2 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                  <label className="text-xs font-bold text-slate-800 flex items-center justify-between">
+                    <span>Select from Pre-Configured Engineering Profiles:</span>
+                    <span className="text-[10px] text-slate-500">Instant Practice</span>
+                  </label>
+                  <select
+                    value={selectedResumeId}
+                    onChange={(e) => {
+                      const found = RESUME_PRESETS.find((r) => r.id === e.target.value);
+                      if (found) handleResumeSelect(found);
+                    }}
+                    className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 font-medium focus:border-indigo-600 outline-none cursor-pointer"
+                  >
+                    <option value="" disabled>-- Choose a Candidate Profile --</option>
+                    {RESUME_PRESETS.map((preset) => (
+                      <option key={preset.id} value={preset.id}>
+                        {preset.fullName} — {preset.headline}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-slate-500">
+                    💡 Selecting a profile pre-populates target competencies, projects, and work history for the interview panel.
+                  </p>
+                </div>
+              )}
+
+              {/* Mode 3: Paste Plain Text */}
+              {resumeInputMode === 'paste' && (
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-800 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Edit3 className="w-4 h-4 text-indigo-600" />
+                      <span>Paste Your Full Resume or LinkedIn Bio:</span>
+                    </span>
+                    <span className="text-[11px] text-slate-400 font-normal">Auto-detects Name, Projects & Tech Stack</span>
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={pastedText}
+                    onChange={(e) => setPastedText(e.target.value)}
+                    placeholder="Paste plain text resume here (e.g. B.Tech CSE Data Science, projects, internships, Python, SQL, Docker...)"
+                    className="w-full bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs text-slate-900 focus:border-indigo-600 focus:bg-white outline-none font-sans"
+                  />
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={handleApplyPastedResume}
+                      disabled={isParsing || !pastedText.trim()}
+                      className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-extrabold px-4 py-2 rounded-xl text-xs flex items-center gap-2 shadow-xs cursor-pointer transition shrink-0"
+                    >
+                      {isParsing ? (
+                        <>
+                          <Sparkles className="w-4 h-4 animate-spin" />
+                          <span>AI Parsing Resume...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-4 h-4" />
+                          <span>Parse Resume & Load Profile</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Status Banner */}
+              {resumeStatusMsg && (
+                <div className="px-3.5 py-2 bg-emerald-50 border border-emerald-300 rounded-xl text-emerald-800 text-[11px] font-bold flex items-center gap-2 animate-in fade-in">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                  <span>{resumeStatusMsg}</span>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Right 1 Col: Active Candidate Profile Summary */}

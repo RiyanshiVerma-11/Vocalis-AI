@@ -120,11 +120,35 @@ export const ResumeDrawer: React.FC<ResumeDrawerProps> = ({
 
   const handleResumeFileUpload = async (file: File) => {
     setIsParsing(true);
-    setParsingMsg(`Extracting text from ${file.name}...`);
+    setParsingMsg(`Reading ${file.name}...`);
     try {
       const text = await extractTextFromFile(file);
+
+      // Generate base64 fallback for server-side zlib decoding
+      let fileBase64: string | undefined;
+      try {
+        const arrayBuf = await file.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuf);
+        let binary = '';
+        const len = bytes.byteLength;
+        const chunkSize = 8192;
+        for (let i = 0; i < len; i += chunkSize) {
+          binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunkSize, len)));
+        }
+        fileBase64 = btoa(binary);
+      } catch (bErr) {
+        console.warn('Base64 encoding fallback skipped:', bErr);
+      }
+
+      // For PDFs or if client extraction yielded dictionary syntax, clear rawText to force server-side zlib decompression
+      const isPdfOrShort = file.name.toLowerCase().endsWith('.pdf') || !text || text.length < 50 || /<<\/Type|\/MediaBox/i.test(text);
+      const cleanSendText = isPdfOrShort ? '' : text;
+
       setParsingMsg('AI Parsing candidate background, skills & projects...');
-      const parsed = await parseResumeTextAsync(text, currentResume.fullName || 'Candidate');
+      const parsed = await parseResumeTextAsync(cleanSendText, currentResume.fullName || 'Candidate', {
+        fileBase64,
+        fileName: file.name,
+      });
       notifyChange(parsed);
       setShowRawPaste(false);
     } catch (err: any) {

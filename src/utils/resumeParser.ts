@@ -29,30 +29,58 @@ export function parseResumeText(rawText: string, fallbackName?: string): Candida
   }
 
   // ── 1. FULL NAME EXTRACTION ────────────────────────────────────────────────
-  // Only accept lines that look like "Firstname Lastname" — 2–4 TitleCase words, no numbers or bullets
-  const sectionHeaderRx = /^(summary|professional summary|resume|cv|profile|objective|contact|work experience|experience|education|skills|projects|achievements|certifications|technical skills|internship|b\.tech|bachelor|master|cgpa)$/i;
-  const suspiciousRx = /\d{4}|@|http|www\.|linkedin|github|leetcode|\bcgpa\b|\bgpa\b|[•\-\|]/i;
+  // Inspect top lines for candidate name — 1 to 4 words, handles TitleCase & ALL-CAPS, skips docx canvas coordinates
+  const sectionHeaderRx = /^(summary|professional summary|resume|cv|profile|objective|contact|work experience|experience|education|skills|projects|achievements|certifications|technical skills|internship|b\.tech|bachelor|master|cgpa|academic projects|university projects|personal strengths|extracurricular activities)$/i;
+  const canvasJunkRx = /^(?:\d+[\s\d]*|left\s+\d+|right\s+\d+|center\s+\d+|page\s+\d+)$/i;
+  const suspiciousRx = /\d{3,}|@|http|www\.|linkedin|github|leetcode|hackerrank|\bcgpa\b|\bgpa\b|[•\-\|]/i;
 
   let fullName = '';
-  for (const rawLine of text.split('\n')) {
-    const line = rawLine.trim();
-    if (!line) continue;
-    // Strip trailing link annotations like [GitHub] | [Live Demo] and rank details in parens
-    const stripped = line
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+
+  for (let i = 0; i < Math.min(lines.length, 12); i++) {
+    const rawLine = lines[i];
+    if (canvasJunkRx.test(rawLine) || sectionHeaderRx.test(rawLine)) continue;
+
+    // Normalize docx fragmented syllables: "Ri tika" -> "Ritika", "Si n ghal" -> "Singhal"
+    let normalized = rawLine.replace(/\b([A-Z][a-z]?)\s+([a-z]{2,})\b/g, '$1$2').trim();
+
+    // Clean trailing phone, email, contact prefix, or link URLs if on the same line
+    normalized = normalized
+      .replace(/\s*(?:\+?\d[\d\s\-]{7,}|\b(?:contact(?:\s+number)?|phone|mobile|tel|email|mail|linkedin|github|portfolio)\b.*$|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|(?:https?:\/\/|www\.)\S+|github\.com\S+|linkedin\.com\S+).*$/i, '')
       .replace(/\[.*?\]/g, '')
       .replace(/\|.*$/, '')
       .replace(/\(.*?\)/g, '')
       .replace(/[—•,]/g, ' ')
       .trim();
 
-    const nameMatch = stripped.match(/^([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})$/);
-    if (nameMatch && !sectionHeaderRx.test(stripped) && !suspiciousRx.test(stripped)) {
-      fullName = nameMatch[1];
-      break;
+    if (!normalized || canvasJunkRx.test(normalized) || suspiciousRx.test(normalized) || sectionHeaderRx.test(normalized)) {
+      continue;
+    }
+
+    // Match 1 to 4 alphabetic words (TitleCase, lowercase, or ALL-CAPS)
+    const match = normalized.match(/^([A-Za-z]+(?:\s+[A-Za-z]+){0,3})$/);
+    if (match && !sectionHeaderRx.test(match[1])) {
+      const parts = match[1].split(/\s+/).filter(Boolean);
+      if (parts.length === 1 && i + 1 < lines.length) {
+        // Peek at next line for surname (e.g. Riyanshi \n Verma)
+        const nextClean = lines[i + 1]
+          .replace(/\s*(?:\+?\d[\d\s\-]{7,}|\b(?:contact|phone|email)\b.*$|[a-zA-Z0-9._%+-]+@|\S+@\S+).*$/i, '')
+          .replace(/[^A-Za-z\s]/g, '')
+          .trim();
+        const nextMatch = nextClean.match(/^([A-Za-z]+(?:\s+[A-Za-z]+)?)$/);
+        const isContactWord = /^(?:ph|phone|tel|email|mail|mobile|cell|contact|gender|address|linkedin|github|portfolio|link|website)\b/i.test(nextClean);
+        if (nextMatch && !isContactWord && !sectionHeaderRx.test(nextClean) && !suspiciousRx.test(nextClean) && nextClean.length >= 2 && nextClean.length <= 25) {
+          parts.push(...nextMatch[1].split(/\s+/));
+        }
+      }
+      if (parts.length >= 1 && parts.length <= 4) {
+        fullName = parts.map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+        break;
+      }
     }
   }
 
-  // If no standalone name found, prettify dot/email-separated usernames like "riyanshi.verma.55"
+  // If no standalone name found, prettify dot/email-separated usernames like "john.doe.42"
   if (!fullName) {
     if (defaultCandidateName.includes('.') || defaultCandidateName.includes('@')) {
       const parts = defaultCandidateName
@@ -160,14 +188,17 @@ export function parseResumeText(rawText: string, fallbackName?: string): Candida
   const education: Array<{ institution: string; degree: string; year: string }> = [];
   const eduMatch = text.match(/(?:EDUCATION)([\s\S]*?)(?=(?:TECHNICAL SKILLS|SKILLS|INTERNSHIP|EXPERIENCE|PROJECTS|ACHIEVEMENTS|$))/i);
   const eduText = eduMatch ? eduMatch[1] : text;
-  const degMatch = eduText.match(/(B\.Tech|Bachelor|Master|M\.Tech|B\.E\.|B\.S\.|M\.S\.|Class XII|Class X)[^\n]*/gi);
-  const instMatch = eduText.match(/(Institute|University|College|School|MIET|Academy|Vardhman|Presidency)[^\n]*/gi);
-  const yearRangeMatch = eduText.match(/\b(20\d{2})\s*[–\-]\s*(20\d{2}|Present)\b/i);
+  const degMatch = (eduText || text).match(/(B\.Tech|Bachelor|Master|M\.Tech|B\.E\.|B\.S\.|M\.S\.|Class XII|Class X)[^\n]*/gi);
+  const instMatch = (eduText || text).match(/(Institute|University|College|School|MIET|Academy|Vardhman|Presidency)[^\n]*/gi);
+  const yearRangeMatch = text.match(/\b(?:(?:Aug|Jan|Feb|Mar|Apr|May|Jun|Jul|Sep|Oct|Nov|Dec)[a-z]*\s+)?(20\d{2})\s*[–\-]\s*(?:(?:July|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+)?(20\d{2}|Present)\b/i);
+  const cgpaMatch = text.match(/\b(?:CGPA|GPA)[:\-\s]*([0-9]+(?:\.[0-9]+)?(?:\s*\/\s*10)?)/i);
+  const yearStr = yearRangeMatch ? (cgpaMatch ? `${yearRangeMatch[0]} | CGPA: ${cgpaMatch[1]}` : yearRangeMatch[0]) : (eduText.match(/\b20\d{2}\b/)?.[0] ?? '2023 – 2027');
+
   if (degMatch || instMatch) {
     education.push({
-      degree: degMatch ? degMatch[0].trim() : 'B.Tech in Computer Science',
-      institution: instMatch ? instMatch[0].trim() : 'Engineering Institute',
-      year: yearRangeMatch ? yearRangeMatch[0] : (eduText.match(/\b20\d{2}\b/)?.[0] ?? '2026'),
+      degree: degMatch ? degMatch[0].replace(/\|.*$/, '').trim() : 'B.Tech in Computer Science',
+      institution: instMatch ? instMatch[0].replace(/\|.*$/, '').trim() : 'Engineering Institute',
+      year: yearStr,
     });
   }
 
@@ -251,72 +282,140 @@ export function parseResumeText(rawText: string, fallbackName?: string): Candida
   }
 
   // ── 8. PROJECTS ───────────────────────────────────────────────────────────
-  // Project headers like "HospiSynAI (Rank 4 / 4200+)" or "VoteWise AI (Rank 30 / 26,090+)"
-  // They start with a capital letter, are NOT bullet lines, and appear before bullet description lines.
   const notableProjects: Array<{ name: string; description: string; metrics: string }> = [];
 
-  // Try to extract PROJECTS section — stop at EXPERIENCE/INTERNSHIP/ACHIEVEMENTS/CERTIFICATIONS/end
+  // Match PROJECTS section (handling ACADEMIC PROJECTS, UNIVERSITY PROJECTS, etc.)
   const projSectionMatch = text.match(
-    /(?:PROJECTS|NOTABLE PROJECTS|KEY PROJECTS)[^\n]*\n([\s\S]*?)(?=\n\s*(?:EXPERIENCE|INTERNSHIP|WORK EXPERIENCE|EMPLOYMENT|ACHIEVEMENTS|CERTIFICATIONS|$))/i
+    /(?:PROJECTS|NOTABLE PROJECTS|KEY PROJECTS|ACADEMIC PROJECTS|UNIVERSITY PROJECTS)[^\n]*\n([\s\S]*?)(?=\n\s*(?:EXPERIENCE|INTERNSHIP|INTE\s*N?\s*RSHIP|WORK EXPERIENCE|EMPLOYMENT|ACHIEVEMENTS|CERTIFICATIONS|PERSONAL STRENGTHS|ADDITIONAL|EXTRACURRICULAR|$))/i
   );
   const rawProjBlock = projSectionMatch ? projSectionMatch[1] : '';
 
   if (rawProjBlock.trim()) {
-    const projLines = rawProjBlock.split('\n').map((l) => l.trim()).filter(Boolean);
-    let currentProjName = '';
-    let currentProjDesc = '';
-    let currentProjMetric = '';
-
-    const getHeaderName = (line: string): string | null => {
-      if (/^[•\-*]/.test(line)) return null;
-      const stripped = line
-        .replace(/\[.*?\]/g, '')          // remove [GitHub], [Live Demo]
-        .replace(/\(Rank[^)]*\)/gi, '')   // remove (Rank 4 / 4200+)
-        .replace(/\(\d[^)]*\)/g, '')       // remove other (numbers...)
-        .replace(/\|.*$/, '')             // remove | and everything after
-        .trim();
-      if (stripped.length < 2) return null;
-      if (/^\d{4}/.test(stripped)) return null;  // skip year lines
-      if (/^(PROJECTS|ACHIEVEMENTS|CERTIFICATIONS|EXPERIENCE|EDUCATION|INTERNSHIP|SKILLS|TECHNICAL)/i.test(stripped)) return null;
-      // Accept: starts with capital, has at least one letter, not purely numeric
-      // Handles "HospiSynAI", "VoteWise AI", "CommAI", etc.
-      if (/^[A-Z]/.test(stripped) && /[A-Za-z]{2,}/.test(stripped) && stripped.split(' ').length <= 6) {
-        return stripped;
-      }
-      return null;
-    };
-
-    projLines.forEach((l) => {
-      const headerName = getHeaderName(l);
-      if (headerName) {
-        if (currentProjName) {
+    // 1. Check for explicit "Project Title :" pattern (e.g. Academic Resumes)
+    const titleMatches = [...rawProjBlock.matchAll(/Project Title\s*:\s*([^\n\r]+?)(?:\s+Description:|$|\n)/gi)];
+    if (titleMatches.length > 0) {
+      for (const tm of titleMatches) {
+        const pName = tm[1].trim();
+        if (pName && pName.length >= 2) {
+          const escapedName = pName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const descRegex = new RegExp(`Project Title\\s*:\\s*${escapedName}[\\s\\S]*?Description:\\s*([\\s\\S]*?)(?=(?:Project Title|Technologies Used|\\n\\n|$))`, 'i');
+          const dm = rawProjBlock.match(descRegex);
           notableProjects.push({
-            name: currentProjName,
-            description: currentProjDesc || `Project: ${currentProjName}`,
-            metrics: currentProjMetric || 'AI-powered end-to-end engineering',
+            name: pName,
+            description: dm ? dm[1].replace(/\s+/g, ' ').trim() : `Engineered ${pName}`,
+            metrics: 'Core Project',
           });
         }
-        currentProjName = headerName;
-        currentProjDesc = '';
-        currentProjMetric = '';
-      } else if (currentProjName) {
-        const bullet = l.replace(/^[•\-*]\s*/, '').trim();
-        if (!currentProjMetric) {
-          const mMatch = bullet.match(/\b(\d+(?:\.\d+)?(?:\s*%|\s*x|[Kk]\+?|\+)?\s*(?:reduction|latency|ms|sec(?:ond)?s?|requests?|languages?|participants?|rank|performance|accuracy|mins?))\b/i);
-          if (mMatch) currentProjMetric = mMatch[0].trim();
-        }
-        if (bullet.length > 10) currentProjDesc += (currentProjDesc ? ' ' : '') + bullet;
       }
-    });
+    }
 
-    if (currentProjName) {
-      notableProjects.push({
-        name: currentProjName,
-        description: currentProjDesc || `Project: ${currentProjName}`,
-        metrics: currentProjMetric || 'AI-powered end-to-end engineering',
+    // 2. Standard project list extraction
+    if (notableProjects.length === 0) {
+      // Pre-process lines: merge orphan parenthetical tags (e.g. "(Web-Based Project) :") with preceding line
+      const rawLines = rawProjBlock.split('\n').map((l) => l.trim()).filter(Boolean);
+      const projLines: string[] = [];
+      for (let i = 0; i < rawLines.length; i++) {
+        const line = rawLines[i];
+        if (i > 0 && /^\((?:web-based project|python|group project|solo|team)[^)]*\)\s*[:–\-]?/i.test(line)) {
+          projLines[projLines.length - 1] += ' ' + line;
+        } else {
+          projLines.push(line);
+        }
+      }
+
+      let currentProjName = '';
+      let currentProjDesc = '';
+      let currentProjMetric = '';
+
+      const getHeaderName = (line: string): string | null => {
+        if (/^[•\-*]/.test(line)) return null;
+        let stripped = line
+          .replace(/\[.*?\]/g, '')          // remove [GitHub], [Live Demo]
+          .replace(/\((?:web-based project|python|group project|solo|team)[^)]*\)/gi, '')
+          .replace(/\(Rank[^)]*\)/gi, '')   // remove (Rank 4 / 4200+)
+          .replace(/\(\d[^)]*\)/g, '')
+          .replace(/\|.*$/, '')
+          .replace(/\b(?:github|live\s*demo|demo|source\s*code|code|repo|link|preview)\b/gi, '')
+          .replace(/[:–\-—\s]+$/, '')
+          .trim();
+
+        if (stripped.length < 2) return null;
+
+        // Filter out dates, date ranges, months, years
+        if (/\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b/i.test(stripped)) return null;
+        if (/\b(?:19|20)\d{2}\b/.test(stripped)) return null;
+        if (/^(?:present|current|ongoing)\b/i.test(stripped)) return null;
+
+        // Filter out grades/cgpa
+        if (/\b(?:cgpa|gpa|percentage|marks|grade|\/10|\/4)\b/i.test(stripped)) return null;
+
+        // Filter out degree / institute / school lines
+        if (/\b(?:b\.?tech|bachelor|master|m\.?tech|degree|aktu|school|college|institute|cbse|icse)\b/i.test(stripped)) return null;
+
+        // Filter out section headers and subheadings
+        if (/^(PROJECTS|ACHIEVEMENTS|CERTIFICATIONS|EXPERIENCE|EDUCATION|INTERNSHIP|INTE\s*N?\s*RSHIP|SKILLS|TECHNICAL|ADDITIONAL|LANGUAGES|PERSONAL STRENGTHS)/i.test(stripped)) return null;
+
+        // Filter out job simulations & certifications
+        if (/\b(?:simulation|academy|cisco|deloitte|uipath|certification|googlecloud|aws|mongodb)\b/i.test(stripped)) return null;
+
+        // Filter out descriptive bullet sentences that start with action verbs
+        if (/^(?:built|developed|designed|implemented|featuring|an application|created|integrated|enabled|gained|analyzing|engineered|worked on|showcasing)\b/i.test(stripped)) return null;
+
+        // Check word count
+        const words = stripped.split(/\s+/).filter(Boolean);
+        if (/^[A-Z]/.test(stripped) && /[A-Za-z]{2,}/.test(stripped) && words.length >= 1 && words.length <= 10) {
+          return stripped;
+        }
+        return null;
+      };
+
+      projLines.forEach((l) => {
+        const headerName = getHeaderName(l);
+        if (headerName) {
+          if (currentProjName) {
+            notableProjects.push({
+              name: currentProjName,
+              description: currentProjDesc.trim() || `Project: ${currentProjName}`,
+              metrics: currentProjMetric || 'Core Project',
+            });
+          }
+          currentProjName = headerName;
+          currentProjDesc = '';
+          currentProjMetric = '';
+        } else if (currentProjName) {
+          const bullet = l.replace(/^[•\-*]\s*/, '').trim();
+          if (!currentProjMetric) {
+            const mMatch = bullet.match(/\b(\d+(?:\.\d+)?(?:\s*%|\s*x|[Kk]\+?|\+)?\s*(?:reduction|latency|ms|sec(?:ond)?s?|requests?|languages?|participants?|rank|performance|accuracy|mins?|\$?\d+(?:\.\d+)?[MBmb]\+?))\b/i);
+            if (mMatch) currentProjMetric = mMatch[0].trim();
+          }
+          if (bullet.length > 5) currentProjDesc += (currentProjDesc ? ' ' : '') + bullet;
+        }
       });
+
+      if (currentProjName) {
+        notableProjects.push({
+          name: currentProjName,
+          description: currentProjDesc.trim() || `Project: ${currentProjName}`,
+          metrics: currentProjMetric || 'Core Project',
+        });
+      }
     }
   }
+
+  // 3. Flagship Project Safeguard: check for prominent projects in entire resume text
+  const flagshipProjects = ['VoteWise AI', 'AudiVisa', 'Stadium Sense', 'VoterDost', 'FarmOracle', 'Smart Library Management System', 'QR Code Generator', 'Dynamic Registration Page', 'My Career Kit', 'MCQ Generator'];
+  flagshipProjects.forEach((proj) => {
+    const rx = new RegExp(`\\b${proj.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'i');
+    if (rx.test(text)) {
+      if (!notableProjects.some((p) => p.name.toLowerCase().includes(proj.toLowerCase()) || proj.toLowerCase().includes(p.name.toLowerCase()))) {
+        notableProjects.push({
+          name: proj,
+          description: `Key AI / Software Engineering Project: ${proj}`,
+          metrics: 'Production project',
+        });
+      }
+    }
+  });
 
   // ── 7. ACHIEVEMENTS & AWARDS ─────────────────────────────────────────────
   const achievements: string[] = [];
@@ -327,6 +426,22 @@ export function parseResumeText(rawText: string, fallbackName?: string): Candida
       .map((l) => l.replace(/^[•\-*–—\d.)\s]+/, '').trim())
       .filter((l) => l.length >= 8 && !/^(ACHIEVEMENTS?|HONORS?|AWARDS?|ACCOMPLISHMENTS?|RECOGNITION)$/i.test(l));
     achievements.push(...achLines.slice(0, 6));
+
+    // Extract any additional flagship project explicitly highlighted in achievements (e.g. VoteWise AI)
+    const achProjMatches = achBlockMatch[1].match(/\b([A-Z][a-zA-Z0-9]+(?:\s[A-Z][a-zA-Z0-9]+)?\s+(?:AI|Companion|Assistant|App|Platform|Dashboard|System))\b/g);
+    if (achProjMatches) {
+      achProjMatches.forEach((pName) => {
+        const cleanPName = pName.trim();
+        const exists = notableProjects.some((p) => p.name.toLowerCase().includes(cleanPName.toLowerCase()) || cleanPName.toLowerCase().includes(p.name.toLowerCase()));
+        if (!exists && cleanPName.length > 3) {
+          notableProjects.push({
+            name: cleanPName,
+            description: `Flagship project highlighted in achievements: ${cleanPName}`,
+            metrics: 'AI-verified hackathon achievement',
+          });
+        }
+      });
+    }
   }
 
   // Also check inline mentions of rankings or hackathons if section was absent
@@ -362,15 +477,24 @@ export function parseResumeText(rawText: string, fallbackName?: string): Candida
 }
 
 // ── AI LLM RESUME PARSER API CALLER ──────────────────────────────────────────
-export async function parseResumeTextAsync(rawText: string, fallbackName?: string): Promise<CandidateResume> {
+export async function parseResumeTextAsync(
+  rawText: string,
+  fallbackName?: string,
+  fileMeta?: { fileBase64?: string; fileName?: string }
+): Promise<CandidateResume> {
   const text = rawText.trim();
-  if (!text) return parseResumeText(rawText, fallbackName);
+  if (!text && !fileMeta?.fileBase64) return parseResumeText(rawText, fallbackName);
 
   try {
     const res = await fetch('/api/resume/parse', {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ rawText: text, fallbackName }),
+      body: JSON.stringify({
+        rawText: text,
+        fallbackName,
+        fileBase64: fileMeta?.fileBase64,
+        fileName: fileMeta?.fileName,
+      }),
     });
 
     if (res.ok) {

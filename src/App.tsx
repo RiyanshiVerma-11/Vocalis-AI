@@ -501,6 +501,7 @@ export default function App() {
 
   // Immediate Interruption Handler (synchronously cancels AI audio & in-flight requests, turns ON mic)
   const handleInterrupt = useCallback(() => {
+    agoraVoiceEngine.unlockAudio();
     // 1. Advance turn ID to invalidate any pending in-flight turn deliberation or TTS promises
     const turnId = ++currentTurnIdRef.current;
 
@@ -717,7 +718,8 @@ export default function App() {
     };
     customRubric?: any;
   }) => {
-    // Prime speech synthesis engine on user click gesture
+    // Unlock AudioContext and prime speech synthesis engine on user gesture (PTM Vyapar Saathi pattern)
+    agoraVoiceEngine.unlockAudio();
     if ('speechSynthesis' in window) {
       window.speechSynthesis.getVoices();
     }
@@ -1359,6 +1361,7 @@ export default function App() {
 
   // Toggle Microphone — routes through Agora RTC channel
   const handleToggleListening = async () => {
+    agoraVoiceEngine.unlockAudio();
     if (isListening) {
       if (speechSilenceTimerRef.current) {
         clearTimeout(speechSilenceTimerRef.current);

@@ -69,6 +69,7 @@ export interface CandidateResume {
     name: string;
     description: string;
     metrics: string;
+    technologies?: string[];
   }>;
   achievements?: string[];
   certifications?: string[];

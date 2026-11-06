@@ -164,12 +164,25 @@ export async function extractTextFromFile(file: File): Promise<string> {
     });
   }
 
-  // 2. PDF Documents - In-Browser Lightweight Text Stream Extraction
+  // 2. Microsoft Word Documents (.docx) - In-Browser Decompression of word/document.xml
+  if (fileName.endsWith('.docx') || file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const docxText = await extractDocxTextFromArrayBuffer(arrayBuffer);
+      if (docxText && docxText.length > 20) {
+        return docxText;
+      }
+    } catch (err) {
+      console.warn('[Docx Extract Warning] Web Stream decompression failed, falling back to buffer decoding:', err);
+    }
+  }
+
+  // 3. PDF Documents - In-Browser Lightweight Text Stream Extraction
   if (fileName.endsWith('.pdf') || file.type === 'application/pdf') {
     return extractTextFromPdfFile(file);
   }
 
-  // 3. Fallback: Read as ArrayBuffer and extract readable ASCII/UTF-8 strings
+  // 4. Fallback: Read as ArrayBuffer and extract readable ASCII/UTF-8 strings
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
@@ -183,6 +196,64 @@ export async function extractTextFromFile(file: File): Promise<string> {
     reader.onerror = reject;
     reader.readAsArrayBuffer(file);
   });
+}
+
+/**
+ * Pure client-side DOCX unzipper using Web API DecompressionStream.
+ * Unzips and parses word/document.xml into clean text.
+ */
+export async function extractDocxTextFromArrayBuffer(buffer: ArrayBuffer): Promise<string> {
+  const bytes = new Uint8Array(buffer);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let offset = 0;
+
+  while (offset < bytes.length - 30) {
+    // Check for ZIP local file header signature 0x04034b50 (PK\x03\x04)
+    if (view.getUint32(offset, true) === 0x04034b50) {
+      const compMethod = view.getUint16(offset + 8, true);
+      const compSize = view.getUint32(offset + 18, true);
+      const nameLen = view.getUint16(offset + 26, true);
+      const extraLen = view.getUint16(offset + 28, true);
+      const fileNameBytes = bytes.subarray(offset + 30, offset + 30 + nameLen);
+      const fileName = new TextDecoder().decode(fileNameBytes);
+      const dataStart = offset + 30 + nameLen + extraLen;
+
+      if (fileName === 'word/document.xml') {
+        const compData = bytes.subarray(dataStart, dataStart + compSize);
+        let xml = '';
+        if (compMethod === 8) {
+          // Deflate decompression via standard Web Stream API
+          const ds = new DecompressionStream('deflate-raw');
+          const writer = ds.writable.getWriter();
+          writer.write(compData);
+          writer.close();
+          const response = new Response(ds.readable);
+          xml = await response.text();
+        } else {
+          xml = new TextDecoder().decode(compData);
+        }
+
+        return xml
+          .replace(/<w:p[^>]*>/g, '\n')
+          .replace(/<w:br[^>]*>/g, '\n')
+          .replace(/<w:tab[^>]*>/g, '\t')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&quot;/g, '"')
+          .replace(/&apos;/g, "'")
+          .replace(/[ \t]+/g, ' ')
+          .replace(/\n\s*\n+/g, '\n')
+          .trim();
+      }
+      offset = dataStart + compSize;
+    } else {
+      offset++;
+    }
+  }
+
+  return '';
 }
 
 /**
@@ -225,21 +296,16 @@ async function extractTextFromPdfFile(file: File): Promise<string> {
     }
   }
 
-  // If standard PDF operators yielded text
+  // If standard PDF operators yielded genuine text
   if (extractedChunks.length > 5) {
-    return extractedChunks.join(' \n');
+    const joined = extractedChunks.join(' \n');
+    if (!/<<\/Type|\/MediaBox|\/Kids\s*\[/i.test(joined)) {
+      return joined;
+    }
   }
 
-  // Fallback: extract long ASCII strings from PDF body
-  const rawClean = pdfString
-    .replace(/[^\x20-\x7E\n]/g, ' ')
-    .replace(/\s{3,}/g, '\n')
-    .split('\n')
-    .map((l) => l.trim())
-    .filter((l) => l.length > 15 && !l.startsWith('/') && !l.startsWith('obj') && !l.startsWith('endobj'))
-    .join('\n');
-
-  return rawClean || `Extracted content from PDF: ${file.name}`;
+  // Compressed PDF streams require server-side zlib decompression via fileBase64
+  return '';
 }
 
 // ── 3. HEURISTIC OFFLINE RUBRIC PARSER ──────────────────────────────────────

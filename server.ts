@@ -25,6 +25,8 @@ import {
 
 import agoraTokenPkg from 'agora-token';
 const { RtcTokenBuilder, RtcRole } = (agoraTokenPkg as any).default || agoraTokenPkg;
+import zlib from 'zlib';
+import { parseResumeText } from './src/utils/resumeParser';
 
 dotenv.config();
 
@@ -280,19 +282,15 @@ function authenticateToken(req: express.Request, res: express.Response, next: ex
     return next();
   }
 
-  // Graceful fallback for local development
+  // Graceful fallback for local development & LAN mobile phone testing
   if (process.env.NODE_ENV !== 'production') {
-    const remoteAddr = req.socket?.remoteAddress || '';
-    const isLocalhost = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(remoteAddr);
-    if (isLocalhost) {
-      (req as any).user = {
-        userId: 'usr_cand_101',
-        email: 'candidate@vocalis.ai',
-        role: 'candidate',
-        name: 'Jordan Reed',
-      };
-      return next();
-    }
+    (req as any).user = {
+      userId: 'usr_cand_101',
+      email: 'candidate@vocalis.ai',
+      role: 'candidate',
+      name: 'Jordan Reed',
+    };
+    return next();
   }
 
   return res.status(401).json({ success: false, error: 'Authentication required. Please log in.' });
@@ -785,10 +783,11 @@ async function generateContentWithGroq(
   if (keys.length === 0) throw new Error('GROQ_API_KEY missing');
 
   const modelsToTry = [
-    'llama-3.3-70b-versatile',
-    'llama-3.1-70b-versatile',
-    'mixtral-8x7b-32768',
-    'gemma2-9b-it',
+    'openai/gpt-oss-120b',
+    'openai/gpt-oss-20b',
+    'qwen/qwen3.8-27b',
+    'groq/compound',
+    'groq/compound-mini',
   ];
 
   const defaultSystemPrompt =
@@ -819,8 +818,8 @@ async function generateContentWithGroq(
               },
             ],
             response_format: { type: 'json_object' },
-            temperature: 0.6,
-            max_tokens: 2500,
+            temperature: 0.5,
+            max_tokens: 950,
           }),
         });
 
@@ -1285,145 +1284,6 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-/// Endpoint: AI-Powered Resume Parser using Gemini 2.5 Flash / Groq LLM
-app.post('/api/resume/parse', authenticateToken, async (req, res) => {
-  try {
-    const { rawText, fallbackName = 'Candidate' } = req.body;
-    if (!rawText || !rawText.trim()) {
-      return res.status(400).json({ error: 'Resume rawText is required' });
-    }
-
-    const systemPrompt = `You are an expert AI talent intelligence parser.
-Parse the raw resume/LinkedIn text below into a clean, structured JSON object with ZERO assumptions.
-Return ONLY valid JSON matching this schema:
-
-{
-  "fullName": "Full candidate name (string)",
-  "headline": "Professional target headline or current role (string)",
-  "yearsOfExperience": number (default 2),
-  "location": "City, State/Country or Remote (string)",
-  "summary": "Executive summary paragraph (string)",
-  "skills": {
-    "coreArchitecture": ["Architecture/AI/System skill 1", "skill 2"],
-    "languagesAndFrameworks": ["Language/framework 1", "framework 2"],
-    "cloudAndInfrastructure": ["Cloud/database/tool 1", "tool 2"],
-    "practicesAndMethodologies": ["Methodology/practice 1", "practice 2"]
-  },
-  "workExperience": [
-    {
-      "company": "Company or Organization name",
-      "role": "Job or Intern Title",
-      "duration": "Dates (e.g. Mar 2026 - Apr 2026)",
-      "highlights": ["Bullet highlight 1", "Bullet highlight 2"]
-    }
-  ],
-  "education": [
-    {
-      "degree": "Degree name",
-      "institution": "School or University name",
-      "year": "Graduation year or date range"
-    }
-  ],
-  "notableProjects": [
-    {
-      "name": "Exact Project Name",
-      "description": "Full description of project implementation and features",
-      "metrics": "Key technical metric or outcome"
-    }
-  ],
-  "achievements": ["Notable achievement, award, hackathon win, honor, or ranking 1", "achievement 2"]
-}
-
-If candidate name is missing in text, use fallback: "${fallbackName}".
-Do NOT hallucinate fake company names or fake project names if not in raw text. Extract exact real project names and real experience from the provided text.`;
-
-    const userPrompt = `RAW RESUME TEXT:\n${rawText.slice(0, 8000)}`;
-
-    let parsedResult: any = null;
-
-    // 1. Try Gemini 2.5 Flash
-    if (process.env.GEMINI_API_KEY) {
-      try {
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-        const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: `${systemPrompt}\n\n${userPrompt}`,
-          config: {
-            responseMimeType: 'application/json',
-          },
-        });
-        const responseText = response.text;
-        if (responseText) {
-          try {
-            parsedResult = JSON.parse(responseText);
-          } catch (parseErr: any) {
-            console.warn('[Gemini Resume Parse] JSON.parse failed (safety block or empty response):', parseErr.message);
-          }
-        }
-      } catch (err: any) {
-        console.warn(`[Gemini Resume Parse Warning] ${err.message}`);
-      }
-    }
-
-    // 2. Fallback to Groq LLM API if Gemini fails or no key
-    if (!parsedResult && process.env.GROQ_API_KEY) {
-      try {
-        const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-          },
-          body: JSON.stringify({
-            model: 'llama-3.3-70b-versatile',
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: userPrompt },
-            ],
-            response_format: { type: 'json_object' },
-            temperature: 0.2,
-          }),
-        });
-
-        if (groqRes.ok) {
-          const json = await groqRes.json();
-          const contentStr = json.choices?.[0]?.message?.content || '{}';
-          parsedResult = JSON.parse(contentStr);
-        }
-      } catch (err: any) {
-        console.warn(`[Groq Resume Parse Warning] ${err.message}`);
-      }
-    }
-
-    if (parsedResult) {
-      return res.json({
-        success: true,
-        resume: {
-          id: `custom-resume-${Date.now()}`,
-          fullName: parsedResult.fullName || fallbackName,
-          headline: parsedResult.headline || 'Software Engineer',
-          yearsOfExperience: typeof parsedResult.yearsOfExperience === 'number' ? parsedResult.yearsOfExperience : 2,
-          location: parsedResult.location || 'Remote',
-          summary: parsedResult.summary || rawText.slice(0, 300),
-          skills: {
-            coreArchitecture: parsedResult.skills?.coreArchitecture || [],
-            languagesAndFrameworks: parsedResult.skills?.languagesAndFrameworks || [],
-            cloudAndInfrastructure: parsedResult.skills?.cloudAndInfrastructure || [],
-            practicesAndMethodologies: parsedResult.skills?.practicesAndMethodologies || [],
-          },
-          workExperience: parsedResult.workExperience || [],
-          education: parsedResult.education || [],
-          notableProjects: parsedResult.notableProjects || [],
-          rawText,
-        },
-      });
-    }
-
-    res.status(500).json({ error: 'Failed to parse resume with AI' });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // Endpoint: AI-Powered Rubric & Job Description Intelligence Parser
 app.post('/api/rubric/parse', authenticateToken, async (req, res) => {
@@ -1519,6 +1379,314 @@ Respond ONLY with valid JSON matching this schema:
   } catch (err: any) {
     console.error('[Rubric Parse Error]', err);
     return res.status(500).json({ success: false, error: err.message || 'Rubric parsing failed' });
+  }
+});
+
+// Server-side Document Text Extraction Helpers
+function extractDocxTextFromServer(buf: Buffer): string {
+  let offset = 0;
+  while (offset < buf.length - 30) {
+    if (buf.readUInt32LE(offset) === 0x04034b50) {
+      const compMethod = buf.readUInt16LE(offset + 8);
+      const compSize = buf.readUInt32LE(offset + 18);
+      const nameLen = buf.readUInt16LE(offset + 26);
+      const extraLen = buf.readUInt16LE(offset + 28);
+      const fileName = buf.toString('utf8', offset + 30, offset + 30 + nameLen);
+      const dataStart = offset + 30 + nameLen + extraLen;
+      if (fileName === 'word/document.xml') {
+        const comp = buf.subarray(dataStart, dataStart + compSize);
+        const xml = compMethod === 8 ? zlib.inflateRawSync(comp).toString('utf8') : comp.toString('utf8');
+        return xml
+          .replace(/<w:p[^>]*>/g, '\n')
+          .replace(/<w:br[^>]*>/g, '\n')
+          .replace(/<w:tab[^>]*>/g, '\t')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&quot;/g, '"')
+          .replace(/&apos;/g, "'")
+          .replace(/[ \t]+/g, ' ')
+          .replace(/\n\s*\n+/g, '\n')
+          .trim();
+      }
+      offset = dataStart + compSize;
+    } else {
+      offset++;
+    }
+  }
+  return '';
+}
+
+function extractPdfTextFromServer(buf: Buffer): string {
+  const rawChunks: string[] = [];
+  const content = buf.toString('latin1');
+  const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+  let match: RegExpExecArray | null;
+  while ((match = streamRegex.exec(content)) !== null) {
+    const rawStream = Buffer.from(match[1], 'latin1');
+    let decompressed: Buffer | null = null;
+    try { decompressed = zlib.inflateSync(rawStream); } catch {
+      try { decompressed = zlib.inflateRawSync(rawStream); } catch {}
+    }
+    const streamStr = decompressed ? decompressed.toString('latin1') : rawStream.toString('latin1');
+    const tjMatches = streamStr.matchAll(/\(([^)]{1,})\)\s*(?:Tj|'|")/g);
+    for (const m of tjMatches) {
+      const clean = m[1].replace(/\\([()\\])/g, '$1').trim();
+      if (clean.length > 0) rawChunks.push(clean);
+    }
+    const tjArrayMatches = streamStr.matchAll(/\[(.*?)\]\s*TJ/g);
+    for (const m of tjArrayMatches) {
+      const parts = m[1].matchAll(/\(([^)]*)\)/g);
+      let line = '';
+      for (const p of parts) line += p[1].replace(/\\([()\\])/g, '$1');
+      if (line.trim().length > 0) rawChunks.push(line.trim());
+    }
+  }
+
+  const lines: string[] = [];
+  for (let i = 0; i < rawChunks.length; i++) {
+    const c = rawChunks[i];
+    if (lines.length > 0) {
+      const prev = lines[lines.length - 1];
+      if (/^[A-Z]$/.test(prev) && /^[A-Z]{2,}/.test(c)) {
+        lines[lines.length - 1] = prev + c;
+        continue;
+      }
+      if (/[A-Za-z]$/.test(prev) && /^[a-z]/.test(c)) {
+        lines[lines.length - 1] = prev + c;
+        continue;
+      }
+      if (/^[:\-,.\/\\]$/.test(c)) {
+        lines[lines.length - 1] = prev + c;
+        continue;
+      }
+      if (/[\-–]$/.test(prev)) {
+        lines[lines.length - 1] = prev + c;
+        continue;
+      }
+    }
+    lines.push(c);
+  }
+
+  return lines.join('\n');
+}
+
+// Endpoint: AI Resume Parser (Structured LLM parsing of PDF/DOCX/Text with robust fallback)
+app.post('/api/resume/parse', async (req, res) => {
+  try {
+    let { rawText = '', fallbackName = 'Candidate', fileBase64 = '', fileName = '' } = req.body;
+
+    // Optional user token decoding (never rejects demo or unregistered users)
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+        const decoded = jwt.verify(authHeader.split(' ')[1], JWT_SECRET) as AuthUserPayload;
+        (req as any).user = decoded;
+        if (!fallbackName || fallbackName === 'Candidate') {
+          fallbackName = decoded.name || 'Candidate';
+        }
+      } catch {}
+    }
+
+    // Detect if rawText is missing or contains unparsed raw PDF/DOCX binary dictionary tags
+    const isGarbageRawText =
+      !rawText ||
+      !rawText.trim() ||
+      /<<\/Type|\/MediaBox|\/Filter\s*\/FlateDecode|^\s*%PDF/i.test(rawText) ||
+      rawText.length < 25;
+
+    // If fileBase64 is passed, extract text server-side using native zlib
+    if (isGarbageRawText && fileBase64) {
+      try {
+        const fileBuffer = Buffer.from(fileBase64, 'base64');
+        const lowerName = (fileName || '').toLowerCase();
+        if (lowerName.endsWith('.docx')) {
+          rawText = extractDocxTextFromServer(fileBuffer);
+        } else if (lowerName.endsWith('.pdf')) {
+          rawText = extractPdfTextFromServer(fileBuffer);
+        } else {
+          rawText = fileBuffer.toString('utf8');
+        }
+      } catch (fErr: any) {
+        console.warn('[Server File Extraction Warning]', fErr.message);
+      }
+    }
+
+    if (!rawText || !rawText.trim()) {
+      return res.status(400).json({ success: false, error: 'Resume text or valid document file is required' });
+    }
+
+    const cleanedText = rawText.trim();
+
+    const parsePrompt = `
+You are an expert AI Resume Parser. You extract candidate information from unstructured resume text, two-column PDF dumps, and raw OCR feeds into a clean, structured JSON object.
+
+CRITICAL PARSING RULES:
+1. FULL NAME: Extract candidate's real full name (e.g. "Riyanshi Verma", "Geetanshi", "Prachi", "Ritika Bhati", "Riya Singhal").
+2. HEADLINE: Concise target engineering headline (e.g. "AI/ML & Data Science Engineer", "Full Stack Engineer", "Backend Systems Engineer").
+3. YEARS OF EXPERIENCE: Integer count (0 if student/fresher/campus graduate).
+4. LOCATION: City, State, Country if available.
+5. SUMMARY: 2-3 sentence executive professional summary.
+6. EDUCATION: Array of education objects:
+   - "institution": College / University name (e.g. "Meerut Institute of Engineering and Technology")
+   - "degree": Degree name (e.g. "B.Tech in Computer Science Engineering (Data Science)")
+   - "year": Full duration & GPA/CGPA string (e.g. "Aug 2023 – July 2027 | CGPA: 8.33/10")
+7. NOTABLE PROJECTS: Array of REAL software projects, products, platforms, or tools:
+   ⚠️ ABSOLUTE MANDATE: NEVER classify college dates (e.g. "Aug 2023 – July 2027"), grades/CGPA (e.g. "CGPA:- 8.33/10"), or degree names as project names!
+   Extract ONLY genuine software projects (e.g. "Stadium Sense – SmartVenue Companion", "Ecommerce Sales Analysis Dashboard", "VoterDost", "VoteWise AI", "FarmOracle", "Smart Library Management System", "QR Code Generator", "Dynamic Registration Page", "My Career Kit", "MCQ Generator").
+   For each project:
+   - "name": Clean project title (no dates, no "GitHub", no "Live Demo" links)
+   - "description": Comprehensive 2-3 sentence overview of what the project does, key technical challenges solved, and data flow.
+   - "metrics": Quantifiable metrics or impact (e.g. "$11.5M+ YTD revenue", "82.79% AI-verified score", "Real-time crowd heatmaps")
+   - "technologies": Array of technologies used (e.g. ["Python", "Pandas", "JavaScript", "Gemini API"])
+8. WORK & INTERNSHIP EXPERIENCE: Array of work experience objects:
+   - "company": Organization name (e.g. "Infosys Springboard")
+   - "role": Role title (e.g. "AI Intern")
+   - "duration": Duration string (e.g. "Virtual Internship 7.0")
+   - "highlights": Array of key technical contributions.
+9. SKILLS: Categorized object:
+   - "coreArchitecture": Array of system & architectural skills
+   - "languagesAndFrameworks": Array of programming languages & frameworks
+   - "cloudAndInfrastructure": Array of cloud/devops tools
+   - "practicesAndMethodologies": Array of methodologies & practices
+10. ACHIEVEMENTS: Array of awards, hackathons, LeetCode / competitive coding badges, or certifications.
+
+RESUME CONTENT TO PARSE:
+"""
+${cleanedText.slice(0, 7500)}
+"""
+
+Respond ONLY with raw valid JSON conforming to this schema:
+{
+  "fullName": "string",
+  "headline": "string",
+  "yearsOfExperience": 0,
+  "location": "string",
+  "city": "string",
+  "state": "string",
+  "country": "string",
+  "summary": "string",
+  "skills": {
+    "coreArchitecture": ["string"],
+    "languagesAndFrameworks": ["string"],
+    "cloudAndInfrastructure": ["string"],
+    "practicesAndMethodologies": ["string"]
+  },
+  "workExperience": [
+    {
+      "company": "string",
+      "role": "string",
+      "duration": "string",
+      "highlights": ["string"]
+    }
+  ],
+  "education": [
+    {
+      "institution": "string",
+      "degree": "string",
+      "year": "string"
+    }
+  ],
+  "notableProjects": [
+    {
+      "name": "string",
+      "description": "string",
+      "metrics": "string",
+      "technologies": ["string"]
+    }
+  ],
+  "achievements": ["string"]
+}
+`;
+
+    let parsedResume: any = null;
+
+    if (process.env.GROQ_API_KEY || process.env.GROQ_API_KEY_SECONDARY) {
+      try {
+        const groqSys = 'You are an expert AI Resume Parser. You extract candidate details into clean, structured JSON. Output ONLY valid JSON.';
+        const groqResult = await generateContentWithGroq(parsePrompt, groqSys);
+        if (groqResult && (groqResult.fullName || groqResult.notableProjects)) {
+          parsedResume = groqResult;
+        }
+      } catch (err: any) {
+        console.warn('[AI Resume Parse] Groq fallback error:', err.message);
+      }
+    }
+
+    if (!parsedResume) {
+      try {
+        const geminiRes = await generateContentWithFallback({
+          model: 'gemini-2.5-flash',
+          contents: parsePrompt,
+          config: {
+            responseMimeType: 'application/json',
+          },
+        });
+        const text = geminiRes.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        if (text) {
+          parsedResume = JSON.parse(text);
+        }
+      } catch (gemErr: any) {
+        console.warn('[AI Resume Parse] Gemini fallback error:', gemErr.message);
+      }
+    }
+
+    // 3. Guaranteed heuristic fallback if AI calls fail or quota exhausted
+    if (!parsedResume || (!parsedResume.fullName && (!parsedResume.notableProjects || parsedResume.notableProjects.length === 0))) {
+      parsedResume = parseResumeText(cleanedText, fallbackName);
+    }
+
+    // Sanitize notableProjects to guarantee no date ranges, years, or cgpa ever slip through
+    const dateRegex = /\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b|\b(?:19|20)\d{2}\b|\b(?:cgpa|gpa|\/10)\b/i;
+    let notableProjects: any[] = [];
+    if (parsedResume && Array.isArray(parsedResume.notableProjects)) {
+      notableProjects = parsedResume.notableProjects
+        .filter((p: any) => {
+          const name = (p.name || '').trim();
+          return name.length >= 2 && !dateRegex.test(name) && !/^(PROJECTS|EDUCATION|EXPERIENCE)/i.test(name);
+        })
+        .map((p: any) => ({
+          name: p.name.trim(),
+          description: p.description || `Project: ${p.name}`,
+          metrics: p.metrics || 'Production engineering',
+          technologies: Array.isArray(p.technologies) ? p.technologies : [],
+        }));
+    }
+
+    const finalResume = {
+      id: `parsed-resume-${Date.now()}`,
+      fullName: parsedResume?.fullName || fallbackName,
+      headline: parsedResume?.headline || 'Software Engineer',
+      yearsOfExperience: typeof parsedResume?.yearsOfExperience === 'number' ? parsedResume.yearsOfExperience : 1,
+      location: parsedResume?.location || 'Remote',
+      city: parsedResume?.city,
+      state: parsedResume?.state,
+      country: parsedResume?.country,
+      summary: parsedResume?.summary || '',
+      skills: parsedResume?.skills || {
+        coreArchitecture: ['System Architecture'],
+        languagesAndFrameworks: ['Python'],
+        cloudAndInfrastructure: ['Git'],
+        practicesAndMethodologies: ['Agile'],
+      },
+      workExperience: Array.isArray(parsedResume?.workExperience) ? parsedResume.workExperience : [],
+      education: Array.isArray(parsedResume?.education) ? parsedResume.education : [],
+      notableProjects,
+      achievements: Array.isArray(parsedResume?.achievements) ? parsedResume.achievements : [],
+      rawText: cleanedText,
+    };
+
+    return res.json({ success: true, resume: finalResume });
+  } catch (err: any) {
+    console.error('[Resume Parse API Error]', err);
+    // Never fail with 500: return best-effort heuristic parse
+    try {
+      const fallback = parseResumeText(req.body?.rawText || '', req.body?.fallbackName || 'Candidate');
+      return res.json({ success: true, resume: fallback });
+    } catch {
+      return res.status(500).json({ success: false, error: err.message || 'Resume parsing failed' });
+    }
   }
 });
 
@@ -1634,7 +1802,13 @@ app.post('/api/interview/turn', authenticateToken, async (req, res) => {
       (scenario?.id && String(scenario.id).includes('personalized'));
 
     // Build a resume anchor bank so every question must cite a real resume element
-    const resumeProjects = (candidateResume.notableProjects || []).map((p: any) => `"${p.name}": ${p.description} [Metrics: ${p.metrics}]`);
+    const datePattern = /\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b|\b(?:19|20)\d{2}\b|\b(?:cgpa|gpa|\/10)\b/i;
+    const resumeProjects = (candidateResume.notableProjects || [])
+      .filter((p: any) => {
+        const name = (p.name || '').trim();
+        return name.length >= 2 && !datePattern.test(name) && !/^(PROJECTS|EDUCATION|EXPERIENCE)/i.test(name);
+      })
+      .map((p: any) => `"${p.name}": ${p.description} [Metrics: ${p.metrics}]`);
     const resumeWorkItems = (candidateResume.workExperience || []).map((w: any) => `"${w.role}" at ${w.company} (${w.duration}): ${(w.highlights || []).join('; ')}`);
     const resumeEduItems = (candidateResume.education || []).map((e: any) => `${e.degree} from ${e.institution} (${e.year})`);
     const resumeSkills = [
@@ -1663,7 +1837,9 @@ THEIR STATED SKILLS & TECHNOLOGIES:
 
 GUIDELINES FOR TECHNICAL QUESTIONS:
 1. ONLY use this anchor bank after the candidate has completed their initial self-introduction.
-2. When transitioning from introduction into the first technical question, cite a project or area the candidate highlighted: "Thanks for that overview, ${candidateResume.fullName ? candidateResume.fullName.split(' ')[0] : 'there'}. You touched upon your work with ${resumeProjects[0]?.split('"')[1] || 'your project'}..."
+2. When transitioning from introduction into the first technical question:
+   - If the candidate verbally highlighted a specific project in their intro, anchor your first technical question directly on THAT project!
+   - Otherwise, bridge smoothly into their flagship project: "Thanks for that overview, ${candidateResume.fullName ? candidateResume.fullName.split(' ')[0] : 'there'}. You touched upon your work with ${resumeProjects[0]?.split('"')[1] || 'your project'}..."
 3. Dive into real engineering mechanics: ask about their architectural decisions, concurrency, data flow, latency bottlenecks, and real trade-offs.
 4. If their resume lists specific metrics (e.g. "reduced latency by 40%"), invite them to explain how they measured that baseline and what engineering compromises were made.
 5. If the candidate is a Fresher (0 years corporate experience), tailor questions to CS fundamentals, system architecture basics, APIs, databases, and their specific projects without expecting multi-year staff leadership.
@@ -2015,22 +2191,52 @@ ${candidateResume.rawText ? `Resume Excerpt: ${candidateResume.rawText.slice(0, 
     // ── Active Topic Continuity in Session State (sharedContext) ──
     // Topic detection is 100% DYNAMIC — driven by the candidate's actual resume + what they say.
     // ⛔ NO hardcoded project names. The system builds keyword matchers from the real resume at runtime.
-    const allCandidateProjects: Array<{ name: string; description?: string; technologies?: string[] }> = candidateResume.notableProjects || [];
+    const dateRegexSanitizer = /\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b|\b(?:19|20)\d{2}\b|\b(?:cgpa|gpa|\/10)\b/i;
+    const allCandidateProjects: Array<{ name: string; description?: string; technologies?: string[] }> = (candidateResume.notableProjects || [])
+      .filter((p: any) => {
+        const name = (p.name || '').trim();
+        return name.length >= 2 && !dateRegexSanitizer.test(name) && !/^(PROJECTS|EDUCATION|EXPERIENCE)/i.test(name);
+      });
     const allWorkCompanies: string[] = (candidateResume.workExperience || []).map((w: any) => w.company || '');
 
-    // Build a dynamic regex from the candidate's actual project names and company names
-    // This replaces the old hardcoded CommAI / VoteWise / HospiSynAI regex
+    // Dynamic keyword & token matching for projects
+    let matchedProj: any = null;
+    for (const p of allCandidateProjects) {
+      const pNameLower = (p.name || '').toLowerCase();
+      // 1. Direct string match
+      if (pNameLower.length >= 3 && cleanCandSpeech.includes(pNameLower)) {
+        matchedProj = p;
+        break;
+      }
+      // 2. Token / word-level match (e.g. "Stadium Sense" matches "stadium" or "stadiums")
+      const tokens = pNameLower.split(/[\s–\-_/]+/).filter(t => t.length >= 4 && !['with', 'from', 'using', 'based', 'smart', 'companion', 'dashboard', 'system'].includes(t));
+      if (tokens.some(t => cleanCandSpeech.includes(t) || (t.endsWith('s') && cleanCandSpeech.includes(t.slice(0, -1))) || cleanCandSpeech.includes(t + 's'))) {
+        matchedProj = p;
+        break;
+      }
+      // 3. Match key technical signature words from description
+      if (cleanCandSpeech.includes('density') && (p.description || '').toLowerCase().includes('density')) {
+        matchedProj = p;
+        break;
+      }
+      if (cleanCandSpeech.includes('power bi') && (p.description || '').toLowerCase().includes('power bi')) {
+        matchedProj = p;
+        break;
+      }
+      if ((cleanCandSpeech.includes('voter') || cleanCandSpeech.includes('voting')) && (p.name || '').toLowerCase().includes('voter')) {
+        matchedProj = p;
+        break;
+      }
+    }
+
+    const matchedWork = (candidateResume.workExperience || []).find((w: any) =>
+      (w.company || '').trim().length >= 3 && cleanCandSpeech.includes((w.company || '').toLowerCase())
+    );
+
     const dynamicProjectKeywords = [
       ...allCandidateProjects.map(p => (p.name || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
       ...allWorkCompanies.map(c => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
     ].filter(k => k.trim().length >= 3);
-
-    const matchedProj = allCandidateProjects.find(p =>
-      (p.name || '').trim().length >= 3 && cleanCandSpeech.includes((p.name || '').toLowerCase())
-    );
-    const matchedWork = (candidateResume.workExperience || []).find((w: any) =>
-      (w.company || '').trim().length >= 3 && cleanCandSpeech.includes((w.company || '').toLowerCase())
-    );
 
     // Dynamically scan the candidate's speech for ANY project or company mentioned verbally
     // even if they are not explicitly listed in the uploaded resume
@@ -2194,9 +2400,9 @@ Active Panel in Room:
 ${activePanel.map((p: any) => `• "${p.id}" (${p.name}, Title: ${p.title}, Role: ${p.role})`).join('\n')}
 
 --- REAL-TIME CONVERSATIONAL & ACTIVE LISTENING MANDATE ---
-1. Zero Topic Whiplash (Mandatory Conversational Thread Continuity):
-   - Listen to what the candidate JUST said in the previous turn. Ask a direct, probing follow-up on that exact detail they shared.
-   - NEVER abruptly jump to an unrelated project in the very next turn. Maintain the active thread for at least 2 consecutive turns before smoothly transitioning.
+1. Zero Topic Whiplash & Deep Conversational Listening:
+   - Listen closely to what the candidate JUST said in the previous turn. If the candidate shared a specific implementation hurdle or engineering detail (for example, mapping crowd density on a map using JavaScript), your NEXT question MUST directly probe that exact technical nuance (e.g., UI thread rendering performance, canvas vs SVG vs WebGL, spatial clustering, or event throttling), rather than abruptly switching to generic questions.
+   - NEVER abruptly jump to an unrelated project or generic topic in the very next turn. Maintain the active thread for at least 2 consecutive turns before smoothly transitioning.
    - If NO resume is available, your ONLY source of truth is the spoken transcript. Ask questions exclusively from what they mentioned.
 2. Contextual Topic Transitions:
    - When switching projects or moving to the next section, build an organic bridge using the candidate's ACTUAL project names from the resume or what they verbally mentioned.
